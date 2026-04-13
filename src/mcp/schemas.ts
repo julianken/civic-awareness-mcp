@@ -28,8 +28,8 @@ export const SearchDocumentsInput = z.object({
   q: z.string().min(1),
   kinds: z.array(z.string()).optional(),
   sources: z.array(z.string()).optional(),
-  from: z.string().datetime().optional(),
-  to: z.string().datetime().optional(),
+  from: z.iso.datetime().optional(),
+  to: z.iso.datetime().optional(),
   limit: z.number().int().min(1).max(100).default(20),
 });
 export type SearchDocumentsInput = z.infer<typeof SearchDocumentsInput>;

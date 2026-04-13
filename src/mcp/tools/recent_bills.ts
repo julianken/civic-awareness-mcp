@@ -62,7 +62,7 @@ export async function handleRecentBills(
     return {
       id: d.id,
       identifier: identifier?.trim() ?? d.title,
-      title: d.title,
+      title: titleParts.join(" — ").trim() || d.title,
       latest_action: latest,
       sponsors,
       source_url: d.source.url,

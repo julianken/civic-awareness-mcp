@@ -48,12 +48,14 @@ describe("recent_bills tool", () => {
   it("returns only bills within the window for the specified state", async () => {
     const result = await handleRecentBills(store.db, { days: 7, jurisdiction: "us-tx" });
     expect(result.results).toHaveLength(1);
-    expect(result.results[0].title).toContain("HB1");
+    expect(result.results[0].identifier).toBe("HB1");
+    expect(result.results[0].title).toBe("recent bill");
   });
   it("scopes to the requested jurisdiction (TX vs CA)", async () => {
     const ca = await handleRecentBills(store.db, { days: 7, jurisdiction: "us-ca" });
     expect(ca.results).toHaveLength(1);
-    expect(ca.results[0].title).toContain("AB123");
+    expect(ca.results[0].identifier).toBe("AB123");
+    expect(ca.results[0].title).toBe("california bill");
   });
   it("includes sponsor info", async () => {
     const result = await handleRecentBills(store.db, { days: 7, jurisdiction: "us-tx" });

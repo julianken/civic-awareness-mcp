@@ -13,10 +13,14 @@ export function buildServer(opts: BuildServerOptions): CivicAwarenessServer {
     { capabilities: { tools: {} } },
   );
 
-  mcp.tool(
+  mcp.registerTool(
     "recent_bills",
-    "List recently-updated U.S. state legislative bills for a given state, with sponsors. Jurisdiction is required — pass e.g. \"us-tx\" or \"us-ca\".",
-    RecentBillsInput.shape,
+    {
+      description:
+        "List recently-updated U.S. state legislative bills for a given state, with sponsors. " +
+        'Jurisdiction is required — pass e.g. "us-tx" or "us-ca".',
+      inputSchema: RecentBillsInput.shape,
+    },
     async (input) => {
       const data = await handleRecentBills(store.db, input);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
