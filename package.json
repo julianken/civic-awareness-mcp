@@ -1,6 +1,6 @@
 {
   "name": "civic-awareness-mcp",
-  "version": "0.0.1",
+  "version": "0.0.6",
   "description": "MCP server for US federal and state legislative civic data",
   "keywords": [
     "mcp",

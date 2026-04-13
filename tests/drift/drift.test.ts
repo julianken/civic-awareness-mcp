@@ -17,7 +17,7 @@
  */
 import { describe, it, expect } from "vitest";
 
-const UA = "civic-awareness-mcp-drift/0.0.5 (+https://github.com/julianken/civic-awareness-mcp)";
+const UA = "civic-awareness-mcp-drift/0.0.6 (+https://github.com/julianken/civic-awareness-mcp)";
 
 // Small pause helper — be polite to public civic APIs even when tests
 // run in sequence. One second between requests keeps us well under any
