@@ -8,6 +8,10 @@ import { logger } from "./util/logger.js";
 
 const DB_PATH = process.env.CIVIC_AWARENESS_DB_PATH ?? "./data/civic-awareness.db";
 
+// Runs on every server start before the stdio transport connects.
+// Must remain fast (schema + jurisdiction seed only, no network) so
+// Claude Desktop's MCP handshake does not time out. Never expand this
+// to data refresh — that belongs in the refresh_source tool (D5/R12).
 export async function autoBootstrapIfNeeded(dbPath: string): Promise<void> {
   if (!existsSync(dbPath)) {
     logger.info("database file missing — auto-bootstrapping", { dbPath });
