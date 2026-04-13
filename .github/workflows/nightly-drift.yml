@@ -49,6 +49,28 @@ jobs:
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
+      # Fail fast if any of the three API keys aren't set in repo Actions
+      # secrets. Without this guard, `pnpm test:drift` skips all tests when
+      # the env vars are empty and the job passes silently — a false-positive
+      # CI signal where green means "zero tests ran," not "upstream shapes
+      # are intact."
+      - name: Check required secrets
+        env:
+          OPENSTATES_API_KEY: ${{ secrets.OPENSTATES_API_KEY }}
+          CONGRESS_API_KEY: ${{ secrets.CONGRESS_API_KEY }}
+          FEC_API_KEY: ${{ secrets.FEC_API_KEY }}
+        run: |
+          missing=()
+          [ -z "$OPENSTATES_API_KEY" ] && missing+=("OPENSTATES_API_KEY")
+          [ -z "$CONGRESS_API_KEY" ]   && missing+=("CONGRESS_API_KEY")
+          [ -z "$FEC_API_KEY" ]        && missing+=("FEC_API_KEY")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing required Actions secrets: ${missing[*]}"
+            echo "Set them at Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          echo "All required secrets present; running drift suite."
+
       - name: Drift tests
         env:
           OPENSTATES_API_KEY: ${{ secrets.OPENSTATES_API_KEY }}
