@@ -234,14 +234,53 @@ describe("CongressAdapter", () => {
   });
 
   // ── Test 5 (optional): Rate-limit resilience ─────────────────────
-  it("surfaces errors cleanly when Congress.gov returns a 429", async () => {
-    vi.spyOn(global, "fetch").mockResolvedValue(
-      new Response("Too Many Requests", { status: 429 }),
-    );
-    const adapter = new CongressAdapter({ apiKey: "test-key" });
+  it(
+    "surfaces errors cleanly when Congress.gov returns a 429",
+    { timeout: 30_000 },
+    async () => {
+      // The adapter has three independent try/catches (members, bills,
+      // votes). A 429 on all three paths triggers rateLimitedFetch's
+      // exponential backoff per section (≈7s each, 21s total), so the
+      // default 10s vitest timeout isn't enough. Bump to 30s.
+      vi.spyOn(global, "fetch").mockResolvedValue(
+        new Response("Too Many Requests", { status: 429 }),
+      );
+      const adapter = new CongressAdapter({ apiKey: "test-key" });
+      const result = await adapter.refresh({ db: store.db });
+      // The adapter catches errors per-section; it does not throw.
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors[0]).toMatch(/429/);
+    },
+  );
+
+  // ── Test 6: /vote 404 is graceful degradation, not an error ──────
+  it("does not count /vote 404 as an error (graceful degradation)", async () => {
+    // Members + bills succeed (empty results); /vote returns 404 as
+    // some Congress.gov API tiers don't expose the endpoint.
+    vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
+      const u = String(url);
+      if (u.includes("/vote")) {
+        return new Response("Not Found", { status: 404 });
+      }
+      if (u.includes("/member")) {
+        return new Response(
+          JSON.stringify({ members: [], pagination: { count: 0 } }),
+          { status: 200 },
+        );
+      }
+      if (u.includes("/bill")) {
+        return new Response(
+          JSON.stringify({ bills: [], pagination: { count: 0 } }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
     const result = await adapter.refresh({ db: store.db });
-    // The adapter catches the error and reports it; it does not throw.
-    expect(result.errors.length).toBeGreaterThan(0);
-    expect(result.errors[0]).toMatch(/429/);
+    // /vote 404 was logged as warn but NOT counted as an error — the
+    // refresh is still considered successful.
+    expect(result.errors).toEqual([]);
   });
 });

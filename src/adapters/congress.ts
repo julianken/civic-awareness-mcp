@@ -144,8 +144,12 @@ export class CongressAdapter implements Adapter {
       errors: [],
     };
 
+    // Each section has its own try/catch so that one endpoint failing
+    // (e.g. /vote returning 404 on a lower-tier Congress.gov API key)
+    // doesn't lose the work already done by earlier sections.
+
+    // 1. Fetch and upsert all Members first so bills can reference them.
     try {
-      // 1. Fetch and upsert all Members first so bills can reference them.
       for (const congress of this.congresses) {
         const members = await this.fetchAllPages<CongressMember, PaginatedMembers>(
           `/member?congress=${congress}&limit=250`,
@@ -158,8 +162,14 @@ export class CongressAdapter implements Adapter {
           result.entitiesUpserted += 1;
         }
       }
+    } catch (err) {
+      const msg = `members: ${String(err)}`;
+      logger.error("congress members refresh failed", { error: msg });
+      result.errors.push(msg);
+    }
 
-      // 2. Fetch bills.
+    // 2. Fetch bills.
+    try {
       for (const congress of this.congresses) {
         const bills = await this.fetchAllPages<CongressBill, PaginatedBills>(
           `/bill?congress=${congress}&limit=250`,
@@ -172,8 +182,19 @@ export class CongressAdapter implements Adapter {
           result.documentsUpserted += 1;
         }
       }
+    } catch (err) {
+      const msg = `bills: ${String(err)}`;
+      logger.error("congress bills refresh failed", { error: msg });
+      result.errors.push(msg);
+    }
 
-      // 3. Fetch votes (roll calls).
+    // 3. Fetch votes (roll calls). Graceful degradation for 404: the
+    //    /vote endpoint may not be available on all Congress.gov API
+    //    tiers. When that happens we log a warning and continue
+    //    without counting it as an error — the rest of the data is
+    //    still useful, and the absence of votes is a known limitation
+    //    rather than a bug.
+    try {
       for (const congress of this.congresses) {
         const votes = await this.fetchAllPages<CongressVote, PaginatedVotes>(
           `/vote?congress=${congress}&limit=250`,
@@ -188,8 +209,17 @@ export class CongressAdapter implements Adapter {
       }
     } catch (err) {
       const msg = String(err);
-      logger.error("congress refresh failed", { error: msg });
-      result.errors.push(msg);
+      if (msg.includes("returned 404")) {
+        logger.warn(
+          "congress /vote endpoint unavailable on this API tier — skipping votes",
+          { error: msg },
+        );
+        // Not pushed to result.errors — graceful degradation.
+      } else {
+        const tagged = `votes: ${msg}`;
+        logger.error("congress votes refresh failed", { error: tagged });
+        result.errors.push(tagged);
+      }
     }
 
     return result;
