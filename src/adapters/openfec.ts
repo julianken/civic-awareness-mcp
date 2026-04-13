@@ -236,7 +236,7 @@ export class OpenFecAdapter implements Adapter {
       const url = new URL(`${BASE_URL}${firstPath}${sep}page=${page}&api_key=${this.opts.apiKey}`);
 
       const res = await rateLimitedFetch(url.toString(), {
-        userAgent: "civic-awareness-mcp/0.0.1 (+github)",
+        userAgent: "civic-awareness-mcp/0.0.6 (+github)",
         rateLimiter: this.rateLimiter,
       });
       if (!res.ok) throw new Error(`OpenFEC ${firstPath} returned ${res.status}`);
@@ -273,7 +273,7 @@ export class OpenFecAdapter implements Adapter {
       const url = new URL(`${BASE_URL}${path}${sep}api_key=${this.opts.apiKey}`);
 
       const res = await rateLimitedFetch(url.toString(), {
-        userAgent: "civic-awareness-mcp/0.0.1 (+github)",
+        userAgent: "civic-awareness-mcp/0.0.6 (+github)",
         rateLimiter: this.rateLimiter,
       });
       if (!res.ok) throw new Error(`OpenFEC ${firstPath} returned ${res.status}`);

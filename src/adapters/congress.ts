@@ -243,7 +243,7 @@ export class CongressAdapter implements Adapter {
       reqUrl.searchParams.set("api_key", this.opts.apiKey);
 
       const res = await rateLimitedFetch(reqUrl.toString(), {
-        userAgent: "civic-awareness-mcp/0.0.1 (+github)",
+        userAgent: "civic-awareness-mcp/0.0.6 (+github)",
         rateLimiter: this.rateLimiter,
       });
       if (!res.ok) throw new Error(`Congress.gov ${firstPath} returned ${res.status}`);
