@@ -56,17 +56,21 @@ export function upsertDocument(db: Database.Database, input: UpsertDocInput): Up
     .get(input.source.name, input.source.id) as DocRow | undefined;
 
   if (existing) {
-    db.prepare(
-      `UPDATE documents
-       SET kind = ?, jurisdiction = ?, title = ?, summary = ?, occurred_at = ?,
-           fetched_at = ?, source_url = ?, raw = ?
-       WHERE id = ?`,
-    ).run(
-      input.kind, input.jurisdiction, input.title, input.summary ?? null,
-      input.occurred_at, now, input.source.url,
-      JSON.stringify(input.raw ?? {}), existing.id,
-    );
-    writeReferences(db, existing.id, input.references ?? []);
+    // Wrap UPDATE + reference rewrite in one transaction so a crash
+    // mid-sequence cannot leave the row updated with stale refs.
+    db.transaction(() => {
+      db.prepare(
+        `UPDATE documents
+         SET kind = ?, jurisdiction = ?, title = ?, summary = ?, occurred_at = ?,
+             fetched_at = ?, source_url = ?, raw = ?
+         WHERE id = ?`,
+      ).run(
+        input.kind, input.jurisdiction, input.title, input.summary ?? null,
+        input.occurred_at, now, input.source.url,
+        JSON.stringify(input.raw ?? {}), existing.id,
+      );
+      writeReferences(db, existing.id, input.references ?? []);
+    })();
     const merged = {
       ...existing,
       kind: input.kind,
@@ -82,17 +86,20 @@ export function upsertDocument(db: Database.Database, input: UpsertDocInput): Up
   }
 
   const id = randomUUID();
-  db.prepare(
-    `INSERT INTO documents
-     (id, kind, jurisdiction, title, summary, occurred_at, fetched_at,
-      source_name, source_id, source_url, raw)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    id, input.kind, input.jurisdiction, input.title, input.summary ?? null,
-    input.occurred_at, now, input.source.name, input.source.id, input.source.url,
-    JSON.stringify(input.raw ?? {}),
-  );
-  writeReferences(db, id, input.references ?? []);
+  // Wrap INSERT + reference write in one transaction (same rationale).
+  db.transaction(() => {
+    db.prepare(
+      `INSERT INTO documents
+       (id, kind, jurisdiction, title, summary, occurred_at, fetched_at,
+        source_name, source_id, source_url, raw)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      id, input.kind, input.jurisdiction, input.title, input.summary ?? null,
+      input.occurred_at, now, input.source.name, input.source.id, input.source.url,
+      JSON.stringify(input.raw ?? {}),
+    );
+    writeReferences(db, id, input.references ?? []);
+  })();
 
   return {
     document: {
