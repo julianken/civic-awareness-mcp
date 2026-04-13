@@ -58,3 +58,11 @@ export const EntityConnectionsInput = z.object({
   min_co_occurrences: z.number().int().min(1).max(50).default(2),
 });
 export type EntityConnectionsInput = z.infer<typeof EntityConnectionsInput>;
+
+export const ResolvePersonInput = z.object({
+  name: z.string().min(1),
+  jurisdiction_hint: z.string().optional(),
+  role_hint: z.string().optional(),
+  context: z.string().optional(),
+});
+export type ResolvePersonInput = z.infer<typeof ResolvePersonInput>;
