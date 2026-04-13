@@ -313,9 +313,7 @@ export class CongressAdapter implements Adapter {
 
   private upsertBill(db: Database.Database, b: CongressBill): void {
     const identifier = billIdentifier(b.type, b.number);
-    const occurred = b.updateDate ?? b.introducedDate ?? new Date().toISOString();
-    // Ensure the date is ISO 8601 with time component.
-    const occurredAt = occurred.includes("T") ? occurred : `${occurred}T00:00:00.000Z`;
+    const occurredAt = b.updateDate ?? b.introducedDate ?? new Date().toISOString();
     const humanUrl = billUrl(b.congress, b.type, b.number);
 
     // Resolve sponsors to entity IDs.

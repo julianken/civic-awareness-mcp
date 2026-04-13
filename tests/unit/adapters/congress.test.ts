@@ -253,6 +253,26 @@ describe("CongressAdapter", () => {
     },
   );
 
+  // Characterization test for the storage chokepoint. Proves the
+  // adapter's `if (!occurred.includes("T"))` shortcut at upsertBill
+  // is redundant — `upsertDocument` normalizes any valid ISO string,
+  // including date-only, to canonical millisecond Z form. If this
+  // passes both before and after deleting that shortcut, the
+  // shortcut was dead weight.
+  it("stores canonical millisecond Z form when updateDate is date-only", async () => {
+    vi.spyOn(global, "fetch").mockImplementation(makeMockFetch({
+      bills: [{ ...SAMPLE_BILL, updateDate: "2025-04-04" }],
+      members: [],
+      votes: [],
+    }));
+    const adapter = new CongressAdapter({ apiKey: "test-key" });
+    await adapter.refresh({ db: store.db });
+    const doc = store.db
+      .prepare("SELECT occurred_at FROM documents WHERE kind = 'bill'")
+      .get() as { occurred_at: string };
+    expect(doc.occurred_at).toBe("2025-04-04T00:00:00.000Z");
+  });
+
   // ── Test 6: /vote 404 is graceful degradation, not an error ──────
   it("does not count /vote 404 as an error (graceful degradation)", async () => {
     // Members + bills succeed (empty results); /vote returns 404 as

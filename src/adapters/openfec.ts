@@ -384,10 +384,6 @@ export class OpenFecAdapter implements Adapter {
       return;
     }
 
-    const occurredAt = item.contribution_receipt_date.includes("T")
-      ? item.contribution_receipt_date
-      : `${item.contribution_receipt_date}T00:00:00.000Z`;
-
     // Resolve the recipient committee entity by fec_committee external_id.
     const recipientRow = db
       .prepare(
@@ -427,7 +423,7 @@ export class OpenFecAdapter implements Adapter {
       kind: "contribution",
       jurisdiction: "us-federal",
       title,
-      occurred_at: occurredAt,
+      occurred_at: item.contribution_receipt_date,
       source: {
         name: "openfec",
         id: item.transaction_id,
@@ -460,10 +456,6 @@ export class OpenFecAdapter implements Adapter {
     if (!item.disbursement_date || !item.disbursement_amount) {
       return;
     }
-
-    const occurredAt = item.disbursement_date.includes("T")
-      ? item.disbursement_date
-      : `${item.disbursement_date}T00:00:00.000Z`;
 
     // The spender is the committee that filed Schedule B.
     const spenderRow = db
@@ -499,7 +491,7 @@ export class OpenFecAdapter implements Adapter {
       kind: "expenditure",
       jurisdiction: "us-federal",
       title,
-      occurred_at: occurredAt,
+      occurred_at: item.disbursement_date,
       source: {
         name: "openfec",
         id: item.transaction_id,

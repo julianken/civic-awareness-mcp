@@ -336,6 +336,32 @@ describe("OpenFecAdapter", () => {
     expect(contributors.length).toBe(2);
   });
 
+  // Characterization tests for the storage chokepoint. Prove the
+  // adapter's `if (!date.includes("T"))` shortcuts at upsertContribution
+  // and upsertExpenditure are redundant — `upsertDocument` normalizes
+  // any valid ISO string, including date-only, to canonical
+  // millisecond Z form. If these pass both before and after deleting
+  // the shortcuts, the shortcuts were dead weight.
+  it("stores contribution occurred_at as canonical Z form from a date-only contribution_receipt_date", async () => {
+    vi.spyOn(global, "fetch").mockImplementation(makeMockFetch());
+    const adapter = new OpenFecAdapter({ apiKey: "test-key" });
+    await adapter.refresh({ db: store.db });
+    const doc = store.db
+      .prepare("SELECT occurred_at FROM documents WHERE kind = 'contribution'")
+      .get() as { occurred_at: string };
+    expect(doc.occurred_at).toBe("2026-01-15T00:00:00.000Z");
+  });
+
+  it("stores expenditure occurred_at as canonical Z form from a date-only disbursement_date", async () => {
+    vi.spyOn(global, "fetch").mockImplementation(makeMockFetch());
+    const adapter = new OpenFecAdapter({ apiKey: "test-key" });
+    await adapter.refresh({ db: store.db });
+    const doc = store.db
+      .prepare("SELECT occurred_at FROM documents WHERE kind = 'expenditure'")
+      .get() as { occurred_at: string };
+    expect(doc.occurred_at).toBe("2026-01-20T00:00:00.000Z");
+  });
+
   // ── Test 7: Rate-limit resilience ────────────────────────────────
   it("surfaces errors cleanly when OpenFEC returns 429", async () => {
     vi.spyOn(global, "fetch").mockResolvedValue(
