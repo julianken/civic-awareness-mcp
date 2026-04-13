@@ -162,9 +162,13 @@ export function buildServer(opts: BuildServerOptions): CivicAwarenessServer {
         "Source must be one of 'openstates', 'congress', 'openfec'. For " +
         "openstates, pass `jurisdictions: ['tx']` (or similar) to scope the " +
         "refresh — omitting it iterates all seeded states, which consumes " +
-        "the 500/day OpenStates free-tier budget quickly. `max_pages` defaults " +
-        "to 2 (conservative). This tool writes to the DB and requires user " +
-        "consent per MCP semantics; one consent grant covers the whole batch.",
+        "the 500/day OpenStates free-tier budget quickly. `max_pages` caps " +
+        "pagination per endpoint (not total HTTP calls); actual upstream " +
+        "requests ≈ pages × endpoints × jurisdictions, so openstates with " +
+        "50 states and 3 endpoints at max_pages=2 is 300 requests. Default " +
+        "max_pages is 2 (conservative first-touch). This tool writes to " +
+        "the DB and requires user consent per MCP semantics; one consent " +
+        "grant covers the whole batch.",
       inputSchema: RefreshSourceInput.shape,
     },
     async (input) => {
