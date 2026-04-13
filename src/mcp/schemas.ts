@@ -33,3 +33,11 @@ export const SearchDocumentsInput = z.object({
   limit: z.number().int().min(1).max(100).default(20),
 });
 export type SearchDocumentsInput = z.infer<typeof SearchDocumentsInput>;
+
+export const RecentVotesInput = z.object({
+  jurisdiction: z.string().min(1),
+  days: z.number().int().min(1).max(90).default(7),
+  chamber: z.enum(["upper", "lower"]).optional(),
+  bill_identifier: z.string().optional(),
+});
+export type RecentVotesInput = z.infer<typeof RecentVotesInput>;
