@@ -292,9 +292,9 @@ single `refreshSource()` core function.
   the MCP tool does.
 - The 8 existing read tools (`recent_bills`, `recent_votes`,
   `recent_contributions`, `search_civic_documents`,
-  `search_entities`, `get_entity`, `entity_activity`,
-  `entity_connections`, `resolve_person`) remain pure reads from
-  SQLite. No upstream HTTP on the query path.
+  `search_entities`, `get_entity`, `entity_connections`,
+  `resolve_person`) remain pure reads from SQLite. No upstream
+  HTTP on the query path.
 - Rate-limiting infrastructure in `src/util/http.ts` (per-host
   token bucket, backoff, `Retry-After`) still governs the refresh
   path. A `refresh_source` tool call that hits 429 will back off
