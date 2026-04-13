@@ -99,7 +99,9 @@ export class OpenStatesAdapter implements Adapter {
         {
           jurisdiction: stateAbbr,
           sort: "updated_desc",
-          include: "sponsorships,abstracts,actions",
+          // OpenStates v3 rejects comma-joined include values with 422;
+          // the API expects include as a repeated query param.
+          include: ["sponsorships", "abstracts", "actions"],
         },
         options.maxPages,
       );
@@ -117,14 +119,20 @@ export class OpenStatesAdapter implements Adapter {
 
   private async fetchAllPages<T>(
     path: string,
-    params: Record<string, string>,
+    params: Record<string, string | string[]>,
     maxPages: number | undefined,
   ): Promise<T[]> {
     const all: T[] = [];
     let page = 1;
     while (true) {
       const url = new URL(`${BASE_URL}${path}`);
-      for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+      for (const [k, v] of Object.entries(params)) {
+        if (Array.isArray(v)) {
+          for (const item of v) url.searchParams.append(k, item);
+        } else {
+          url.searchParams.set(k, v);
+        }
+      }
       url.searchParams.set("page", String(page));
       url.searchParams.set("per_page", "20");
 

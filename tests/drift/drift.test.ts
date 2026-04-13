@@ -37,8 +37,10 @@ describe.skipIf(!HAS_OPENSTATES)("OpenStates drift", () => {
 
   it("/bills response shape matches the OpenStatesBill interface", async () => {
     await pause();
+    // `include` must be repeated, not comma-joined — OpenStates v3
+    // returns 422 on comma-joined values. See adapter fix 2026-04-13.
     const res = await fetch(
-      `${base}/bills?jurisdiction=tx&per_page=5&page=1&include=sponsorships,actions`,
+      `${base}/bills?jurisdiction=tx&per_page=5&page=1&include=sponsorships&include=actions`,
       { headers },
     );
     expect(res.status).toBe(200);

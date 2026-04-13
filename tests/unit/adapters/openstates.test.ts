@@ -121,4 +121,24 @@ describe("OpenStatesAdapter", () => {
       .get() as { jurisdiction: string };
     expect(doc.jurisdiction).toBe("us-ca");
   });
+
+  // Regression test: OpenStates v3 rejects comma-separated `include`
+  // with HTTP 422. The API expects `include` as a repeated query
+  // parameter (include=sponsorships&include=abstracts&include=actions),
+  // not a single comma-joined value. Verified against the live API
+  // 2026-04-13 during first Phase 5 preload.
+  it("sends /bills include fields as repeated query params, not comma-separated", async () => {
+    const mockFetch = vi.mocked(global.fetch);
+    const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+    await adapter.refresh({ db: store.db, jurisdiction: "tx" });
+    const billsUrl = mockFetch.mock.calls
+      .map((c) => String(c[0]))
+      .find((u) => u.includes("/bills"));
+    expect(billsUrl).toBeDefined();
+    // Must have each include as its own param — not "include=A,B,C".
+    expect(billsUrl).toContain("include=sponsorships");
+    expect(billsUrl).toContain("include=abstracts");
+    expect(billsUrl).toContain("include=actions");
+    expect(billsUrl).not.toMatch(/include=[^&]*,/);
+  });
 });
