@@ -54,6 +54,32 @@ Phase 1 does not yet expose any tools to the LLM (see
 is fully functional as an MCP endpoint but its tool registry is
 empty. Tools land in Phase 2.
 
+## CI — nightly upstream drift detection
+
+The repo has one GitHub Actions workflow,
+`.github/workflows/nightly-drift.yml`, that runs **daily at 09:00 UTC**
+(or on-demand via `workflow_dispatch`). It hits the real OpenStates,
+Congress.gov, and OpenFEC endpoints with tiny queries and asserts the
+response shapes the adapters rely on are still present. If a field name
+changes upstream, the job goes red and flags the regression before end
+users see broken tool output.
+
+There is **no CI on push or pull-request.** The mocked unit/integration
+suite runs locally via `pnpm test`; there's no value in re-running it
+on every push — upstream drift is the only regression the repo itself
+is exposed to.
+
+To enable the nightly job, configure three repo secrets at
+`Settings → Secrets and variables → Actions`:
+
+- `OPENSTATES_API_KEY`
+- `CONGRESS_API_KEY`
+- `FEC_API_KEY`
+
+Each secret is **your** (the maintainer's) key, used only by the
+scheduled drift-check job — end users still bring their own keys via
+`.env.local` when running the MCP locally.
+
 ## Quickstart for future Claude Code sessions
 
 1. Open this folder in Claude Code.

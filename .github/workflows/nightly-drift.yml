@@ -1,0 +1,53 @@
+name: Nightly upstream drift detection
+
+# Hits real upstream APIs once a day and asserts the response shapes the
+# adapters depend on are still present. If a field name changes upstream
+# (e.g. OpenStates renames `updated_at` to `updatedAt`), this job goes
+# red and flags the regression before end users see broken tool output.
+#
+# Keys live in the repo's Actions secrets (not shipped to users). End
+# users run the MCP server with their own local keys via .env.local or
+# claude_desktop_config.json — see README.
+#
+# This is the ONLY workflow. No CI on push/PR — tests run locally via
+# `pnpm test` and the nightly job catches upstream drift. Trigger
+# manually from the Actions tab if you want to re-check immediately.
+
+on:
+  schedule:
+    # 9am UTC daily = 2am PT / 5am ET. Runs after most US legislative
+    # activity has settled and before people wake up to use the MCP.
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+
+# This workflow reads secrets but never consumes untrusted input from
+# github.event.* — no command-injection surface.
+
+jobs:
+  drift:
+    name: Live API shape assertions
+    runs-on: ubuntu-latest
+    # Short timeout — the tests make ~7 requests with 1s pauses between.
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Drift tests
+        env:
+          OPENSTATES_API_KEY: ${{ secrets.OPENSTATES_API_KEY }}
+          CONGRESS_API_KEY: ${{ secrets.CONGRESS_API_KEY }}
+          FEC_API_KEY: ${{ secrets.FEC_API_KEY }}
+        run: pnpm test:drift
