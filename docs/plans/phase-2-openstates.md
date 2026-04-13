@@ -1025,10 +1025,12 @@ export async function handleSearchEntities(
 Add inside `buildServer`:
 
 ```ts
-mcp.tool(
+mcp.registerTool(
   "search_entities",
-  "Search for people or organizations by name across all U.S. state legislatures.",
-  SearchEntitiesInput.shape,
+  {
+    description: "Search for people or organizations by name across all U.S. state legislatures.",
+    inputSchema: SearchEntitiesInput.shape,
+  },
   async (input) => {
     const data = await handleSearchEntities(store.db, input);
     return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };

@@ -1,7 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { openStore, type Store } from "../core/store.js";
 import { handleRecentBills } from "./tools/recent_bills.js";
-import { RecentBillsInput } from "./schemas.js";
+import { handleSearchEntities } from "./tools/search_entities.js";
+import { RecentBillsInput, SearchEntitiesInput } from "./schemas.js";
 
 export interface BuildServerOptions { dbPath: string }
 export interface CivicAwarenessServer { mcp: McpServer; store: Store }
@@ -23,6 +24,19 @@ export function buildServer(opts: BuildServerOptions): CivicAwarenessServer {
     },
     async (input) => {
       const data = await handleRecentBills(store.db, input);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    },
+  );
+
+  mcp.registerTool(
+    "search_entities",
+    {
+      description:
+        "Search for people or organizations by name across all U.S. state legislatures.",
+      inputSchema: SearchEntitiesInput.shape,
+    },
+    async (input) => {
+      const data = await handleSearchEntities(store.db, input);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     },
   );
