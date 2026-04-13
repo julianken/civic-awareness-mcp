@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "bootstrap": "tsx src/cli/bootstrap.ts",
+    "refresh": "tsx src/cli/refresh.ts",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",

@@ -567,7 +567,7 @@ function listStateJurisdictions(db: import("better-sqlite3").Database): string[]
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
-  const dbPath = optionalEnv("CIVIC_AWARENESS_DB", "./data/civic-awareness.db");
+  const dbPath = optionalEnv("CIVIC_AWARENESS_DB_PATH", "./data/civic-awareness.db");
   const store = openStore(dbPath);
   seedJurisdictions(store.db);
 
