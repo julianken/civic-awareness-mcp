@@ -217,21 +217,33 @@ output:
 
 ## Phase-to-tool mapping
 
-| Phase | Tools shipped / expanded |
-|---|---|
-| **1 — Foundation** | Scaffolding only — no tools exposed |
-| **2 — OpenStates (50 states)** | `recent_bills`, `search_entities`, `get_entity`, `search_civic_documents` (OpenStates-only) |
-| **3 — Congress.gov** | + `recent_votes`; `recent_bills`, `search_entities`, `get_entity`, `search_civic_documents`, `entity_activity` expand to include federal |
-| **4 — OpenFEC** | + `recent_contributions`; cross-source entity joining for candidates ↔ Members of Congress |
-| **5 — Connections** | + `entity_connections`, `resolve_person` |
+| Phase | Status | Tools shipped / expanded |
+|---|---|---|
+| **1 — Foundation** | ✅ done | Scaffolding only — no tools exposed |
+| **2 — OpenStates (50 states)** | ✅ done | `recent_bills`, `search_entities`, `get_entity`, `search_civic_documents` (OpenStates-only) |
+| **3 — Congress.gov** | ✅ done | + `recent_votes`; `recent_bills`, `search_entities`, `get_entity`, `search_civic_documents` expand to include federal |
+| **4 — OpenFEC** | ✅ done | + `recent_contributions`; cross-source entity merge (fec_candidate ↔ bioguide ↔ openstates_person) |
+| **5 — Connections** | ✅ done | + `entity_connections`, `resolve_person` |
 
-## Why 9 tools and not 20
+As of Phase 5 (2026-04-13), the server exposes **8 tools total** at
+`v0.0.5`: `recent_bills`, `recent_votes`, `recent_contributions`,
+`search_entities`, `get_entity`, `search_civic_documents`,
+`entity_connections`, `resolve_person`.
+
+The original spec mentioned `entity_activity` as a separate tool.
+That surface is effectively covered by `get_entity.recent_documents`
+plus `search_civic_documents` (which accepts a `kinds` filter). If
+a dedicated `entity_activity` tool emerges as necessary, it can be
+added as a wrapper over the existing `queryDocuments` / `findDocumentsByEntity`
+core helpers without new infrastructure.
+
+## Why 8 tools and not 20
 
 LLM tool-selection accuracy drops noticeably beyond ~15 tools with
-similar-sounding names. We keep to 9 with clearly distinct verbs
-(`recent_X` vs `search_X` vs `get_X` vs `resolve_X`). If a future
-sub-source needs a new surface, we prefer extending an existing
-tool's input over adding a new tool.
+similar-sounding names. We keep to 8 with clearly distinct verbs
+(`recent_X` vs `search_X` vs `get_X` vs `resolve_X` vs
+`entity_connections`). If a future sub-source needs a new surface,
+we prefer extending an existing tool's input over adding a new tool.
 
 ## What we explicitly DON'T expose
 
