@@ -347,4 +347,103 @@ describe("OpenFecAdapter", () => {
     expect(result.errors.length).toBeGreaterThan(0);
     expect(result.errors[0]).toMatch(/429/);
   });
+
+  // ── Test 8: Schedule A multi-page cursor pagination ───────────────
+  it("follows Schedule A last_index cursor across multiple pages", async () => {
+    // Build 100 contributions (per_page) on page 1, 1 contribution on
+    // page 2 with no cursor → adapter should stop after page 2 having
+    // accumulated all 101 rows.
+    const page1Results = Array.from({ length: 100 }, (_, i) => ({
+      ...SAMPLE_SCHEDULE_A,
+      transaction_id: `SA17.page1-${i}`,
+      contributor_name: `PAGE1 DONOR ${i}`,
+    }));
+    const page2Results = [
+      {
+        ...SAMPLE_SCHEDULE_A,
+        transaction_id: "SA17.page2-0",
+        contributor_name: "PAGE2 DONOR",
+      },
+    ];
+
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const u = String(url);
+      // Non-schedule_a endpoints return empty responses so the refresh
+      // doesn't blow up before reaching the cursor path.
+      if (u.includes("/candidates/search") || u.includes("/committees")) {
+        return new Response(
+          JSON.stringify({
+            results: [],
+            pagination: { count: 0, per_page: 100, page: 1, pages: 1 },
+          }),
+          { status: 200 },
+        );
+      }
+      if (u.includes("/schedules/schedule_b")) {
+        return new Response(
+          JSON.stringify({
+            results: [],
+            pagination: { count: 0, per_page: 100, page: 1, pages: 1 },
+          }),
+          { status: 200 },
+        );
+      }
+      if (u.includes("/schedules/schedule_a")) {
+        // Cursor param present on the second call → return page 2.
+        if (u.includes("last_index=CURSOR-X")) {
+          return new Response(
+            JSON.stringify({
+              results: page2Results,
+              pagination: {
+                count: 101, per_page: 100, page: 2, pages: 2,
+                // No last_indexes → adapter stops here.
+              },
+            }),
+            { status: 200 },
+          );
+        }
+        // First call → return page 1 with a cursor.
+        return new Response(
+          JSON.stringify({
+            results: page1Results,
+            pagination: {
+              count: 101, per_page: 100, page: 1, pages: 2,
+              last_indexes: {
+                last_index: "CURSOR-X",
+                last_contribution_receipt_date: "2026-01-15",
+              },
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.spyOn(global, "fetch").mockImplementation(fetchMock);
+
+    // Use a single cycle so we exercise the cursor within one
+    // fetchSchedule invocation (the adapter calls fetchSchedule once per
+    // cycle; default [2026, 2024] would give 4 total calls here and muddy
+    // the cursor assertion).
+    const adapter = new OpenFecAdapter({ apiKey: "test-key", cycles: [2026] });
+    const result = await adapter.refresh({ db: store.db });
+    expect(result.errors).toEqual([]);
+
+    // All 101 contribution Documents should be in the store.
+    const docCount = (
+      store.db
+        .prepare("SELECT COUNT(*) c FROM documents WHERE kind = 'contribution'")
+        .get() as { c: number }
+    ).c;
+    expect(docCount).toBe(101);
+
+    // Exactly 2 calls (page 1 + cursor page 2), and the second carries
+    // both cursor params.
+    const scheduleACalls = fetchMock.mock.calls
+      .map((c) => String(c[0]))
+      .filter((u) => u.includes("/schedules/schedule_a"));
+    expect(scheduleACalls.length).toBe(2);
+    expect(scheduleACalls[1]).toContain("last_index=CURSOR-X");
+    expect(scheduleACalls[1]).toContain("last_contribution_receipt_date=2026-01-15");
+  });
 });
