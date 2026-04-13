@@ -1,39 +1,211 @@
 # Civic Awareness MCP
 
-An MCP (Model Context Protocol) server that gives LLMs first-class
-access to **US federal and state-legislature civic data** — bills,
-votes, committees, Members of Congress, state legislators, and
-federal campaign finance — with both time-ordered **feed** tools and
-entity-resolved **profile/connection** tools.
+An [MCP](https://modelcontextprotocol.io) server that gives an LLM first-class access to **US federal and state-legislature civic data** — bills, votes, committees, Members of Congress, state legislators, and federal campaign finance — across **51 jurisdictions** (Congress + 50 states), with both time-ordered **feeds** and identity-resolved **entity** tools over one normalized store.
 
-**Status:** Phase 1 scaffolding complete. MCP server skeleton,
-SQLite-backed entity/document store, and TDD harness are in place.
-Phase 2 (OpenStates adapter + first 4 tools) is the next phase.
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+![Node 22+](https://img.shields.io/badge/node-%E2%89%A522-brightgreen)
+[![Nightly drift](https://github.com/julianken/civic-awareness-mcp/actions/workflows/nightly-drift.yml/badge.svg)](https://github.com/julianken/civic-awareness-mcp/actions/workflows/nightly-drift.yml)
 
-## Running locally
+The interesting part isn't the data, it's the **cross-source entity graph**: a sitting Senator has a Congress.gov `bioguide_id`, an OpenStates `ocd-person` ID from their state-legislature days, and an OpenFEC `candidate_id` for their federal campaigns. This MCP collapses those three records into one `Person` entity so an LLM can ask *"What bills did this Senator sponsor, and who funded her last campaign?"* and get one coherent answer.
+
+## Status
+
+Phases 1–5 complete. **8 MCP tools live**, all 50 states + federal, backed by OpenStates + Congress.gov + OpenFEC. Pre-public security audit landed at `aafdb73` — see [`SECURITY.md`](./SECURITY.md). Repo went public 2026-04-12.
+
+## Tools
+
+| Tool | Kind | What it answers |
+|------|------|-----------------|
+| [`recent_bills`](./docs/05-tool-surface.md#recent_bills) | feed | Bills introduced or acted on in the last N days, filterable by jurisdiction / chamber / session |
+| [`recent_votes`](./docs/05-tool-surface.md#recent_votes-phase-3) | feed | Roll-call votes in the last N days, with yea/nay/present/absent tallies |
+| [`recent_contributions`](./docs/05-tool-surface.md#recent_contributions-phase-4) | feed | Federal campaign contributions in a window, optionally filtered to a candidate or committee |
+| [`search_civic_documents`](./docs/05-tool-surface.md#search_civic_documents) | feed | Full-text search across bills / votes / contributions |
+| [`search_entities`](./docs/05-tool-surface.md#search_entities) | entity | Find Persons / Organizations / Committees / PACs by name |
+| [`get_entity`](./docs/05-tool-surface.md#get_entity) | entity | Full entity record including role history (cross-jurisdiction for Persons) plus recent documents |
+| [`entity_connections`](./docs/05-tool-surface.md#entity_connections-phase-5) | entity | Graph of co-occurrence edges (via bills / votes / contributions) out to depth 2 |
+| [`resolve_person`](./docs/05-tool-surface.md#resolve_person-phase-5) | entity | Disambiguate a name into one or more Person entity IDs using role / jurisdiction / context hints |
+
+Every response includes a `sources: { name, url }[]` array so the LLM can cite provenance. No tool synthesizes summaries — that's the LLM's job (per [D3c](./docs/06-open-decisions.md)).
+
+## Architecture
+
+One normalized event store, two projections:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     MCP Tool Layer                          │
+│                                                             │
+│  Feed tools                  Entity tools                   │
+│  ─ recent_bills              ─ search_entities              │
+│  ─ recent_votes              ─ get_entity                   │
+│  ─ recent_contributions      ─ entity_connections           │
+│  ─ search_civic_documents    ─ resolve_person               │
+└──────────────────────┬──────────────────────────────────────┘
+                       │  reads
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│               Normalized Store (SQLite)                     │
+│                                                             │
+│  entities ──<has_role>── documents ──<mentions>── entities  │
+└──────────────────────▲──────────────────────────────────────┘
+                       │  writes
+┌──────────────────────┴──────────────────────────────────────┐
+│  OpenStatesAdapter   CongressGovAdapter   OpenFECAdapter    │
+│  Each: fetch() → Document[] with Entity references          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+The feed and entity tools read the same two tables (`entities`, `documents`) with different WHERE clauses — a ~20-line SQL difference, not a parallel pipeline. Adapters normalize upstream JSON into `Document`s with `EntityReference`s, so tools never case-split by source and adding a new adapter requires zero tool changes. See [`docs/02-architecture.md`](./docs/02-architecture.md) for the full rationale.
+
+## Entity resolution
+
+The moat. Same human can appear in three APIs under three IDs; V1 resolution is three tiers, **external-ID first, fuzzy last**:
+
+1. **External ID match always wins.** `bioguide`, `openstates_person`, `fec_candidate` IDs collapse records across sources immediately.
+2. **Exact normalized-name match** (lowercased, punctuation-stripped, cross-jurisdiction for Persons). Tiebreakers: middle-name match or same external-ID source family.
+3. **Levenshtein ≤ 1** only with a **positive linking signal** — shared external-ID source family, alias match, or role-jurisdiction overlap. If uncertain, don't merge.
+
+The algorithm deliberately under-matches. Two rows for the same person is a bug we can live with; merging two distinct "Michael Brown"s from different states would poison every downstream tool response. See [`docs/04-entity-schema.md`](./docs/04-entity-schema.md) for the full spec, including why `entities.jurisdiction` is `NULL` for Persons (the [D3b invariant](./docs/06-open-decisions.md)).
+
+**No ML, no embeddings, no vector search.** External IDs are high-confidence structured data; use them.
+
+## Example invocations
+
+### Feed a recent-bills query
+
+```json
+// call:   recent_bills
+// input:
+{ "jurisdiction": "us-federal", "days": 14, "chamber": "upper" }
+
+// output (trimmed):
+{
+  "results": [
+    {
+      "id": "bill-01J...",
+      "identifier": "S.1234",
+      "title": "A bill to authorize appropriations for fiscal year 2026 ...",
+      "latest_action": {
+        "date": "2026-04-09",
+        "description": "Placed on Senate Legislative Calendar"
+      },
+      "sponsors": [
+        { "name": "Jane Doe", "party": "D", "district": "WA" }
+      ],
+      "source_url": "https://www.congress.gov/bill/119th-congress/senate-bill/1234"
+    }
+  ],
+  "total": 47,
+  "sources": [
+    { "name": "congress.gov", "url": "https://api.congress.gov/v3/bill" }
+  ],
+  "window": { "from": "2026-03-30", "to": "2026-04-13" }
+}
+```
+
+### Resolve a person across sources
+
+```json
+// call:   resolve_person
+// input:
+{ "name": "Chuck Schumer", "role_hint": "senator", "jurisdiction_hint": "us-federal" }
+
+// output:
+{
+  "matches": [
+    {
+      "entity_id": "person-7a4b...",
+      "name": "Charles E. Schumer",
+      "confidence": "exact",
+      "disambiguators": [
+        "senator (us-federal) 1999–present",
+        "bioguide: S000148",
+        "fec_candidate: S8NY00082"
+      ]
+    }
+  ]
+}
+```
+
+### Walk the connection graph
+
+```json
+// call:   entity_connections
+// input:
+{ "id": "person-7a4b...", "depth": 1, "min_co_occurrences": 3 }
+
+// output (trimmed):
+{
+  "root": { "id": "person-7a4b...", "kind": "person", "name": "Charles E. Schumer", ... },
+  "edges": [
+    {
+      "from": "person-7a4b...",
+      "to": "organization-f91c...",
+      "via_kinds": ["contribution"],
+      "co_occurrence_count": 142,
+      "sample_documents": [ /* recent contributions */ ]
+    }
+  ],
+  "nodes": [ /* neighboring entities */ ],
+  "sources": [
+    { "name": "openfec", "url": "https://api.open.fec.gov/v1/schedules/schedule_a" }
+  ]
+}
+```
+
+See [`examples/`](./examples) for complete request/response fixtures.
+
+## Example transcript
+
+A real interaction an LLM can carry off using three tools in sequence:
+
+> **User:** *Who are Ted Cruz's top institutional donors this cycle, and has he sponsored any bills related to them?*
+>
+> **LLM** → `resolve_person({ name: "Ted Cruz", role_hint: "senator" })`
+> ← `{ matches: [{ entity_id: "person-8e2c...", confidence: "exact", disambiguators: ["senator (us-federal) 2013–present", "fec_candidate: S2TX00312"] }] }`
+>
+> **LLM** → `entity_connections({ id: "person-8e2c...", depth: 1, min_co_occurrences: 5 })`
+> ← *(graph showing top co-occurring committees and PACs via `contribution` edges)*
+>
+> **LLM** → `recent_bills({ jurisdiction: "us-federal", days: 90 })` *(then cross-references sponsors)*
+>
+> **LLM:** *"This cycle Senator Cruz's highest-volume institutional contributors are [committee A], [PAC B], and [committee C]. In the last 90 days he has sponsored S.1789 (energy infrastructure) and cosponsored S.1622 (…). Sources: openfec schedule A; congress.gov bill."*
+
+## Installation
+
+### Prerequisites
+
+- Node.js ≥ 22
+- [pnpm](https://pnpm.io) 10+
+- API keys for [OpenStates](https://openstates.org/accounts/signup/), [Congress.gov](https://api.congress.gov/sign-up/), and [OpenFEC](https://api.data.gov/signup/) — all free tier
+
+### Build + run
 
 ```bash
 pnpm install
-pnpm bootstrap   # creates ./data/civic-awareness.db with seeded jurisdictions
-pnpm test        # runs the full test suite
-pnpm typecheck   # tsc --noEmit
-pnpm build       # produces dist/
-pnpm start       # runs the MCP over stdio (after build)
-# or:
-pnpm dev         # runs the MCP directly via tsx (no build step)
+pnpm bootstrap     # create ./data/civic-awareness.db and seed jurisdictions
+pnpm build         # emit dist/
+pnpm start         # run the MCP over stdio
+# or for development:
+pnpm dev           # run via tsx with no build step
 ```
 
-Environment variables:
+### Populate the store
 
-- `CIVIC_AWARENESS_DB_PATH` — overrides the default SQLite path
-  (`./data/civic-awareness.db`). Useful when the MCP is launched
-  by Claude Desktop from an arbitrary working directory.
-- `LOG_LEVEL` — one of `debug`, `info`, `warn`, `error` (default
-  `info`). Logs are structured JSON emitted to stderr.
+```bash
+# API keys in .env.local: OPENSTATES_API_KEY, CONGRESS_API_KEY, FEC_API_KEY
+pnpm refresh --source=openstates --jurisdictions=tx --max-pages=1
+pnpm refresh --source=congress   --since=2026-01-01
+pnpm refresh --source=openfec    --since=2026-01-01
+# or to refresh everything:
+pnpm refresh --all --since=2026-01-01
+```
 
-Claude Desktop config
-(`~/Library/Application Support/Claude/claude_desktop_config.json`
-on macOS):
+The MCP server itself is **read-only against the SQLite file** and never calls upstream APIs at query time. Refresh is an out-of-process job (per [D5](./docs/06-open-decisions.md)).
+
+### Claude Desktop config
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or the equivalent on other platforms:
 
 ```json
 {
@@ -49,99 +221,53 @@ on macOS):
 }
 ```
 
-Phase 1 does not yet expose any tools to the LLM (see
-[`docs/05-tool-surface.md`](./docs/05-tool-surface.md)); the server
-is fully functional as an MCP endpoint but its tool registry is
-empty. Tools land in Phase 2.
+Then restart Claude Desktop; the 8 tools will appear in the tool picker.
+
+### Environment variables
+
+- `CIVIC_AWARENESS_DB_PATH` — override the default SQLite path (`./data/civic-awareness.db`). Needed when Claude Desktop launches the server from an arbitrary working directory.
+- `LOG_LEVEL` — `debug` / `info` / `warn` / `error` (default `info`). Structured JSON is emitted to stderr.
 
 ## CI — nightly upstream drift detection
 
-The repo has one GitHub Actions workflow,
-`.github/workflows/nightly-drift.yml`, that runs **daily at 09:00 UTC**
-(or on-demand via `workflow_dispatch`). It hits the real OpenStates,
-Congress.gov, and OpenFEC endpoints with tiny queries and asserts the
-response shapes the adapters rely on are still present. If a field name
-changes upstream, the job goes red and flags the regression before end
-users see broken tool output.
+One workflow, [`.github/workflows/nightly-drift.yml`](./.github/workflows/nightly-drift.yml), runs daily at 09:00 UTC (or via `workflow_dispatch`). It makes ~7 real requests against OpenStates / Congress.gov / OpenFEC and asserts that the response shapes the adapters depend on are still present. If a field name changes upstream, the job goes red and the regression is visible before end users see broken tool output.
 
-There is **no CI on push or pull-request.** The mocked unit/integration
-suite runs locally via `pnpm test`; there's no value in re-running it
-on every push — upstream drift is the only regression the repo itself
-is exposed to.
+There is **no CI on push or pull-request.** The mocked unit + integration suite (157 tests) runs locally via `pnpm test`; upstream drift is the only regression the repo is exposed to.
 
-To enable the nightly job, configure three repo secrets at
-`Settings → Secrets and variables → Actions`:
+To run the nightly workflow, set three repo secrets (`OPENSTATES_API_KEY`, `CONGRESS_API_KEY`, `FEC_API_KEY`) under `Settings → Secrets and variables → Actions`. Each is *your* maintainer key; end users still bring their own keys via `.env.local`.
 
-- `OPENSTATES_API_KEY`
-- `CONGRESS_API_KEY`
-- `FEC_API_KEY`
+## Security
 
-Each secret is **your** (the maintainer's) key, used only by the
-scheduled drift-check job — end users still bring their own keys via
-`.env.local` when running the MCP locally.
+- Read-only MCP — no write tools, no side effects
+- All upstream APIs are sanctioned Tier-1 (free-tier keys, documented rate limits) — see [`docs/03-data-sources.md`](./docs/03-data-sources.md)
+- Rate-limited fetch wrapper with per-host token bucket, `Retry-After` honoured, redirects rejected by default
+- Zod-validated tool inputs; `better-sqlite3` parameterized queries; `LIKE ... ESCAPE` on user-supplied patterns
+- **No contributor PII** in responses — OpenFEC contributor addresses and employers are stored but never returned through tools
+- Third-party GitHub Actions pinned to commit SHAs (not mutable tags)
+- GitHub secret scanning + push protection + Dependabot alerts enabled
 
-## Quickstart for future Claude Code sessions
+Pre-public audit hardening landed at `aafdb73`. Full write-up in [`SECURITY.md`](./SECURITY.md).
 
-1. Open this folder in Claude Code.
-2. Claude reads `CLAUDE.md` automatically.
-3. Claude reads the planning docs, confirms scope, and proceeds to
-   `docs/plans/phase-2-openstates.md` (Phase 1 is complete). Use
-   `superpowers:subagent-driven-development` or
-   `superpowers:executing-plans`.
+## Documentation
 
-## Documentation map
+Full design rationale lives in [`docs/`](./docs). The starting points:
 
-| File | Purpose |
+| | |
 |---|---|
-| [`CLAUDE.md`](./CLAUDE.md) | Instructions for any Claude Code session operating in this repo |
-| [`docs/00-rationale.md`](./docs/00-rationale.md) | Design alternatives considered and rejected — read before second-guessing a choice. See **R11** for the 2026-04-12 scope pivot. |
-| [`docs/01-vision.md`](./docs/01-vision.md) | What this MCP does, who it's for, what success looks like |
-| [`docs/02-architecture.md`](./docs/02-architecture.md) | Combined feed + entity-graph architecture |
-| [`docs/03-data-sources.md`](./docs/03-data-sources.md) | Inventory of upstream APIs (OpenStates, Congress.gov, OpenFEC) with auth, rate limits, quirks |
-| [`docs/04-entity-schema.md`](./docs/04-entity-schema.md) | Canonical Person / Organization / Document schemas; cross-jurisdiction Person resolution |
-| [`docs/05-tool-surface.md`](./docs/05-tool-surface.md) | MCP tool specifications (9 tools) |
-| [`docs/06-open-decisions.md`](./docs/06-open-decisions.md) | 10 decisions, all finalized 2026-04-12 |
-| [`docs/roadmap.md`](./docs/roadmap.md) | Phase 3–5 intent-level roadmap |
-| [`docs/plans/`](./docs/plans/) | Per-phase TDD implementation plans |
-
-## Scope (summary)
-
-**In scope for V1 (Phase 1 + 2):**
-- OpenStates API v3 — all 50 U.S. state legislatures (bills,
-  legislators, committees)
-- SQLite-backed entity store with cross-jurisdiction Person
-  resolution (external-IDs + exact name + Levenshtein ≤ 1 fuzzy
-  with linking-signal guards)
-- Four MCP tools: `recent_bills`, `search_entities`, `get_entity`,
-  `search_civic_documents`
-- Working end-to-end against Claude Desktop; published to npm after
-  Phase 2 (D8)
-
-**In scope for V2 (Phase 3–5):**
-- Congress.gov API — federal legislature (Phase 3)
-- OpenFEC API — federal campaign finance (Phase 4)
-- Cross-source entity linking: sitting Members of Congress joined
-  with their prior state-legislature histories (from Phase 2) and
-  their federal candidacies (from Phase 4)
-- `recent_votes`, `recent_contributions`, `entity_connections`,
-  `resolve_person` tools
-
-**Deferred / out of scope:**
-- Municipal civic data (city councils, local crime, municipal
-  budgets). A future sibling `civic-awareness-municipal-mcp` could
-  target this.
-- State-level campaign finance (50 different systems; fragmented).
-  OpenFEC covers federal only.
-- Federal executive branch (Federal Register, Regulations.gov,
-  USASpending) — plausible V3 additions.
-- Court dockets (PACER, state courts) — Tier 3, hostile scraping.
-- Real-time election results (event-driven, different product shape).
-- Voter rolls (PII-sensitive; not a good fit for LLM-consumed data).
-
-See [`docs/00-rationale.md`](./docs/00-rationale.md) R11 for the
-scope-pivot rationale, and [`docs/03-data-sources.md`](./docs/03-data-sources.md)
-for the full source matrix including Later candidates.
+| [`docs/README.md`](./docs/README.md) | Doc-tree index |
+| [`docs/00-rationale.md`](./docs/00-rationale.md) | Decisions considered and rejected. **R11** is the early scope pivot (Arizona → US-legislative). |
+| [`docs/02-architecture.md`](./docs/02-architecture.md) | Dual feeds+entities projection |
+| [`docs/04-entity-schema.md`](./docs/04-entity-schema.md) | Entity schema + resolution algorithm |
+| [`docs/05-tool-surface.md`](./docs/05-tool-surface.md) | Full tool specs |
+| [`docs/06-open-decisions.md`](./docs/06-open-decisions.md) | 10 design decisions (all finalized 2026-04-12) |
+| [`docs/plans/`](./docs/plans) | Per-phase TDD implementation plans (Phase 1–5) |
 
 ## License
 
-MIT (per D7 in `docs/06-open-decisions.md`).
+MIT — see [`LICENSE`](./LICENSE).
+
+---
+
+## For contributors / Claude Code sessions
+
+[`CLAUDE.md`](./CLAUDE.md) documents the in-repo conventions and first-session protocol for any Claude Code session operating here. The key invariants: Person entities are cross-jurisdiction ([D3b](./docs/06-open-decisions.md)); `jurisdiction` is a runtime parameter, never hardcoded; don't bake two pipelines for feeds + entities when the plan is one.
