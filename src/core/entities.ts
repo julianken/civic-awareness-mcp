@@ -74,11 +74,15 @@ export function upsertEntity(db: Database.Database, input: UpsertInput): UpsertR
 }
 
 function findByExternalIds(db: Database.Database, ids: Record<string, string>): Entity | null {
+  // Uses json_extract rather than LIKE so that an underscore or percent
+  // in a source key (e.g. "openstates_person") is treated as a literal,
+  // not a SQL LIKE wildcard. Matches the canonical algorithm in
+  // docs/04-entity-schema.md step 1.
+  const stmt = db.prepare(
+    "SELECT * FROM entities WHERE json_extract(external_ids, ?) = ? LIMIT 1",
+  );
   for (const [source, id] of Object.entries(ids)) {
-    const pattern = `%"${source}":"${id}"%`;
-    const row = db
-      .prepare("SELECT * FROM entities WHERE external_ids LIKE ? LIMIT 1")
-      .get(pattern) as Row | undefined;
+    const row = stmt.get(`$."${source}"`, id) as Row | undefined;
     if (row) return rowToEntity(row);
   }
   return null;
