@@ -1,0 +1,15 @@
+{
+  "results": [
+    {
+      "transaction_id": "SB23.9876543",
+      "committee_id": "C00123456",
+      "recipient_name": "ABC MEDIA LLC",
+      "recipient_city": "PHOENIX",
+      "recipient_state": "AZ",
+      "disbursement_amount": 15000.0,
+      "disbursement_date": "2026-01-20",
+      "disbursement_description": "DIGITAL ADVERTISING"
+    }
+  ],
+  "pagination": { "count": 1, "per_page": 100, "page": 1, "pages": 1 }
+}

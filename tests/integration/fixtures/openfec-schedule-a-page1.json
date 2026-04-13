@@ -1,0 +1,19 @@
+{
+  "results": [
+    {
+      "transaction_id": "SA17.1234567",
+      "committee_id": "C00123456",
+      "contributor_name": "JONES, ALICE M.",
+      "contributor_city": "PHOENIX",
+      "contributor_state": "AZ",
+      "contributor_zip": "85001",
+      "contributor_employer": "Self-Employed",
+      "contributor_occupation": "Attorney",
+      "contribution_receipt_amount": 2800.0,
+      "contribution_receipt_date": "2026-01-15",
+      "memo_text": null,
+      "line_number": "11AI"
+    }
+  ],
+  "pagination": { "count": 1, "per_page": 100, "page": 1, "pages": 1 }
+}

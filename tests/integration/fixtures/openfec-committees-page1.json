@@ -1,0 +1,14 @@
+{
+  "results": [
+    {
+      "committee_id": "C00123456",
+      "name": "Smith for Congress",
+      "committee_type": "H",
+      "committee_type_full": "House",
+      "state": "AZ",
+      "party": "REP",
+      "candidate_ids": ["H0AZ01234"]
+    }
+  ],
+  "pagination": { "count": 1, "per_page": 100, "page": 1, "pages": 1 }
+}
