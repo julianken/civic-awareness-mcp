@@ -8,6 +8,7 @@ import { handleGetEntity } from "./tools/get_entity.js";
 import { handleSearchDocuments } from "./tools/search_civic_documents.js";
 import { handleEntityConnections } from "./tools/entity_connections.js";
 import { handleResolvePerson } from "./tools/resolve_person.js";
+import { handleRefreshSource } from "./tools/refresh_source.js";
 import {
   RecentBillsInput,
   RecentVotesInput,
@@ -17,6 +18,7 @@ import {
   SearchDocumentsInput,
   EntityConnectionsInput,
   ResolvePersonInput,
+  RefreshSourceInput,
 } from "./schemas.js";
 
 export interface BuildServerOptions { dbPath: string }
@@ -25,7 +27,7 @@ export interface CivicAwarenessServer { mcp: McpServer; store: Store }
 export function buildServer(opts: BuildServerOptions): CivicAwarenessServer {
   const store = openStore(opts.dbPath);
   const mcp = new McpServer(
-    { name: "civic-awareness-mcp", version: "0.0.5" },
+    { name: "civic-awareness-mcp", version: "0.0.6" },
     { capabilities: { tools: {} } },
   );
 
@@ -148,6 +150,25 @@ export function buildServer(opts: BuildServerOptions): CivicAwarenessServer {
     },
     async (input) => {
       const data = await handleResolvePerson(store.db, input);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    },
+  );
+
+  mcp.registerTool(
+    "refresh_source",
+    {
+      description:
+        "Refresh the local SQLite store from an upstream civic-data API. " +
+        "Source must be one of 'openstates', 'congress', 'openfec'. For " +
+        "openstates, pass `jurisdictions: ['tx']` (or similar) to scope the " +
+        "refresh — omitting it iterates all seeded states, which consumes " +
+        "the 500/day OpenStates free-tier budget quickly. `max_pages` defaults " +
+        "to 2 (conservative). This tool writes to the DB and requires user " +
+        "consent per MCP semantics; one consent grant covers the whole batch.",
+      inputSchema: RefreshSourceInput.shape,
+    },
+    async (input) => {
+      const data = await handleRefreshSource(store.db, input);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     },
   );
