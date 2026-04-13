@@ -4,6 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { buildServer } from "./mcp/server.js";
 import { bootstrap } from "./cli/bootstrap.js";
 import { openStore } from "./core/store.js";
+import { loadProjectEnvDefaults } from "./util/env-file.js";
 import { logger } from "./util/logger.js";
 
 const DB_PATH = process.env.CIVIC_AWARENESS_DB_PATH ?? "./data/civic-awareness.db";
@@ -39,6 +40,7 @@ async function main(): Promise<void> {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  loadProjectEnvDefaults(import.meta.url);
   main().catch((err) => {
     logger.error("fatal", { error: String(err) });
     process.exit(1);

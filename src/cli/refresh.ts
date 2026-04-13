@@ -1,6 +1,7 @@
 import { openStore } from "../core/store.js";
 import { seedJurisdictions } from "../core/seeds.js";
 import { refreshSource, type RefreshSource } from "../core/refresh.js";
+import { loadProjectEnvDefaults } from "../util/env-file.js";
 import { optionalEnv } from "../util/env.js";
 import { logger } from "../util/logger.js";
 
@@ -57,6 +58,7 @@ async function main(): Promise<void> {
   store.close();
 }
 
+loadProjectEnvDefaults(import.meta.url);
 main().catch((err) => {
   logger.error("refresh failed", { error: String(err) });
   process.exit(1);
