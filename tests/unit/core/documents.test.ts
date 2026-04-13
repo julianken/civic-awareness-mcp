@@ -48,6 +48,28 @@ describe("upsertDocument", () => {
     });
     expect(findDocumentsByEntity(store.db, entity.id)).toHaveLength(1);
   });
+
+  // Regression: duplicate (entity_id, role) pairs from upstream — e.g.
+  // an OpenStates bill that lists the same person twice as primary
+  // sponsor, or entity resolution collapsing two sponsor entries into
+  // one entity — must not trip the PRIMARY KEY
+  // (document_id, entity_id, role). We tolerate the dup silently.
+  it("tolerates duplicate (entity_id, role) references", () => {
+    const { entity } = upsertEntity(store.db, { kind: "person", name: "Duped" });
+    expect(() =>
+      upsertDocument(store.db, {
+        kind: "bill", jurisdiction: "us-tx", title: "HB1",
+        occurred_at: "2026-03-01T00:00:00.000Z",
+        source: { name: "openstates", id: "ocd-bill/dup", url: "https://x" },
+        references: [
+          { entity_id: entity.id, role: "sponsor" },
+          { entity_id: entity.id, role: "sponsor" },
+        ],
+      }),
+    ).not.toThrow();
+    // Only one row stored, not two.
+    expect(findDocumentsByEntity(store.db, entity.id)).toHaveLength(1);
+  });
 });
 
 describe("queryDocuments", () => {

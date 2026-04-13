@@ -32,8 +32,14 @@ function rowToDoc(r: DocRow, refs: EntityReference[] = []): Document {
 
 function writeReferences(db: Database.Database, docId: string, refs: EntityReference[]): void {
   db.prepare("DELETE FROM document_references WHERE document_id = ?").run(docId);
+  // `INSERT OR IGNORE` silently drops any (entity_id, role) duplicates
+  // for this document. Upstream data (OpenStates bills, OpenFEC filings)
+  // occasionally lists the same person twice under the same role, and
+  // entity resolution can collapse two distinct sponsor records into
+  // one entity. Either produces the same (doc, entity, role) triple;
+  // the PK already guarantees uniqueness — we just refuse to crash.
   const stmt = db.prepare(
-    "INSERT INTO document_references (document_id, entity_id, role, qualifier) VALUES (?, ?, ?, ?)",
+    "INSERT OR IGNORE INTO document_references (document_id, entity_id, role, qualifier) VALUES (?, ?, ?, ?)",
   );
   for (const ref of refs) stmt.run(docId, ref.entity_id, ref.role, ref.qualifier ?? null);
 }
