@@ -102,7 +102,7 @@ Overwrite the generated `package.json` with:
     "civic-awareness-mcp": "dist/index.js"
   },
   "scripts": {
-    "build": "tsc && cp -R src/core/migrations dist/core/migrations",
+    "build": "tsc -p tsconfig.build.json && cp -R src/core/migrations dist/core/migrations",
     "test": "vitest run",
     "test:watch": "vitest",
     "bootstrap": "tsx src/cli/bootstrap.ts",
@@ -124,7 +124,13 @@ pnpm add @modelcontextprotocol/sdk better-sqlite3 zod
 pnpm add -D typescript vitest @types/node @types/better-sqlite3 tsx prettier
 ```
 
-- [ ] **Step 1.3: Create tsconfig.json**
+- [ ] **Step 1.3: Create tsconfig.json (IDE + typecheck)**
+
+This is the default TypeScript config used by editors and by
+`pnpm typecheck`. It includes both `src/` and `tests/` so the IDE
+can resolve test-file imports. `noEmit: true` means `tsc` here is
+typecheck-only — the build path uses `tsconfig.build.json` in Step
+1.3b.
 
 ```json
 {
@@ -132,15 +138,33 @@ pnpm add -D typescript vitest @types/node @types/better-sqlite3 tsx prettier
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "outDir": "dist",
-    "rootDir": "src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "declaration": false,
     "sourceMap": true,
+    "noEmit": true,
     "types": ["node"]
+  },
+  "include": ["src/**/*", "tests/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
+```
+
+- [ ] **Step 1.3b: Create tsconfig.build.json (production build)**
+
+Extends the default config and narrows to `src/` only, with `rootDir`
+set so `dist/` lays out as `dist/index.js` rather than
+`dist/src/index.js`. `package.json`'s `build` script uses this file.
+
+```json
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "noEmit": false
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "tests"]
@@ -607,18 +631,24 @@ At the bottom of `tests/unit/core/store.test.ts`:
 import { seedJurisdictions } from "../../../src/core/seeds.js";
 
 describe("seedJurisdictions", () => {
-  it("inserts us-federal and the Phase 1 test-fixture states", () => {
+  it("inserts us-federal and all 50 states", () => {
     const s = openStore(TEST_DB);
     seedJurisdictions(s.db);
-    const rows = s.db
-      .prepare("SELECT id, level, name FROM jurisdictions ORDER BY id")
-      .all();
-    expect(rows).toEqual([
-      { id: "us-ca", level: "state", name: "California" },
-      { id: "us-federal", level: "federal", name: "United States" },
-      { id: "us-ny", level: "state", name: "New York" },
-      { id: "us-tx", level: "state", name: "Texas" },
-    ]);
+    const federal = s.db
+      .prepare("SELECT id, level, name FROM jurisdictions WHERE id = ?")
+      .get("us-federal");
+    expect(federal).toEqual({ id: "us-federal", level: "federal", name: "United States" });
+    const stateCount = s.db
+      .prepare("SELECT COUNT(*) as c FROM jurisdictions WHERE level = 'state'")
+      .get() as { c: number };
+    expect(stateCount.c).toBe(50);
+    // Spot-check a few specific states across the alphabet.
+    expect(
+      s.db.prepare("SELECT name FROM jurisdictions WHERE id = ?").get("us-tx"),
+    ).toEqual({ name: "Texas" });
+    expect(
+      s.db.prepare("SELECT name FROM jurisdictions WHERE id = ?").get("us-wy"),
+    ).toEqual({ name: "Wyoming" });
     s.close();
   });
 
@@ -712,7 +742,7 @@ export function seedJurisdictions(db: Database.Database): void {
 ```bash
 pnpm test tests/unit/core/store.test.ts
 git add src/core/seeds.ts tests/unit/core/store.test.ts
-git commit -m "feat: seed us-federal and Phase 1 test-fixture state jurisdictions"
+git commit -m "feat: seed us-federal and all 50 U.S. state jurisdictions"
 ```
 
 ---
