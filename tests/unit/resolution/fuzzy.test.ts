@@ -89,8 +89,10 @@ describe("fuzzyPick", () => {
   });
 
   it("no close match returns null", () => {
+    // Query is clearly distant from every candidate — tests that
+    // best.d > ACCEPT_DISTANCE produces null even with a linking signal.
     const picked = fuzzyPick(
-      "Zzz Martin",
+      "Xaver Quixote",
       { external_id_sources: ["openstates_person"], middle_name: null, role_jurisdictions: [] },
       candidates,
     );

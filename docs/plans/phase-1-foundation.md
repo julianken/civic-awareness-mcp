@@ -777,6 +777,10 @@ describe("fuzzyPick", () => {
   // Under D3b, fuzzyPick requires a positive linking signal and uses
   // Levenshtein ≤ 1. A candidate with no linking signal is never
   // returned even on a distance-0 match.
+  // Candidate names are chosen so that every non-best candidate is at
+  // distance >= RUNNER_UP_MIN_DISTANCE (3) from the Jane Doe query.
+  // A candidate like "Janet Doex" would be distance 2 and would cause
+  // the runner-up guard to reject legitimate matches.
   const candidates = [
     {
       id: "1",
@@ -787,14 +791,14 @@ describe("fuzzyPick", () => {
     },
     {
       id: "2",
-      name: "John Doe",
+      name: "John Smith",
       external_id_sources: ["bioguide"],
       aliases: [],
       role_jurisdictions: ["us-federal"],
     },
     {
       id: "3",
-      name: "Janet Doex",
+      name: "Zzz Martin",
       external_id_sources: [],
       aliases: [],
       role_jurisdictions: [],
@@ -850,8 +854,10 @@ describe("fuzzyPick", () => {
   });
 
   it("no close match returns null", () => {
+    // Query is clearly distant from every candidate — tests that
+    // best.d > ACCEPT_DISTANCE produces null even with a linking signal.
     const picked = fuzzyPick(
-      "Zzz Martin",
+      "Xaver Quixote",
       { external_id_sources: ["openstates_person"], middle_name: null, role_jurisdictions: [] },
       candidates,
     );
