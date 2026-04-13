@@ -1055,7 +1055,7 @@ git commit -m "feat: search_entities MCP tool"
 **Files:** `src/mcp/tools/get_entity.ts`,
 `tests/unit/mcp/tools/get_entity.test.ts`, modify `src/mcp/server.ts`
 
-- [ ] **Step 6.1: Write test**
+- [x] **Step 6.1: Write test**
 
 ```ts
 // tests/unit/mcp/tools/get_entity.test.ts
@@ -1103,7 +1103,7 @@ describe("get_entity", () => {
 });
 ```
 
-- [ ] **Step 6.2: Implement `src/mcp/tools/get_entity.ts`**
+- [x] **Step 6.2: Implement `src/mcp/tools/get_entity.ts`**
 
 ```ts
 import type Database from "better-sqlite3";
@@ -1167,13 +1167,17 @@ export async function handleGetEntity(
 }
 ```
 
-- [ ] **Step 6.3: Register in `server.ts`**
+- [x] **Step 6.3: Register in `server.ts`**
 
 ```ts
-mcp.tool(
+mcp.registerTool(
   "get_entity",
-  "Fetch a single entity by ID with recent related documents. For Persons, returns the cross-jurisdiction roles[] history.",
-  GetEntityInput.shape,
+  {
+    description:
+      "Fetch a single entity by ID with recent related documents. " +
+      "For Persons, returns the cross-jurisdiction roles[] history.",
+    inputSchema: GetEntityInput.shape,
+  },
   async (input) => {
     const data = await handleGetEntity(store.db, input);
     return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
@@ -1181,7 +1185,7 @@ mcp.tool(
 );
 ```
 
-- [ ] **Step 6.4: Test and commit**
+- [x] **Step 6.4: Test and commit**
 
 ```bash
 pnpm test tests/unit/mcp/tools/get_entity.test.ts

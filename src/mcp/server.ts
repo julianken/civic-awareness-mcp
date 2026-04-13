@@ -2,7 +2,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { openStore, type Store } from "../core/store.js";
 import { handleRecentBills } from "./tools/recent_bills.js";
 import { handleSearchEntities } from "./tools/search_entities.js";
-import { RecentBillsInput, SearchEntitiesInput } from "./schemas.js";
+import { handleGetEntity } from "./tools/get_entity.js";
+import { RecentBillsInput, SearchEntitiesInput, GetEntityInput } from "./schemas.js";
 
 export interface BuildServerOptions { dbPath: string }
 export interface CivicAwarenessServer { mcp: McpServer; store: Store }
@@ -37,6 +38,20 @@ export function buildServer(opts: BuildServerOptions): CivicAwarenessServer {
     },
     async (input) => {
       const data = await handleSearchEntities(store.db, input);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    },
+  );
+
+  mcp.registerTool(
+    "get_entity",
+    {
+      description:
+        "Fetch a single entity by ID with recent related documents. " +
+        "For Persons, returns the cross-jurisdiction roles[] history.",
+      inputSchema: GetEntityInput.shape,
+    },
+    async (input) => {
+      const data = await handleGetEntity(store.db, input);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     },
   );
