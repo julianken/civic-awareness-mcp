@@ -405,10 +405,12 @@ git commit -m "feat: add core Entity and Document zod schemas"
 **Files:** `src/core/store.ts`, `src/core/migrations/001-init.sql`,
 `tests/unit/core/store.test.ts`
 
-**Design note:** The store applies SQL migration scripts using a helper
-function `runSqlScript(db, sql)` that wraps `better-sqlite3`'s
-multi-statement execution method. This indirection also makes it easier
-to mock migrations in tests.
+**Design note:** The store applies each SQL migration script inside a
+`db.transaction(...)` so that the schema change and its record in the
+`schema_migrations` table either both apply or both roll back. Without
+that wrapping, a crash mid-migration would leave `schema_migrations`
+behind the real schema, and the next startup would attempt to re-apply
+an already-applied migration.
 
 - [ ] **Step 3.1: Write the failing test**
 
@@ -491,6 +493,9 @@ CREATE TABLE entities (
 CREATE INDEX idx_entities_name_norm ON entities(name_normalized);
 CREATE INDEX idx_entities_kind      ON entities(kind);
 CREATE INDEX idx_entities_juris     ON entities(jurisdiction);
+-- Supports the fast external-ID lookup path in upsertByExternalIdOrFuzzy
+-- (Phase 2+). Queries against `external_ids` use json_extract().
+CREATE INDEX idx_entities_ext_ids   ON entities(external_ids);
 
 CREATE TABLE documents (
   id              TEXT PRIMARY KEY,
@@ -538,12 +543,6 @@ const MIGRATIONS = [
   { version: 1, file: "001-init.sql" },
 ] as const;
 
-function runSqlScript(db: Database.Database, sql: string): void {
-  // better-sqlite3 exposes a method that runs multi-statement SQL scripts.
-  // We wrap it here so tests can substitute a fake if needed.
-  (db as any).exec(sql);
-}
-
 export function openStore(path: string): Store {
   mkdirSync(dirname(resolve(path)), { recursive: true });
   const db = new Database(path);
@@ -567,9 +566,13 @@ function applyMigrations(db: Database.Database): void {
   for (const migration of MIGRATIONS) {
     if (applied.has(migration.version)) continue;
     const sql = readFileSync(resolve(__dirname, "migrations", migration.file), "utf-8");
-    runSqlScript(db, sql);
-    db.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
-      .run(migration.version, new Date().toISOString());
+    // Wrap schema change + version record in one transaction so a crash
+    // between them can't leave schema_migrations out of sync with actual schema.
+    db.transaction(() => {
+      db.exec(sql);
+      db.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
+        .run(migration.version, new Date().toISOString());
+    })();
   }
 }
 ```

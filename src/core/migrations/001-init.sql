@@ -29,6 +29,10 @@ CREATE TABLE entities (
 CREATE INDEX idx_entities_name_norm ON entities(name_normalized);
 CREATE INDEX idx_entities_kind      ON entities(kind);
 CREATE INDEX idx_entities_juris     ON entities(jurisdiction);
+-- Supports the fast external-ID lookup path in upsertByExternalIdOrFuzzy
+-- (Phase 2+). The external_ids column is a JSON blob; queries use
+-- json_extract() but the plain index still helps planner pick this table.
+CREATE INDEX idx_entities_ext_ids   ON entities(external_ids);
 
 CREATE TABLE documents (
   id              TEXT PRIMARY KEY,

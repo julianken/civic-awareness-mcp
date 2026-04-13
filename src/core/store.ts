@@ -14,12 +14,6 @@ const MIGRATIONS = [
   { version: 1, file: "001-init.sql" },
 ] as const;
 
-function runSqlScript(db: Database.Database, sql: string): void {
-  // better-sqlite3 exposes a method that runs multi-statement SQL scripts.
-  // We wrap it here so tests can substitute a fake if needed.
-  (db as any).exec(sql);
-}
-
 export function openStore(path: string): Store {
   mkdirSync(dirname(resolve(path)), { recursive: true });
   const db = new Database(path);
@@ -43,8 +37,12 @@ function applyMigrations(db: Database.Database): void {
   for (const migration of MIGRATIONS) {
     if (applied.has(migration.version)) continue;
     const sql = readFileSync(resolve(__dirname, "migrations", migration.file), "utf-8");
-    runSqlScript(db, sql);
-    db.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
-      .run(migration.version, new Date().toISOString());
+    // Wrap schema change + version record in one transaction so a crash
+    // between them can't leave schema_migrations out of sync with actual schema.
+    db.transaction(() => {
+      db.exec(sql);
+      db.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
+        .run(migration.version, new Date().toISOString());
+    })();
   }
 }
