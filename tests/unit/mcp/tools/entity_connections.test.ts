@@ -153,4 +153,47 @@ describe("handleEntityConnections", () => {
     expect(result.edges.length).toBe(100);
     expect(result.truncated).toBe(true);
   });
+
+  it("emits per-jurisdiction OpenStates URLs for state-specific documents", async () => {
+    // When a Person's edges span multiple states, the sources array must
+    // include one entry per (source_name, jurisdiction) pair with the
+    // correct state-specific URL — not a single collapsed entry that
+    // falsely claims us-federal.
+    const a = makeEntity("Alice Multi");
+    const bTx = makeEntity("Bob TX");
+    const cCa = makeEntity("Carol CA");
+    upsertDocument(store.db, {
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "IL HB 1",
+      occurred_at: "2024-03-01T00:00:00.000Z",
+      source: { name: "openstates", id: "tx-hb-1", url: "https://openstates.org/tx/bills/hb1" },
+      references: [
+        { entity_id: a.id, role: "sponsor" },
+        { entity_id: bTx.id, role: "cosponsor" },
+      ],
+    });
+    upsertDocument(store.db, {
+      kind: "bill",
+      jurisdiction: "us-ca",
+      title: "CA AB 1",
+      occurred_at: "2024-03-01T00:00:00.000Z",
+      source: { name: "openstates", id: "ca-ab-1", url: "https://openstates.org/ca/bills/ab1" },
+      references: [
+        { entity_id: a.id, role: "sponsor" },
+        { entity_id: cCa.id, role: "cosponsor" },
+      ],
+    });
+    const result = await handleEntityConnections(store.db, {
+      id: a.id,
+      depth: 1,
+      min_co_occurrences: 1,
+    });
+    // Both a Texas and a California openstates URL must appear.
+    const urls = result.sources.map((s) => s.url);
+    expect(urls).toContain("https://openstates.org/tx/");
+    expect(urls).toContain("https://openstates.org/ca/");
+    // And NO hardcoded "us-federal" fallback for state documents.
+    expect(urls).not.toContain("https://openstates.org/us-federal/");
+  });
 });

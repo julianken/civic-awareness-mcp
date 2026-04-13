@@ -49,6 +49,7 @@ interface DocRow {
   occurred_at: string;
   source_url: string;
   source_name: string;
+  jurisdiction: string;
 }
 
 interface RoleRow {
@@ -67,7 +68,10 @@ function batchFetchEntities(db: Database.Database, ids: string[]): Map<string, E
 function batchFetchDocs(db: Database.Database, ids: string[]): Map<string, DocRow> {
   if (ids.length === 0) return new Map();
   const rows = db
-    .prepare(`SELECT id, kind, title, occurred_at, source_url, source_name FROM documents WHERE id IN (${ids.map(() => "?").join(",")})`)
+    .prepare(
+      `SELECT id, kind, title, occurred_at, source_url, source_name, jurisdiction
+       FROM documents WHERE id IN (${ids.map(() => "?").join(",")})`,
+    )
     .all(...ids) as DocRow[];
   return new Map(rows.map((r) => [r.id, r]));
 }
@@ -175,14 +179,22 @@ export async function handleEntityConnections(
     .map(toEntityMatch)
     .filter((n): n is EntityMatch => n !== null);
 
-  // Build sources from unique source_name values across sample documents.
-  const sourcesSeen = new Map<string, string>();
+  // Build sources from unique (source_name, jurisdiction) pairs across
+  // sample documents. Each pair resolves to a jurisdiction-aware URL so
+  // a graph that spans Texas + California + federal surfaces three
+  // distinct OpenStates / Congress.gov entries rather than collapsing
+  // them into one with a wrong jurisdiction.
+  const sourcesSeen = new Map<string, { name: string; url: string }>();
   for (const row of docMap.values()) {
-    if (!sourcesSeen.has(row.source_name)) {
-      sourcesSeen.set(row.source_name, sourceUrl(row.source_name, "us-federal"));
+    const key = `${row.source_name}|${row.jurisdiction}`;
+    if (!sourcesSeen.has(key)) {
+      sourcesSeen.set(key, {
+        name: row.source_name,
+        url: sourceUrl(row.source_name, row.jurisdiction),
+      });
     }
   }
-  const sources = Array.from(sourcesSeen.entries()).map(([name, url]) => ({ name, url }));
+  const sources = Array.from(sourcesSeen.values());
 
   return { root, edges, nodes, sources, truncated };
 }
