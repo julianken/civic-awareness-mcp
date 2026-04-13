@@ -41,3 +41,13 @@ export const RecentVotesInput = z.object({
   bill_identifier: z.string().optional(),
 });
 export type RecentVotesInput = z.infer<typeof RecentVotesInput>;
+
+export const RecentContributionsInput = z.object({
+  window: z.object({
+    from: z.iso.datetime(),
+    to: z.iso.datetime(),
+  }),
+  candidate_or_committee: z.string().optional(),
+  min_amount: z.number().min(0).optional(),
+});
+export type RecentContributionsInput = z.infer<typeof RecentContributionsInput>;
