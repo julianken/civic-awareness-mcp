@@ -348,7 +348,81 @@ describe("OpenFecAdapter", () => {
     expect(result.errors[0]).toMatch(/429/);
   });
 
-  // ── Test 8: Schedule A multi-page cursor pagination ───────────────
+  // ── Test 8: Documents the titleCase/normalizeName under-match case ─
+  //
+  // Phase 4 self-review design call #1 flagged the FEC → Congress name
+  // bridge as fragile. This test pins down the exact under-match
+  // behavior: when the FEC and Congress.gov representations of the
+  // same person differ beyond the bridge's reach (e.g., middle-name
+  // word-order, missing suffix), two Person rows are created rather
+  // than merged. That's the designed safety behavior — under-match
+  // beats false-merge. If this test ever fails "too aggressively"
+  // toward merging, reviewers MUST confirm the new behavior doesn't
+  // produce false positives on common-name collisions.
+  it("under-matches when FEC and Congress.gov name shapes differ materially (no false merge)", async () => {
+    // Congress.gov-ingested Person with a slightly different name shape
+    // than FEC returns. "John R. Smith" vs "SMITH, JOHN R." normalize
+    // to "john r smith" vs "smith john r" — same tokens, different
+    // order, so normalizeName outputs differ. upsertEntity creates a
+    // new row rather than merging. Intentional under-match.
+    upsertEntity(store.db, {
+      kind: "person",
+      name: "John R. Smith",   // NOTE: forward order, not "Smith, John R."
+      jurisdiction: undefined,
+      external_ids: { bioguide: "S001234" },
+      metadata: {
+        roles: [
+          {
+            jurisdiction: "us-federal",
+            role: "representative",
+            from: "2023-01-03T00:00:00.000Z",
+            to: null,
+          },
+        ],
+      },
+    });
+
+    vi.spyOn(global, "fetch").mockImplementation(makeMockFetch());
+    const adapter = new OpenFecAdapter({ apiKey: "test-key" });
+    await adapter.refresh({ db: store.db });
+
+    // Fetch all persons. There will be more than two because the
+    // contribution fixture also creates a contributor Person row
+    // ("Jones, Alice M."). We don't care about that one — what we're
+    // documenting is that the *candidate* row and the *bioguide* row
+    // did NOT merge.
+    const rows = store.db
+      .prepare(
+        "SELECT id, name, external_ids FROM entities WHERE kind = 'person'",
+      )
+      .all() as Array<{ id: string; name: string; external_ids: string }>;
+
+    // Exactly one row has bioguide (the pre-seeded Congress row); the
+    // other has fec_candidate only. Neither row has both — that's the
+    // under-match outcome. If a future change collapses these into one,
+    // reviewers MUST confirm the new normalization doesn't also merge
+    // "John R. Smith" with an unrelated "John Robert Smith" from a
+    // different context.
+    const bioguideRows = rows.filter(
+      (r) => (JSON.parse(r.external_ids) as Record<string, string>).bioguide != null,
+    );
+    const fecRows = rows.filter(
+      (r) => (JSON.parse(r.external_ids) as Record<string, string>).fec_candidate != null,
+    );
+    expect(bioguideRows.length).toBe(1);
+    expect(fecRows.length).toBe(1);
+    // Confirm they're distinct rows, not the same row counted twice —
+    // THE under-match assertion.
+    expect(bioguideRows[0].id).not.toBe(fecRows[0].id);
+    // And no row has both external IDs set (no accidental merge).
+    const mergedRows = rows.filter((r) => {
+      const ext = JSON.parse(r.external_ids) as Record<string, string>;
+      return ext.bioguide != null && ext.fec_candidate != null;
+    });
+    expect(mergedRows.length).toBe(0);
+  });
+
+  // ── Test 9: Schedule A multi-page cursor pagination ───────────────
   it("follows Schedule A last_index cursor across multiple pages", async () => {
     // Build 100 contributions (per_page) on page 1, 1 contribution on
     // page 2 with no cursor → adapter should stop after page 2 having
