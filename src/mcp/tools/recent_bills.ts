@@ -19,6 +19,14 @@ export interface RecentBillsResponse {
   window: { from: string; to: string };
 }
 
+/**
+ * Returns recently-updated bills for the given jurisdiction.
+ * As of Phase 3, also accepts `jurisdiction = "us-federal"` to query
+ * federal bills ingested by the Congress.gov adapter.
+ *
+ * Title format is always "IDENTIFIER — TITLE" — the handler splits on
+ * " — " to separate `identifier` from `title` in the response.
+ */
 export async function handleRecentBills(
   db: Database.Database,
   rawInput: unknown,

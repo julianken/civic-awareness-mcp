@@ -1,10 +1,17 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { openStore, type Store } from "../core/store.js";
 import { handleRecentBills } from "./tools/recent_bills.js";
+import { handleRecentVotes } from "./tools/recent_votes.js";
 import { handleSearchEntities } from "./tools/search_entities.js";
 import { handleGetEntity } from "./tools/get_entity.js";
 import { handleSearchDocuments } from "./tools/search_civic_documents.js";
-import { RecentBillsInput, SearchEntitiesInput, GetEntityInput, SearchDocumentsInput } from "./schemas.js";
+import {
+  RecentBillsInput,
+  RecentVotesInput,
+  SearchEntitiesInput,
+  GetEntityInput,
+  SearchDocumentsInput,
+} from "./schemas.js";
 
 export interface BuildServerOptions { dbPath: string }
 export interface CivicAwarenessServer { mcp: McpServer; store: Store }
@@ -12,7 +19,7 @@ export interface CivicAwarenessServer { mcp: McpServer; store: Store }
 export function buildServer(opts: BuildServerOptions): CivicAwarenessServer {
   const store = openStore(opts.dbPath);
   const mcp = new McpServer(
-    { name: "civic-awareness-mcp", version: "0.0.2" },
+    { name: "civic-awareness-mcp", version: "0.0.3" },
     { capabilities: { tools: {} } },
   );
 
@@ -20,8 +27,9 @@ export function buildServer(opts: BuildServerOptions): CivicAwarenessServer {
     "recent_bills",
     {
       description:
-        "List recently-updated U.S. state legislative bills for a given state, with sponsors. " +
-        'Jurisdiction is required — pass e.g. "us-tx" or "us-ca".',
+        "List recently-updated legislative bills. Jurisdiction is required — " +
+        'pass "us-federal" for Congress.gov bills, or "us-<state>" (e.g. "us-tx") ' +
+        "for OpenStates state bills.",
       inputSchema: RecentBillsInput.shape,
     },
     async (input) => {
@@ -31,10 +39,26 @@ export function buildServer(opts: BuildServerOptions): CivicAwarenessServer {
   );
 
   mcp.registerTool(
+    "recent_votes",
+    {
+      description:
+        "List recent roll-call votes for a jurisdiction. Jurisdiction is required — " +
+        'pass "us-federal" for congressional votes. ' +
+        "Optionally filter by chamber (upper=Senate, lower=House) or bill identifier.",
+      inputSchema: RecentVotesInput.shape,
+    },
+    async (input) => {
+      const data = await handleRecentVotes(store.db, input);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    },
+  );
+
+  mcp.registerTool(
     "search_entities",
     {
       description:
-        "Search for people or organizations by name across all U.S. state legislatures.",
+        "Search for people or organizations by name across all ingested jurisdictions " +
+        "(U.S. state legislatures and federal Congress).",
       inputSchema: SearchEntitiesInput.shape,
     },
     async (input) => {
@@ -48,7 +72,8 @@ export function buildServer(opts: BuildServerOptions): CivicAwarenessServer {
     {
       description:
         "Fetch a single entity by ID with recent related documents. " +
-        "For Persons, returns the cross-jurisdiction roles[] history.",
+        "For Persons, returns the cross-jurisdiction roles[] history spanning " +
+        "state and federal offices.",
       inputSchema: GetEntityInput.shape,
     },
     async (input) => {
@@ -61,7 +86,7 @@ export function buildServer(opts: BuildServerOptions): CivicAwarenessServer {
     "search_civic_documents",
     {
       description:
-        "Search civic documents (currently U.S. state legislative bills) " +
+        "Search civic documents (U.S. state and federal bills, votes) " +
         "by title across all ingested jurisdictions.",
       inputSchema: SearchDocumentsInput.shape,
     },
