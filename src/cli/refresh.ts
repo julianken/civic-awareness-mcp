@@ -11,25 +11,42 @@ interface Args {
   jurisdictions?: string[];
 }
 
+function normalizeJurisdictions(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((s) => s.trim().toLowerCase().replace(/^us-/, ""))
+    .filter((s) => s.length > 0);
+}
+
 function parseArgs(argv: string[]): Args {
   let source = "openstates";
   let maxPages: number | undefined;
   let jurisdictions: string[] | undefined;
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === "--source" && argv[i + 1]) source = argv[++i];
-    else if (argv[i].startsWith("--source=")) source = argv[i].slice("--source=".length);
-    else if (argv[i] === "--max-pages" && argv[i + 1]) maxPages = parseInt(argv[++i], 10);
-    else if (argv[i].startsWith("--max-pages=")) maxPages = parseInt(argv[i].slice("--max-pages=".length), 10);
-    else if (argv[i] === "--jurisdictions" && argv[i + 1]) {
-      jurisdictions = argv[++i].split(",").map((s) => s.trim().toLowerCase());
-    } else if (argv[i].startsWith("--jurisdictions=")) {
-      jurisdictions = argv[i]
-        .slice("--jurisdictions=".length)
-        .split(",")
-        .map((s) => s.trim().toLowerCase());
+    const arg = argv[i];
+    const eq = arg.indexOf("=");
+    const flag = eq === -1 ? arg : arg.slice(0, eq);
+    const inlineValue = eq === -1 ? undefined : arg.slice(eq + 1);
+    const value = inlineValue ?? argv[i + 1];
+
+    if (flag === "--source") {
+      source = value;
+      if (inlineValue === undefined) i++;
+    } else if (flag === "--max-pages") {
+      maxPages = parseInt(value, 10);
+      if (inlineValue === undefined) i++;
+    } else if (flag === "--jurisdictions" || flag === "--jurisdiction") {
+      jurisdictions = normalizeJurisdictions(value);
+      if (inlineValue === undefined) i++;
+    } else if (flag.startsWith("--")) {
+      rejectUnknownFlag(flag);
     }
   }
   return { source, maxPages, jurisdictions };
+}
+
+function rejectUnknownFlag(flag: string): never {
+  throw new Error(`unknown flag: ${flag}`);
 }
 
 async function main(): Promise<void> {
