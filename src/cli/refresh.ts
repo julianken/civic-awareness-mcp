@@ -37,13 +37,6 @@ async function main(): Promise<void> {
   const store = openStore(dbPath);
   seedJurisdictions(store.db);
 
-  if (args.source !== "openstates" && args.source !== "congress" && args.source !== "openfec") {
-    logger.error("unknown source; valid values: openstates, congress, openfec", {
-      source: args.source,
-    });
-    process.exit(1);
-  }
-
   const result = await refreshSource(store.db, {
     source: args.source as RefreshSource,
     maxPages: args.maxPages,

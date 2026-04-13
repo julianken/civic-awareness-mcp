@@ -33,7 +33,7 @@ export async function refreshSource(
       source: "openfec",
       entitiesUpserted: r.entitiesUpserted,
       documentsUpserted: r.documentsUpserted,
-      errors: r.errors.map((e) => String(e)),
+      errors: r.errors,
     };
   }
   if (opts.source === "congress") {
@@ -44,7 +44,7 @@ export async function refreshSource(
       source: "congress",
       entitiesUpserted: r.entitiesUpserted,
       documentsUpserted: r.documentsUpserted,
-      errors: r.errors.map((e) => String(e)),
+      errors: r.errors,
     };
   }
   if (opts.source === "openstates") {
@@ -58,7 +58,7 @@ export async function refreshSource(
       const r = await adapter.refresh({ db, maxPages: opts.maxPages, jurisdiction: state });
       entities += r.entitiesUpserted;
       documents += r.documentsUpserted;
-      for (const err of r.errors) errors.push(`${state}: ${String(err)}`);
+      for (const err of r.errors) errors.push(`${state}: ${err}`);
     }
     return {
       source: "openstates",
@@ -68,7 +68,9 @@ export async function refreshSource(
       jurisdictionsProcessed: targets,
     };
   }
-  throw new Error(`unknown source: ${String(opts.source)}`);
+  throw new Error(
+    `unknown source: ${String(opts.source)}; valid values: openstates, congress, openfec`,
+  );
 }
 
 function listStateJurisdictions(db: Database.Database): string[] {
