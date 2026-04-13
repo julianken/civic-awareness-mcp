@@ -205,7 +205,7 @@ export class OpenStatesAdapter implements Adapter {
       jurisdiction: billJurisdiction,
       title: `${b.identifier} — ${b.title}`,
       summary,
-      occurred_at: b.updated_at,
+      occurred_at: b.actions?.at(-1)?.date ?? b.updated_at,
       source: { name: "openstates", id: b.id, url: b.openstates_url },
       references: refs,
       raw: { session: b.session, actions: b.actions ?? [] },

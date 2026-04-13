@@ -122,6 +122,70 @@ describe("OpenStatesAdapter", () => {
     expect(doc.jurisdiction).toBe("us-ca");
   });
 
+  it("writes latest-action date into occurred_at, not updated_at", async () => {
+    const billWithLateAction = {
+      ...SAMPLE_BILL,
+      updated_at: "2026-04-10T10:00:00Z",
+      actions: [
+        { date: "2025-09-17", description: "Introduced" },
+        { date: "2025-09-18", description: "Became law" },
+      ],
+    };
+    vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
+      const u = String(url);
+      if (u.includes("/people")) {
+        return new Response(
+          JSON.stringify({ results: [SAMPLE_PERSON], pagination: { max_page: 1, page: 1 } }),
+          { status: 200 },
+        );
+      }
+      if (u.includes("/bills")) {
+        return new Response(
+          JSON.stringify({ results: [billWithLateAction], pagination: { max_page: 1, page: 1 } }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    const adapter = new OpenStatesAdapter({ apiKey: "test" });
+    await adapter.refresh({ db: store.db, jurisdiction: "tx" });
+
+    const row = store.db
+      .prepare("SELECT occurred_at FROM documents WHERE kind = 'bill'")
+      .get() as { occurred_at: string };
+    expect(row.occurred_at).toMatch(/^2025-09-18T/);
+  });
+
+  it("falls back to updated_at when actions[] is empty", async () => {
+    const billWithoutActions = { ...SAMPLE_BILL, actions: [] };
+    vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
+      const u = String(url);
+      if (u.includes("/people")) {
+        return new Response(
+          JSON.stringify({ results: [SAMPLE_PERSON], pagination: { max_page: 1, page: 1 } }),
+          { status: 200 },
+        );
+      }
+      if (u.includes("/bills")) {
+        return new Response(
+          JSON.stringify({ results: [billWithoutActions], pagination: { max_page: 1, page: 1 } }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    const adapter = new OpenStatesAdapter({ apiKey: "test" });
+    await adapter.refresh({ db: store.db, jurisdiction: "tx" });
+
+    const row = store.db
+      .prepare("SELECT occurred_at FROM documents WHERE kind = 'bill'")
+      .get() as { occurred_at: string };
+    // SAMPLE_BILL.updated_at is "2026-04-01T10:00:00Z"
+    expect(row.occurred_at).toMatch(/^2026-04-01T/);
+  });
+
   // Regression test: OpenStates v3 rejects comma-separated `include`
   // with HTTP 422. The API expects `include` as a repeated query
   // parameter (include=sponsorships&include=abstracts&include=actions),
