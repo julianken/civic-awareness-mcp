@@ -7,17 +7,9 @@ import type { Adapter, AdapterOptions, RefreshResult } from "./base.js";
 
 const BASE_URL = "https://v3.openstates.org";
 
-/**
- * OpenStates OCD jurisdiction id builder. V1 supports all 50 states
- * plus D.C. and Puerto Rico; jurisdiction is a per-call parameter,
- * NOT a build-time constant. A multi-state refresh run iterates over
- * rows in the `jurisdictions` table.
- */
-function stateOcdId(abbr: string): string {
-  return `ocd-jurisdiction/country:us/state:${abbr.toLowerCase()}/government`;
-}
-
-/** "ocd-jurisdiction/country:us/state:tx/government" → "tx" */
+/** "ocd-jurisdiction/country:us/state:tx/government" → "tx".
+ *  OpenStates v3 `/bills?jurisdiction=tx` accepts the bare abbr, so
+ *  we only need the OCD→abbr direction, not the inverse. */
 function extractStateAbbr(ocdId: string | undefined): string | undefined {
   if (!ocdId) return undefined;
   const m = ocdId.match(/state:([a-z]{2})/i);
