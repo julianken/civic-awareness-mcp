@@ -1,0 +1,19 @@
+{
+  "votes": [
+    {
+      "congress": 119,
+      "chamber": "House",
+      "rollNumber": 42,
+      "date": "2026-04-01T00:00:00Z",
+      "question": "On Passage",
+      "result": "Passed",
+      "bill": { "type": "HR", "number": "1234" },
+      "positions": [
+        { "member": { "bioguideId": "P000197", "name": "Pelosi, Nancy" }, "votePosition": "Yea" },
+        { "member": { "bioguideId": "S000148", "name": "Schumer, Charles E." }, "votePosition": "Nay" }
+      ],
+      "totals": { "yea": 218, "nay": 210, "present": 0, "notVoting": 7 }
+    }
+  ],
+  "pagination": { "count": 1 }
+}

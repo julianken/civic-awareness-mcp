@@ -1,0 +1,21 @@
+{
+  "members": [
+    {
+      "bioguideId": "S000148",
+      "name": "Schumer, Charles E.",
+      "partyName": "Democrat",
+      "state": "NY",
+      "district": null,
+      "terms": { "item": [{ "chamber": "Senate", "startYear": 1999, "endYear": null }] }
+    },
+    {
+      "bioguideId": "P000197",
+      "name": "Pelosi, Nancy",
+      "partyName": "Democrat",
+      "state": "CA",
+      "district": 11,
+      "terms": { "item": [{ "chamber": "House", "startYear": 1987, "endYear": null }] }
+    }
+  ],
+  "pagination": { "count": 2 }
+}

@@ -1,0 +1,16 @@
+{
+  "bills": [
+    {
+      "congress": 119,
+      "type": "HR",
+      "number": "1234",
+      "title": "Civic Awareness and Transparency Enhancement Act",
+      "introducedDate": "2026-03-15",
+      "updateDate": "2026-04-01T00:00:00Z",
+      "url": "https://api.congress.gov/v3/bill/119/hr/1234",
+      "sponsors": [{ "bioguideId": "P000197", "fullName": "Rep. Nancy Pelosi [D-CA-11]" }],
+      "latestAction": { "actionDate": "2026-04-01", "text": "Passed House" }
+    }
+  ],
+  "pagination": { "count": 1 }
+}
