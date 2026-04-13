@@ -169,6 +169,14 @@ requirements deferred to the Phase 2 plan rewrite: resumability,
 prioritizing active sessions and backfilling history over multiple
 refresh cycles).
 
+**Amended 2026-04-13:** Refresh is additionally exposed as an MCP
+tool (`refresh_source`) alongside the existing CLI, sharing a
+single `refreshSource()` core function. The server remains
+read-only on the query path; `refresh_source` is the only
+write-capable tool and requires explicit per-call user consent
+(MCP default behavior). See R12 in `docs/00-rationale.md` and
+`docs/plans/phase-5-onboarding-and-refresh-tool.md`.
+
 ---
 
 ## D6 — Storage location and lifecycle

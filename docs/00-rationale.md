@@ -239,6 +239,77 @@ package is now simply `civic-awareness-mcp` (scope-agnostic).
 Downstream doc cascades are recorded in each affected doc's own
 revision, not enumerated here.
 
+## R12 — Refresh as an MCP tool alongside the CLI
+
+**Originally decided:** R8 + D5 locked refresh as out-of-process
+via `pnpm refresh --source=<name>`. Rationale was server
+determinism, predictable latency, and entity-resolution
+reproducibility (batch normalization produces a stable graph).
+
+**Revisited on:** 2026-04-13
+
+**New decision:** Refresh remains a batch operation and remains
+available via the CLI, but is **additionally** exposed as an MCP
+tool, `refresh_source`. The server still does not auto-refresh on
+read-tool invocations — every refresh is an explicit, consented,
+batch operation. The CLI and the tool are thin wrappers over a
+single `refreshSource()` core function.
+
+**Why:**
+
+1. **Onboarding friction.** Under the CLI-only model, a user who
+   wires the MCP server into Claude Desktop or Claude Code hits an
+   empty-DB wall on their first query. The solution — "open a
+   terminal, run `pnpm refresh --source=<name>`, wait, retry" —
+   breaks the in-conversation flow that is the whole point of MCP.
+
+2. **The reasons for D5's constraint are preserved.** The server
+   is still read-only on the query path (the 8 feed/entity tools).
+   Only `refresh_source` writes, and only when the user approves
+   the tool call. Entity-resolution reproducibility is not harmed:
+   refresh is still a batch normalization pass, the same code as
+   the CLI, producing the same entity graph.
+
+3. **MCP consent boundaries align with the design.** In MCP, the
+   *tool call* is the consent boundary, not the upstream HTTP
+   request. A single `refresh_source` call may fan out to hundreds
+   of upstream requests, but the user approves it once with full
+   context ("refresh Texas bills" → one prompt → batch runs → done).
+
+4. **Client-allowlist support absorbs the remaining friction for
+   trusted users.** Claude Code supports persistent per-tool
+   allowlisting via `permissions.allow: ["mcp__civic_awareness__*"]`.
+   A user who trusts their own server instance sees zero prompts
+   after one config line. Claude Desktop lacks this (issue #24433
+   closed NOT PLANNED, 2026-03), so Desktop users will still see a
+   per-session prompt for `refresh_source` — but that's one prompt
+   per refresh intent, not per upstream request.
+
+**What this does NOT change:**
+
+- `pnpm refresh` CLI continues to work, unchanged from the user's
+  perspective. It now calls the same `refreshSource()` function
+  the MCP tool does.
+- The 8 existing read tools (`recent_bills`, `recent_votes`,
+  `recent_contributions`, `search_civic_documents`,
+  `search_entities`, `get_entity`, `entity_activity`,
+  `entity_connections`, `resolve_person`) remain pure reads from
+  SQLite. No upstream HTTP on the query path.
+- Rate-limiting infrastructure in `src/util/http.ts` (per-host
+  token bucket, backoff, `Retry-After`) still governs the refresh
+  path. A `refresh_source` tool call that hits 429 will back off
+  identically to the CLI path.
+- Batch resolution (D3b cross-jurisdiction Person) still runs
+  post-ingest as part of `refreshSource()`. The entity graph
+  produced is identical regardless of trigger (CLI or tool).
+
+**Related work shipped in this phase:**
+
+- Auto-bootstrap on `pnpm start` (Task 3 of
+  `docs/plans/phase-5-onboarding-and-refresh-tool.md`). Previously
+  deferred to "V2 polish" per D6; promoted because the new
+  `refresh_source` flow assumes the DB exists.
+
 ---
 
 ## How to add to this doc
