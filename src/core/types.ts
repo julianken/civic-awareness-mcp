@@ -13,7 +13,7 @@ export type EntityKind = z.infer<typeof EntityKind>;
 export const ExternalIds = z.record(z.string(), z.string());
 
 export const Entity = z.object({
-  id: z.string(),
+  id: z.uuid(),
   kind: EntityKind,
   name: z.string(),
   aliases: z.array(z.string()).default([]),
@@ -32,7 +32,7 @@ export const ReferenceRole = z.enum([
 export type ReferenceRole = z.infer<typeof ReferenceRole>;
 
 export const EntityReference = z.object({
-  entity_id: z.string(),
+  entity_id: z.uuid(),
   role: ReferenceRole,
   qualifier: z.string().optional(),
 });
@@ -44,7 +44,7 @@ export const DocumentKind = z.enum([
 export type DocumentKind = z.infer<typeof DocumentKind>;
 
 export const Document = z.object({
-  id: z.string(),
+  id: z.uuid(),
   kind: DocumentKind,
   jurisdiction: z.string(),
   title: z.string(),

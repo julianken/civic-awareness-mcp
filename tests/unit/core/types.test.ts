@@ -18,12 +18,32 @@ describe("Entity schema", () => {
   });
 
   it("rejects invalid kind", () => {
-    expect(() => Entity.parse({ kind: "alien", id: "x", name: "x" })).toThrow();
+    expect(() =>
+      Entity.parse({
+        kind: "alien",
+        id: "550e8400-e29b-41d4-a716-446655440001",
+        name: "x",
+      }),
+    ).toThrow();
+  });
+
+  it("rejects malformed id", () => {
+    expect(() =>
+      Entity.parse({
+        id: "not-a-uuid",
+        kind: "person",
+        name: "X",
+        first_seen_at: "2026-04-12T00:00:00.000Z",
+        last_seen_at: "2026-04-12T00:00:00.000Z",
+      }),
+    ).toThrow();
   });
 
   it("fills in defaults", () => {
     const parsed = Entity.parse({
-      id: "x", kind: "person", name: "X",
+      id: "550e8400-e29b-41d4-a716-446655440002",
+      kind: "person",
+      name: "X",
       first_seen_at: "2026-04-12T00:00:00.000Z",
       last_seen_at: "2026-04-12T00:00:00.000Z",
     });
@@ -35,7 +55,7 @@ describe("Entity schema", () => {
 describe("Document schema", () => {
   it("parses a valid bill document", () => {
     const parsed = Document.parse({
-      id: "x",
+      id: "550e8400-e29b-41d4-a716-446655440003",
       kind: "bill",
       jurisdiction: "us-federal",
       title: "HR1234",
@@ -45,6 +65,20 @@ describe("Document schema", () => {
     });
     expect(parsed.kind).toBe("bill");
     expect(parsed.references).toEqual([]);
+  });
+
+  it("rejects malformed source.url", () => {
+    expect(() =>
+      Document.parse({
+        id: "550e8400-e29b-41d4-a716-446655440004",
+        kind: "bill",
+        jurisdiction: "us-federal",
+        title: "HR1234",
+        occurred_at: "2026-04-01T00:00:00.000Z",
+        fetched_at: "2026-04-12T00:00:00.000Z",
+        source: { name: "congress", id: "hr-1234-119", url: "not-a-url" },
+      }),
+    ).toThrow();
   });
 });
 
