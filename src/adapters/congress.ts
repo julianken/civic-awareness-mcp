@@ -2,7 +2,6 @@ import type Database from "better-sqlite3";
 import { rateLimitedFetch, RateLimiter } from "../util/http.js";
 import { upsertEntity } from "../core/entities.js";
 import { upsertDocument } from "../core/documents.js";
-import { normalizeName } from "../resolution/fuzzy.js";
 import { logger } from "../util/logger.js";
 import type { Adapter, AdapterOptions, RefreshResult } from "./base.js";
 
