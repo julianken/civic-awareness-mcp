@@ -1,6 +1,6 @@
 # Examples
 
-Concrete request/response fixtures for three of the eight tools, illustrating the two tool families (feed + entity) and the cross-jurisdiction Person model.
+Concrete request/response fixtures for three of the nine tools, illustrating the two tool families (feed + entity) and the cross-jurisdiction Person model.
 
 | File | Tool | Shows |
 |---|---|---|

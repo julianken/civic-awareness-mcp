@@ -215,6 +215,35 @@ output:
   }>
 ```
 
+## Refresh tool (C) — 1 tool
+
+### `refresh_source` (Phase 5)
+
+```
+input:
+  source: "openstates" | "congress" | "openfec"    // REQUIRED
+  jurisdictions: string[] | undefined              // 2–4 char state codes, OpenStates only
+  max_pages: number (default 2, min 1, max 50)
+
+output:
+  source: string                                   // echoes input
+  entities_upserted: number
+  documents_upserted: number
+  errors: string[]                                 // per-page errors; batch continues on partial failure
+  jurisdictions_processed?: string[]               // OpenStates: which states were touched
+```
+
+`refresh_source` is the **only write tool** on the MCP. It invokes
+the same `refreshSource()` core function that powers the out-of-process
+`pnpm refresh` CLI — both write into the shared SQLite store.
+
+Design intent: lets an LLM populate missing data in-session without
+the operator dropping to a terminal. Claude Code users can keep the
+tool behind a consent prompt (see the README allowlist section) so
+it only runs when the user approves. `max_pages` caps daily upstream
+budget impact at 50 pages per call; the default of 2 is conservative
+for first-touch exploration.
+
 ## Phase-to-tool mapping
 
 | Phase | Status | Tools shipped / expanded |
@@ -223,12 +252,12 @@ output:
 | **2 — OpenStates (50 states)** | ✅ done | `recent_bills`, `search_entities`, `get_entity`, `search_civic_documents` (OpenStates-only) |
 | **3 — Congress.gov** | ✅ done | + `recent_votes`; `recent_bills`, `search_entities`, `get_entity`, `search_civic_documents` expand to include federal |
 | **4 — OpenFEC** | ✅ done | + `recent_contributions`; cross-source entity merge (fec_candidate ↔ bioguide ↔ openstates_person) |
-| **5 — Connections** | ✅ done | + `entity_connections`, `resolve_person` |
+| **5 — Connections** | ✅ done | + `entity_connections`, `resolve_person`, `refresh_source` |
 
-As of Phase 5 (2026-04-13), the server exposes **8 tools total** at
+As of Phase 5 (2026-04-13), the server exposes **9 tools total** at
 `v0.0.5`: `recent_bills`, `recent_votes`, `recent_contributions`,
 `search_entities`, `get_entity`, `search_civic_documents`,
-`entity_connections`, `resolve_person`.
+`entity_connections`, `resolve_person`, `refresh_source`.
 
 The original spec mentioned `entity_activity` as a separate tool.
 That surface is effectively covered by `get_entity.recent_documents`
@@ -237,23 +266,27 @@ a dedicated `entity_activity` tool emerges as necessary, it can be
 added as a wrapper over the existing `queryDocuments` / `findDocumentsByEntity`
 core helpers without new infrastructure.
 
-## Why 8 tools and not 20
+## Why 9 tools and not 20
 
 LLM tool-selection accuracy drops noticeably beyond ~15 tools with
-similar-sounding names. We keep to 8 with clearly distinct verbs
+similar-sounding names. We keep to 9 with clearly distinct verbs
 (`recent_X` vs `search_X` vs `get_X` vs `resolve_X` vs
-`entity_connections`). If a future sub-source needs a new surface,
-we prefer extending an existing tool's input over adding a new tool.
+`entity_connections` vs `refresh_source`). If a future sub-source
+needs a new surface, we prefer extending an existing tool's input
+over adding a new tool.
 
 ## What we explicitly DON'T expose
 
 - No `raw_*` tools. Adapters normalize upstream data; consumers never
   see raw Congress.gov JSON or OpenFEC line items.
-- No write tools. This MCP is read-only. Writing to civic systems is
-  a completely different trust/safety problem.
+- No write tools **into civic systems**. The MCP never posts back to
+  OpenStates, Congress.gov, or OpenFEC — writing to civic systems is
+  a completely different trust/safety problem. The one write tool
+  (`refresh_source`) writes only to the operator's local SQLite
+  store, from sanctioned Tier-1 APIs.
 - No streaming / long-poll tools. Each call is a single
   request/response.
-- No admin tools (refresh, purge cache). Those are scripts run by
-  the operator, not surfaces for the LLM.
+- No purge / admin tools beyond `refresh_source`. Cache eviction,
+  schema migrations, etc. remain operator scripts, not LLM surfaces.
 - **No contributor PII in responses.** OpenFEC contributor addresses
   and employers are stored but never returned through tools.

@@ -10,7 +10,7 @@ The interesting part isn't the data, it's the **cross-source entity graph**: a s
 
 ## Status
 
-Phases 1–5 complete. **8 MCP tools live**, all 50 states + federal, backed by OpenStates + Congress.gov + OpenFEC. Pre-public security audit landed at `aafdb73` — see [`SECURITY.md`](./SECURITY.md). Repo went public 2026-04-12.
+Phases 1–5 complete. **9 MCP tools live**, all 50 states + federal, backed by OpenStates + Congress.gov + OpenFEC. Pre-public security audit landed at `aafdb73` — see [`SECURITY.md`](./SECURITY.md). Repo went public 2026-04-12.
 
 ## Tools
 
@@ -24,6 +24,7 @@ Phases 1–5 complete. **8 MCP tools live**, all 50 states + federal, backed by 
 | [`get_entity`](./docs/05-tool-surface.md#get_entity) | entity | Full entity record including role history (cross-jurisdiction for Persons) plus recent documents |
 | [`entity_connections`](./docs/05-tool-surface.md#entity_connections-phase-5) | entity | Graph of co-occurrence edges (via bills / votes / contributions) out to depth 2 |
 | [`resolve_person`](./docs/05-tool-surface.md#resolve_person-phase-5) | entity | Disambiguate a name into one or more Person entity IDs using role / jurisdiction / context hints |
+| [`refresh_source`](./docs/05-tool-surface.md#refresh_source-phase-5) | refresh | Trigger a batch refresh of one upstream source (openstates, congress, openfec). Writes to the DB; the only non-read tool. |
 
 Every response includes a `sources: { name, url }[]` array so the LLM can cite provenance. No tool synthesizes summaries — that's the LLM's job (per [D3c](./docs/06-open-decisions.md)).
 
@@ -56,6 +57,8 @@ One normalized event store, two projections:
 ```
 
 The feed and entity tools read the same two tables (`entities`, `documents`) with different WHERE clauses — a ~20-line SQL difference, not a parallel pipeline. Adapters normalize upstream JSON into `Document`s with `EntityReference`s, so tools never case-split by source and adding a new adapter requires zero tool changes. See [`docs/02-architecture.md`](./docs/02-architecture.md) for the full rationale.
+
+The 9th tool, `refresh_source`, is an in-session handle on the same adapter pipeline shown at the bottom — it lets an LLM populate missing data by invoking the same `refreshSource()` core function as the out-of-process `pnpm refresh` CLI. Both paths write into the same SQLite store.
 
 ## Entity resolution
 
@@ -192,17 +195,31 @@ pnpm dev           # run via tsx with no build step
 
 ### Populate the store
 
+Two paths, same underlying function:
+
+**In-session via the MCP tool (recommended):**
+
+Ask Claude to refresh: "Refresh Texas bills", "Refresh federal
+campaign contributions for 2026", etc. Claude calls the
+`refresh_source` tool with one consent prompt, then the batch
+runs.
+
+**Out-of-session via the CLI:**
+
 ```bash
 # API keys in .env.local: OPENSTATES_API_KEY, API_DATA_GOV_KEY
 # (the api.data.gov key works for both Congress.gov and OpenFEC)
 pnpm refresh --source=openstates --jurisdictions=tx --max-pages=1
-pnpm refresh --source=congress   --since=2026-01-01
-pnpm refresh --source=openfec    --since=2026-01-01
-# or to refresh everything:
-pnpm refresh --all --since=2026-01-01
+pnpm refresh --source=congress   --max-pages=1
+pnpm refresh --source=openfec    --max-pages=1
 ```
 
-The MCP server itself is **read-only against the SQLite file** and never calls upstream APIs at query time. Refresh is an out-of-process job (per [D5](./docs/06-open-decisions.md)).
+Both paths upsert into `./data/civic-awareness.db` (gitignored).
+The schema auto-bootstraps on first server start — no `pnpm
+bootstrap` needed unless you want to create the DB ahead of time.
+
+The 8 read tools remain pure reads from SQLite. Only
+`refresh_source` writes, and only when you invoke it.
 
 ### Claude Desktop config
 
@@ -222,12 +239,54 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 }
 ```
 
-Then restart Claude Desktop; the 8 tools will appear in the tool picker.
+Then restart Claude Desktop; the 9 tools will appear in the tool picker.
 
 ### Environment variables
 
 - `CIVIC_AWARENESS_DB_PATH` — override the default SQLite path (`./data/civic-awareness.db`). Needed when Claude Desktop launches the server from an arbitrary working directory.
 - `LOG_LEVEL` — `debug` / `info` / `warn` / `error` (default `info`). Structured JSON is emitted to stderr.
+
+### Skipping per-call consent prompts (Claude Code users)
+
+Claude Code prompts for approval on every MCP tool call by
+default. If you trust your own instance of this server, add this
+to your user-level `settings.json` (or the project-level
+`.claude/settings.json`):
+
+```json
+{
+  "permissions": {
+    "allow": ["mcp__civic_awareness__*"]
+  }
+}
+```
+
+After that, calls to any of the 9 tools — including
+`refresh_source` — run without prompts. To silence only read
+tools and keep the refresh prompt:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "mcp__civic_awareness__recent_bills",
+      "mcp__civic_awareness__recent_votes",
+      "mcp__civic_awareness__recent_contributions",
+      "mcp__civic_awareness__search_entities",
+      "mcp__civic_awareness__get_entity",
+      "mcp__civic_awareness__search_civic_documents",
+      "mcp__civic_awareness__entity_connections",
+      "mcp__civic_awareness__resolve_person"
+    ],
+    "ask": ["mcp__civic_awareness__refresh_source"]
+  }
+}
+```
+
+Claude Desktop does not persist per-tool allowlists across
+sessions (see
+[anthropics/claude-code#24433](https://github.com/anthropics/claude-code/issues/24433)).
+Desktop users will see the per-call prompt every session.
 
 ## CI — nightly upstream drift detection
 
@@ -239,7 +298,7 @@ To run the nightly workflow, set two repo secrets (`OPENSTATES_API_KEY` and `API
 
 ## Security
 
-- Read-only MCP — no write tools, no side effects
+- Never writes upstream — no posts or mutations against OpenStates / Congress.gov / OpenFEC. The one write tool (`refresh_source`) writes only to the operator's local SQLite store, from sanctioned Tier-1 APIs, and only on explicit user invocation
 - All upstream APIs are sanctioned Tier-1 (free-tier keys, documented rate limits) — see [`docs/03-data-sources.md`](./docs/03-data-sources.md)
 - Rate-limited fetch wrapper with per-host token bucket, `Retry-After` honoured, redirects rejected by default
 - Zod-validated tool inputs; `better-sqlite3` parameterized queries; `LIKE ... ESCAPE` on user-supplied patterns
