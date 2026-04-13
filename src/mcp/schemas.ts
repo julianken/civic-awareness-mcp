@@ -51,3 +51,10 @@ export const RecentContributionsInput = z.object({
   min_amount: z.number().min(0).optional(),
 });
 export type RecentContributionsInput = z.infer<typeof RecentContributionsInput>;
+
+export const EntityConnectionsInput = z.object({
+  id: z.string().min(1),
+  depth: z.union([z.literal(1), z.literal(2)]).default(1),
+  min_co_occurrences: z.number().int().min(1).max(50).default(2),
+});
+export type EntityConnectionsInput = z.infer<typeof EntityConnectionsInput>;
