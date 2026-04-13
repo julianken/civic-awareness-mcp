@@ -36,3 +36,38 @@ describe("openStore", () => {
     s.close();
   });
 });
+
+import { seedJurisdictions } from "../../../src/core/seeds.js";
+
+describe("seedJurisdictions", () => {
+  it("inserts us-federal and all 50 states", () => {
+    const s = openStore(TEST_DB);
+    seedJurisdictions(s.db);
+    const federal = s.db
+      .prepare("SELECT id, level, name FROM jurisdictions WHERE id = ?")
+      .get("us-federal");
+    expect(federal).toEqual({ id: "us-federal", level: "federal", name: "United States" });
+    const stateCount = s.db
+      .prepare("SELECT COUNT(*) as c FROM jurisdictions WHERE level = 'state'")
+      .get() as { c: number };
+    expect(stateCount.c).toBe(50);
+    // Spot-check a few specific states across the alphabet.
+    expect(
+      s.db.prepare("SELECT name FROM jurisdictions WHERE id = ?").get("us-tx"),
+    ).toEqual({ name: "Texas" });
+    expect(
+      s.db.prepare("SELECT name FROM jurisdictions WHERE id = ?").get("us-wy"),
+    ).toEqual({ name: "Wyoming" });
+    s.close();
+  });
+
+  it("is idempotent", () => {
+    const s = openStore(TEST_DB);
+    seedJurisdictions(s.db);
+    seedJurisdictions(s.db);
+    const c = s.db.prepare("SELECT COUNT(*) as c FROM jurisdictions").get() as { c: number };
+    // us-federal + 50 states. Keep in sync with JURISDICTIONS in src/core/seeds.ts.
+    expect(c.c).toBe(51);
+    s.close();
+  });
+});
