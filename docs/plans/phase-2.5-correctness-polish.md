@@ -569,17 +569,42 @@ WHERE kind = 'bill'
   AND json_array_length(json_extract(raw, '$.actions')) > 0;
 ```
 
-- [ ] **Step 2.2: Verify migration discovered and applied**
+- [ ] **Step 2.2: Register migration in the MIGRATIONS array**
 
-The migration loader picks up files in `src/core/migrations/` by
-filename order; no code change needed.
+Unlike some migration systems, this repo's `src/core/store.ts` uses
+an explicit `MIGRATIONS = [{ version, file }, ...]` array, not
+filename-scanning. Append to that array:
+
+```ts
+{ version: 3, file: "003-occurred-at-from-actions.sql" },
+```
+
+Verify:
+
+```bash
+pnpm tsx -e 'import { openStore } from "./src/core/store.ts"; \
+  import { rmSync, existsSync } from "node:fs"; \
+  const p = "./data/mig-test.db"; if (existsSync(p)) rmSync(p); \
+  const s = openStore(p); \
+  console.log(s.db.prepare("SELECT version FROM schema_migrations ORDER BY version").all()); \
+  s.close(); rmSync(p);'
+```
+
+Expected: `[{"version":1},{"version":2},{"version":3}]`.
+
+- [ ] **Step 2.3: Add migration replay tests**
+
+Because fresh test DBs have no pre-T2 rows, existing tests don't
+exercise the healing path. Add `tests/unit/core/migrations.test.ts`
+with cases covering: (a) pre-T2 bug-shaped row gets healed, (b)
+already-healed row is a no-op on re-run, (c) row with `actions: []`
+is not touched. Load the migration SQL file via `readFileSync` and
+execute it directly on a seeded DB.
 
 ```
-pnpm test  # full suite — exercises migration on every test DB init
+pnpm test
 ```
-Expected: PASS (migration runs cleanly on fresh test DBs, which have
-no pre-existing bill rows; the Step 1.1/1.2 tests above cover the
-adapter path).
+Expected: PASS on full suite.
 
 ### TDD cycle 3 — commit
 
