@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { Document, type DocumentKind, type EntityReference } from "./types.js";
+import { normalizeIsoDatetime } from "../util/datetime.js";
 
 export interface UpsertDocInput {
   kind: DocumentKind;
@@ -57,6 +58,7 @@ function loadRefs(db: Database.Database, docId: string): EntityReference[] {
 
 export function upsertDocument(db: Database.Database, input: UpsertDocInput): UpsertDocResult {
   const now = new Date().toISOString();
+  const occurredAt = normalizeIsoDatetime(input.occurred_at);
   const existing = db
     .prepare("SELECT * FROM documents WHERE source_name = ? AND source_id = ?")
     .get(input.source.name, input.source.id) as DocRow | undefined;
@@ -72,7 +74,7 @@ export function upsertDocument(db: Database.Database, input: UpsertDocInput): Up
          WHERE id = ?`,
       ).run(
         input.kind, input.jurisdiction, input.title, input.summary ?? null,
-        input.occurred_at, now, input.source.url,
+        occurredAt, now, input.source.url,
         JSON.stringify(input.raw ?? {}), existing.id,
       );
       writeReferences(db, existing.id, input.references ?? []);
@@ -83,7 +85,7 @@ export function upsertDocument(db: Database.Database, input: UpsertDocInput): Up
       jurisdiction: input.jurisdiction,
       title: input.title,
       summary: input.summary ?? null,
-      occurred_at: input.occurred_at,
+      occurred_at: occurredAt,
       fetched_at: now,
       source_url: input.source.url,
       raw: JSON.stringify(input.raw ?? {}),
@@ -101,7 +103,7 @@ export function upsertDocument(db: Database.Database, input: UpsertDocInput): Up
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id, input.kind, input.jurisdiction, input.title, input.summary ?? null,
-      input.occurred_at, now, input.source.name, input.source.id, input.source.url,
+      occurredAt, now, input.source.name, input.source.id, input.source.url,
       JSON.stringify(input.raw ?? {}),
     );
     writeReferences(db, id, input.references ?? []);
@@ -111,7 +113,7 @@ export function upsertDocument(db: Database.Database, input: UpsertDocInput): Up
     document: {
       id, kind: input.kind, jurisdiction: input.jurisdiction,
       title: input.title, summary: input.summary,
-      occurred_at: input.occurred_at, fetched_at: now,
+      occurred_at: occurredAt, fetched_at: now,
       source: input.source, references: input.references ?? [], raw: input.raw ?? {},
     },
     created: true,

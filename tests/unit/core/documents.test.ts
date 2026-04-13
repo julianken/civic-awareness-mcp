@@ -49,6 +49,41 @@ describe("upsertDocument", () => {
     expect(findDocumentsByEntity(store.db, entity.id)).toHaveLength(1);
   });
 
+  // Regression: OpenStates returns timestamps as
+  // `2026-04-04T06:20:24.862671+00:00` (microsecond precision +
+  // numeric offset). Stored as-is, these failed the strict
+  // `Document` Zod schema on read, breaking `recent_bills`. Storage
+  // must canonicalize to `...sssZ` regardless of source format.
+  it("normalizes occurred_at to canonical millisecond Z form on insert", () => {
+    const r = upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "HB1",
+      occurred_at: "2026-04-04T06:20:24.862671+00:00",
+      source: { name: "openstates", id: "ocd-bill/normalize-test", url: "https://x" },
+    });
+    expect(r.document.occurred_at).toBe("2026-04-04T06:20:24.862Z");
+    const stored = store.db
+      .prepare("SELECT occurred_at FROM documents WHERE source_id = 'ocd-bill/normalize-test'")
+      .get() as { occurred_at: string };
+    expect(stored.occurred_at).toBe("2026-04-04T06:20:24.862Z");
+  });
+
+  it("normalizes occurred_at on update too", () => {
+    const input = {
+      kind: "bill" as const, jurisdiction: "us-tx", title: "HB1",
+      occurred_at: "2026-04-04T00:00:00.000Z",
+      source: { name: "openstates", id: "ocd-bill/normalize-update", url: "https://x" },
+    };
+    upsertDocument(store.db, input);
+    upsertDocument(store.db, {
+      ...input,
+      occurred_at: "2026-04-05T06:20:24.862671+00:00",
+    });
+    const stored = store.db
+      .prepare("SELECT occurred_at FROM documents WHERE source_id = 'ocd-bill/normalize-update'")
+      .get() as { occurred_at: string };
+    expect(stored.occurred_at).toBe("2026-04-05T06:20:24.862Z");
+  });
+
   // Regression: duplicate (entity_id, role) pairs from upstream — e.g.
   // an OpenStates bill that lists the same person twice as primary
   // sponsor, or entity resolution collapsing two sponsor entries into

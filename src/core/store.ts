@@ -12,6 +12,7 @@ export interface Store {
 
 const MIGRATIONS = [
   { version: 1, file: "001-init.sql" },
+  { version: 2, file: "002-normalize-occurred-at.sql" },
 ] as const;
 
 export function openStore(path: string): Store {
