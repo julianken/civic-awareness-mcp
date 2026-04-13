@@ -1,9 +1,7 @@
 import { openStore } from "../core/store.js";
 import { seedJurisdictions } from "../core/seeds.js";
-import { OpenStatesAdapter } from "../adapters/openstates.js";
-import { CongressAdapter } from "../adapters/congress.js";
-import { OpenFecAdapter } from "../adapters/openfec.js";
-import { requireEnv, optionalEnv } from "../util/env.js";
+import { refreshSource, type RefreshSource } from "../core/refresh.js";
+import { optionalEnv } from "../util/env.js";
 import { logger } from "../util/logger.js";
 
 interface Args {
@@ -33,74 +31,34 @@ function parseArgs(argv: string[]): Args {
   return { source, maxPages, jurisdictions };
 }
 
-function listStateJurisdictions(db: import("better-sqlite3").Database): string[] {
-  const rows = db
-    .prepare("SELECT id FROM jurisdictions WHERE level = 'state' ORDER BY id")
-    .all() as Array<{ id: string }>;
-  return rows.map((r) => r.id.replace(/^us-/, ""));
-}
-
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const dbPath = optionalEnv("CIVIC_AWARENESS_DB_PATH", "./data/civic-awareness.db");
   const store = openStore(dbPath);
   seedJurisdictions(store.db);
 
-  if (args.source === "openfec") {
-    const adapter = new OpenFecAdapter({
-      apiKey: requireEnv("API_DATA_GOV_KEY"),
-    });
-    logger.info("refreshing source", { source: "openfec" });
-    const result = await adapter.refresh({ db: store.db, maxPages: args.maxPages });
-    logger.info("refresh complete", {
-      source: result.source,
-      entitiesUpserted: result.entitiesUpserted,
-      documentsUpserted: result.documentsUpserted,
-      errorCount: result.errors.length,
-    });
-    if (result.errors.length > 0) {
-      logger.error("openfec refresh had errors", { errors: result.errors });
-    }
-  } else if (args.source === "congress") {
-    const adapter = new CongressAdapter({
-      apiKey: requireEnv("API_DATA_GOV_KEY"),
-    });
-    logger.info("refreshing source", { source: "congress" });
-    const result = await adapter.refresh({ db: store.db, maxPages: args.maxPages });
-    logger.info("refresh complete", {
-      source: result.source,
-      entitiesUpserted: result.entitiesUpserted,
-      documentsUpserted: result.documentsUpserted,
-      errorCount: result.errors.length,
-    });
-    if (result.errors.length > 0) {
-      logger.error("congress refresh had errors", { errors: result.errors });
-    }
-  } else if (args.source === "openstates") {
-    const adapter = new OpenStatesAdapter({ apiKey: requireEnv("OPENSTATES_API_KEY") });
-    const targets = args.jurisdictions ?? listStateJurisdictions(store.db);
-    for (const state of targets) {
-      logger.info("refreshing state", { state });
-      const result = await adapter.refresh({
-        db: store.db,
-        maxPages: args.maxPages,
-        jurisdiction: state,
-      });
-      logger.info("state refresh complete", {
-        source: result.source,
-        entitiesUpserted: result.entitiesUpserted,
-        documentsUpserted: result.documentsUpserted,
-        errorCount: result.errors.length,
-      });
-      if (result.errors.length > 0) {
-        logger.error("state had errors", { state, errors: result.errors });
-      }
-    }
-  } else {
+  if (args.source !== "openstates" && args.source !== "congress" && args.source !== "openfec") {
     logger.error("unknown source; valid values: openstates, congress, openfec", {
       source: args.source,
     });
     process.exit(1);
+  }
+
+  const result = await refreshSource(store.db, {
+    source: args.source as RefreshSource,
+    maxPages: args.maxPages,
+    jurisdictions: args.jurisdictions,
+  });
+
+  logger.info("refresh complete", {
+    source: result.source,
+    entitiesUpserted: result.entitiesUpserted,
+    documentsUpserted: result.documentsUpserted,
+    errorCount: result.errors.length,
+    jurisdictionsProcessed: result.jurisdictionsProcessed,
+  });
+  if (result.errors.length > 0) {
+    logger.error("refresh had errors", { errors: result.errors });
   }
 
   store.close();

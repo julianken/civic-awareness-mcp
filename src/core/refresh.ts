@@ -1,0 +1,79 @@
+import type Database from "better-sqlite3";
+import { OpenStatesAdapter } from "../adapters/openstates.js";
+import { CongressAdapter } from "../adapters/congress.js";
+import { OpenFecAdapter } from "../adapters/openfec.js";
+import { requireEnv } from "../util/env.js";
+import { logger } from "../util/logger.js";
+
+export type RefreshSource = "openstates" | "congress" | "openfec";
+
+export interface RefreshSourceOptions {
+  source: RefreshSource;
+  maxPages?: number;
+  jurisdictions?: string[];
+}
+
+export interface RefreshSourceResult {
+  source: RefreshSource;
+  entitiesUpserted: number;
+  documentsUpserted: number;
+  errors: string[];
+  jurisdictionsProcessed?: string[];
+}
+
+export async function refreshSource(
+  db: Database.Database,
+  opts: RefreshSourceOptions,
+): Promise<RefreshSourceResult> {
+  if (opts.source === "openfec") {
+    const adapter = new OpenFecAdapter({ apiKey: requireEnv("API_DATA_GOV_KEY") });
+    logger.info("refreshing source", { source: "openfec" });
+    const r = await adapter.refresh({ db, maxPages: opts.maxPages });
+    return {
+      source: "openfec",
+      entitiesUpserted: r.entitiesUpserted,
+      documentsUpserted: r.documentsUpserted,
+      errors: r.errors.map((e) => String(e)),
+    };
+  }
+  if (opts.source === "congress") {
+    const adapter = new CongressAdapter({ apiKey: requireEnv("API_DATA_GOV_KEY") });
+    logger.info("refreshing source", { source: "congress" });
+    const r = await adapter.refresh({ db, maxPages: opts.maxPages });
+    return {
+      source: "congress",
+      entitiesUpserted: r.entitiesUpserted,
+      documentsUpserted: r.documentsUpserted,
+      errors: r.errors.map((e) => String(e)),
+    };
+  }
+  if (opts.source === "openstates") {
+    const adapter = new OpenStatesAdapter({ apiKey: requireEnv("OPENSTATES_API_KEY") });
+    const targets = opts.jurisdictions ?? listStateJurisdictions(db);
+    let entities = 0;
+    let documents = 0;
+    const errors: string[] = [];
+    for (const state of targets) {
+      logger.info("refreshing state", { state });
+      const r = await adapter.refresh({ db, maxPages: opts.maxPages, jurisdiction: state });
+      entities += r.entitiesUpserted;
+      documents += r.documentsUpserted;
+      for (const err of r.errors) errors.push(`${state}: ${String(err)}`);
+    }
+    return {
+      source: "openstates",
+      entitiesUpserted: entities,
+      documentsUpserted: documents,
+      errors,
+      jurisdictionsProcessed: targets,
+    };
+  }
+  throw new Error(`unknown source: ${String(opts.source)}`);
+}
+
+function listStateJurisdictions(db: Database.Database): string[] {
+  const rows = db
+    .prepare("SELECT id FROM jurisdictions WHERE level = 'state' ORDER BY id")
+    .all() as Array<{ id: string }>;
+  return rows.map((r) => r.id.replace(/^us-/, ""));
+}
