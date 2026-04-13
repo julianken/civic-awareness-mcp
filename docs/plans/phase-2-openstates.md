@@ -1203,7 +1203,7 @@ git commit -m "feat: get_entity MCP tool"
 For Phase 2, this tool searches `documents` by title text (SQL `LIKE`).
 Phase 3+ adds full-text indexing.
 
-- [ ] **Step 7.1: Write test**
+- [x] **Step 7.1: Write test**
 
 ```ts
 // tests/unit/mcp/tools/search_civic_documents.test.ts
@@ -1262,7 +1262,7 @@ describe("search_civic_documents", () => {
 });
 ```
 
-- [ ] **Step 7.2: Implement `src/mcp/tools/search_civic_documents.ts`**
+- [x] **Step 7.2: Implement `src/mcp/tools/search_civic_documents.ts`**
 
 ```ts
 import type Database from "better-sqlite3";
@@ -1341,14 +1341,18 @@ export async function handleSearchDocuments(
 }
 ```
 
-- [ ] **Step 7.3: Register and commit**
+- [x] **Step 7.3: Register and commit**
 
 ```ts
 // in src/mcp/server.ts buildServer()
-mcp.tool(
+mcp.registerTool(
   "search_civic_documents",
-  "Search civic documents (currently U.S. state legislative bills) by title across all ingested jurisdictions.",
-  SearchDocumentsInput.shape,
+  {
+    description:
+      "Search civic documents (currently U.S. state legislative bills) " +
+      "by title across all ingested jurisdictions.",
+    inputSchema: SearchDocumentsInput.shape,
+  },
   async (input) => {
     const data = await handleSearchDocuments(store.db, input);
     return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
@@ -1358,7 +1362,7 @@ mcp.tool(
 
 ```bash
 pnpm test tests/unit/mcp/tools/search_civic_documents.test.ts
-git add src/mcp/tools/search_civic_documents.ts tests/unit/mcp/tools/search_civic_documents.test.ts src/mcp/server.ts
+git add src/mcp/tools/search_civic_documents.ts tests/unit/mcp/tools/search_civic_documents.test.ts src/mcp/server.ts docs/plans/phase-2-openstates.md
 git commit -m "feat: search_civic_documents MCP tool (title substring)"
 ```
 

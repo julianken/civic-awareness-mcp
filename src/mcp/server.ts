@@ -3,7 +3,8 @@ import { openStore, type Store } from "../core/store.js";
 import { handleRecentBills } from "./tools/recent_bills.js";
 import { handleSearchEntities } from "./tools/search_entities.js";
 import { handleGetEntity } from "./tools/get_entity.js";
-import { RecentBillsInput, SearchEntitiesInput, GetEntityInput } from "./schemas.js";
+import { handleSearchDocuments } from "./tools/search_civic_documents.js";
+import { RecentBillsInput, SearchEntitiesInput, GetEntityInput, SearchDocumentsInput } from "./schemas.js";
 
 export interface BuildServerOptions { dbPath: string }
 export interface CivicAwarenessServer { mcp: McpServer; store: Store }
@@ -52,6 +53,20 @@ export function buildServer(opts: BuildServerOptions): CivicAwarenessServer {
     },
     async (input) => {
       const data = await handleGetEntity(store.db, input);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    },
+  );
+
+  mcp.registerTool(
+    "search_civic_documents",
+    {
+      description:
+        "Search civic documents (currently U.S. state legislative bills) " +
+        "by title across all ingested jurisdictions.",
+      inputSchema: SearchDocumentsInput.shape,
+    },
+    async (input) => {
+      const data = await handleSearchDocuments(store.db, input);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     },
   );
