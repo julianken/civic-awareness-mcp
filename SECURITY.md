@@ -36,7 +36,7 @@ security surface is small:
 - **Claude Desktop client.** The host process manages the tool invocation
   lifecycle; reports about it belong with Anthropic.
 - **Operator responsibility.** Your `CIVIC_AWARENESS_DB_PATH`,
-  `OPENSTATES_API_KEY`, `CONGRESS_API_KEY`, `FEC_API_KEY` are yours to
+  `OPENSTATES_API_KEY`, and `API_DATA_GOV_KEY` are yours to
   protect.
 
 ## Pre-public security audit

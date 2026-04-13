@@ -32,7 +32,7 @@ jobs:
 
     steps:
       # Actions are pinned to full commit SHAs to prevent a force-pushed
-      # tag from executing arbitrary code with access to the three repo
+      # tag from executing arbitrary code with access to the repo
       # secrets. Dependabot can bump these on a schedule. Tags in comments
       # are for humans reviewing the file.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -49,21 +49,19 @@ jobs:
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
-      # Fail fast if any of the three API keys aren't set in repo Actions
-      # secrets. Without this guard, `pnpm test:drift` skips all tests when
-      # the env vars are empty and the job passes silently — a false-positive
+      # Fail fast if either API key isn't set in repo Actions secrets.
+      # Without this guard, `pnpm test:drift` skips all tests when the
+      # env vars are empty and the job passes silently — a false-positive
       # CI signal where green means "zero tests ran," not "upstream shapes
       # are intact."
       - name: Check required secrets
         env:
           OPENSTATES_API_KEY: ${{ secrets.OPENSTATES_API_KEY }}
-          CONGRESS_API_KEY: ${{ secrets.CONGRESS_API_KEY }}
-          FEC_API_KEY: ${{ secrets.FEC_API_KEY }}
+          API_DATA_GOV_KEY: ${{ secrets.API_DATA_GOV_KEY }}
         run: |
           missing=()
           [ -z "$OPENSTATES_API_KEY" ] && missing+=("OPENSTATES_API_KEY")
-          [ -z "$CONGRESS_API_KEY" ]   && missing+=("CONGRESS_API_KEY")
-          [ -z "$FEC_API_KEY" ]        && missing+=("FEC_API_KEY")
+          [ -z "$API_DATA_GOV_KEY" ]   && missing+=("API_DATA_GOV_KEY")
           if [ ${#missing[@]} -gt 0 ]; then
             echo "::error::Missing required Actions secrets: ${missing[*]}"
             echo "Set them at Settings → Secrets and variables → Actions."
@@ -74,6 +72,5 @@ jobs:
       - name: Drift tests
         env:
           OPENSTATES_API_KEY: ${{ secrets.OPENSTATES_API_KEY }}
-          CONGRESS_API_KEY: ${{ secrets.CONGRESS_API_KEY }}
-          FEC_API_KEY: ${{ secrets.FEC_API_KEY }}
+          API_DATA_GOV_KEY: ${{ secrets.API_DATA_GOV_KEY }}
         run: pnpm test:drift

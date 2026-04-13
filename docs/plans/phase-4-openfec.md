@@ -42,9 +42,9 @@ already in `src/core/types.ts`.
 - **Rate limit:** 15 req/min (900/hour — below the 1,000/hour cap).
   `RateLimiter({ tokensPerInterval: 15, intervalMs: 60_000 })`.
 
-**API key prerequisite:** User must have an OpenFEC API key from
-https://api.data.gov/signup/ (same registration as `CONGRESS_API_KEY`).
-Store it in `.env.local` as `FEC_API_KEY=...`.
+**API key prerequisite:** User must have an api.data.gov key from
+https://api.data.gov/signup/ — the same key already used for Congress.gov
+also works for OpenFEC. Store it in `.env.local` as `API_DATA_GOV_KEY=...`.
 
 **Design decision on FEC candidate → bioguide linking:**
 OpenFEC's `/candidate/{candidate_id}` response does not include a
@@ -96,7 +96,7 @@ tests/
 Before executing this phase:
 
 - Phase 3 all checkboxes green, test suite green (`pnpm test` passes).
-- `FEC_API_KEY` present in `.env.local`.
+- `API_DATA_GOV_KEY` present in `.env.local`.
 - `pnpm test` passes with no failures.
 
 ---
@@ -1327,7 +1327,7 @@ async function main(): Promise<void> {
   if (args.source === "openfec") {
     // Federal singleton — no jurisdiction iteration.
     const adapter = new OpenFecAdapter({
-      apiKey: requireEnv("FEC_API_KEY"),
+      apiKey: requireEnv("API_DATA_GOV_KEY"),
     });
     logger.info("refreshing source", { source: "openfec" });
     const result = await adapter.refresh({ db: store.db, maxPages: args.maxPages });
@@ -1342,7 +1342,7 @@ async function main(): Promise<void> {
     }
   } else if (args.source === "congress") {
     const adapter = new CongressAdapter({
-      apiKey: requireEnv("CONGRESS_API_KEY"),
+      apiKey: requireEnv("API_DATA_GOV_KEY"),
     });
     logger.info("refreshing source", { source: "congress" });
     const result = await adapter.refresh({ db: store.db, maxPages: args.maxPages });
@@ -1987,21 +1987,21 @@ between an FEC candidate and a pre-seeded Congress.gov Person.
 
 - [ ] **Step 6.1: Write the fixture files**
 
-Option A — from the live API (requires `FEC_API_KEY`):
+Option A — from the live API (requires `API_DATA_GOV_KEY`):
 
 ```bash
 mkdir -p tests/integration/fixtures
 
-curl -s "https://api.open.fec.gov/v1/candidates/search?election_year=2026&candidate_status=C&per_page=5&api_key=$FEC_API_KEY" \
+curl -s "https://api.open.fec.gov/v1/candidates/search?election_year=2026&candidate_status=C&per_page=5&api_key=$API_DATA_GOV_KEY" \
   > tests/integration/fixtures/openfec-candidates-page1.json
 
-curl -s "https://api.open.fec.gov/v1/committees?cycle=2026&per_page=5&api_key=$FEC_API_KEY" \
+curl -s "https://api.open.fec.gov/v1/committees?cycle=2026&per_page=5&api_key=$API_DATA_GOV_KEY" \
   > tests/integration/fixtures/openfec-committees-page1.json
 
-curl -s "https://api.open.fec.gov/v1/schedules/schedule_a?two_year_transaction_period=2026&per_page=5&api_key=$FEC_API_KEY" \
+curl -s "https://api.open.fec.gov/v1/schedules/schedule_a?two_year_transaction_period=2026&per_page=5&api_key=$API_DATA_GOV_KEY" \
   > tests/integration/fixtures/openfec-schedule-a-page1.json
 
-curl -s "https://api.open.fec.gov/v1/schedules/schedule_b?two_year_transaction_period=2026&per_page=5&api_key=$FEC_API_KEY" \
+curl -s "https://api.open.fec.gov/v1/schedules/schedule_b?two_year_transaction_period=2026&per_page=5&api_key=$API_DATA_GOV_KEY" \
   > tests/integration/fixtures/openfec-schedule-b-page1.json
 ```
 
@@ -2406,7 +2406,7 @@ Before marking Phase 4 done:
 - [ ] `tests/unit/mcp/tools/get_entity.test.ts` — new FEC URL test green.
 - [ ] `src/mcp/server.ts` exports `buildServer` at version `"0.0.4"`.
 - [ ] `src/cli/refresh.ts` dispatches on `--source=openfec` and reads
-  `FEC_API_KEY` from env.
+  `API_DATA_GOV_KEY` from env.
 - [ ] No contributor PII (address, ZIP, employer) appears in any tool
   response (confirmed by the `recent_contributions` PII test and
   manual review of `ContributionSummary`).
@@ -2480,7 +2480,7 @@ Before marking Phase 4 done:
   to a single entity via normalized-name matching, carrying both
   `fec_candidate` and `bioguide` external IDs and all historical roles.
 - `get_entity` extended with `fec.gov` source URL branches.
-- Refresh CLI extended with `--source=openfec` (reads `FEC_API_KEY`).
+- Refresh CLI extended with `--source=openfec` (reads `API_DATA_GOV_KEY`).
 - Server bumped to `v0.0.4`.
 - Contributor PII (address, ZIP, employer) stored in `Document.raw` for
   aggregate queries, never exposed through any tool response.

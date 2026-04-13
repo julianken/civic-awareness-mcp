@@ -193,7 +193,8 @@ pnpm dev           # run via tsx with no build step
 ### Populate the store
 
 ```bash
-# API keys in .env.local: OPENSTATES_API_KEY, CONGRESS_API_KEY, FEC_API_KEY
+# API keys in .env.local: OPENSTATES_API_KEY, API_DATA_GOV_KEY
+# (the api.data.gov key works for both Congress.gov and OpenFEC)
 pnpm refresh --source=openstates --jurisdictions=tx --max-pages=1
 pnpm refresh --source=congress   --since=2026-01-01
 pnpm refresh --source=openfec    --since=2026-01-01
@@ -234,7 +235,7 @@ One workflow, [`.github/workflows/nightly-drift.yml`](./.github/workflows/nightl
 
 There is **no CI on push or pull-request.** The mocked unit + integration suite (157 tests) runs locally via `pnpm test`; upstream drift is the only regression the repo is exposed to.
 
-To run the nightly workflow, set three repo secrets (`OPENSTATES_API_KEY`, `CONGRESS_API_KEY`, `FEC_API_KEY`) under `Settings → Secrets and variables → Actions`. Each is *your* maintainer key; end users still bring their own keys via `.env.local`.
+To run the nightly workflow, set two repo secrets (`OPENSTATES_API_KEY` and `API_DATA_GOV_KEY`) under `Settings → Secrets and variables → Actions`. The api.data.gov key is federated across Congress.gov and OpenFEC — one signup at <https://api.data.gov/signup/> covers both. Each is *your* maintainer key; end users still bring their own keys via `.env.local`.
 
 ## Security
 

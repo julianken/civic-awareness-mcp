@@ -32,7 +32,7 @@ tables established in Phase 1.
 
 **API key prerequisite:** User must have a Congress.gov API key from
 https://api.data.gov/signup/ (same registration as OpenFEC). Store it
-in `.env.local` (gitignored) as `CONGRESS_API_KEY=...`.
+in `.env.local` (gitignored) as `API_DATA_GOV_KEY=...`.
 
 **Rate limit:** ~5,000 requests/hour with key (far more generous than
 OpenStates). The adapter defaults to 80 requests per 60 s (well under
@@ -76,7 +76,7 @@ tests/
 Before executing this phase:
 
 - Phase 2 all checkboxes green, test suite green.
-- `CONGRESS_API_KEY` present in `.env.local`.
+- `API_DATA_GOV_KEY` present in `.env.local`.
 - `pnpm test` passes with no failures.
 
 ---
@@ -1084,9 +1084,9 @@ async function main(): Promise<void> {
 
   if (args.source === "congress") {
     // Federal is a singleton — no jurisdiction iteration.
-    // The CONGRESS_API_KEY must be set in env or .env.local.
+    // The API_DATA_GOV_KEY must be set in env or .env.local.
     const adapter = new CongressAdapter({
-      apiKey: requireEnv("CONGRESS_API_KEY"),
+      apiKey: requireEnv("API_DATA_GOV_KEY"),
     });
     logger.info("refreshing source", { source: "congress" });
     const result = await adapter.refresh({ db: store.db, maxPages: args.maxPages });
@@ -1608,20 +1608,20 @@ then the `recent_bills` and `recent_votes` tools query the result.
 
 - [ ] **Step 6.1: Record the fixture files**
 
-Option A — from the live API (recommended; requires `CONGRESS_API_KEY`):
+Option A — from the live API (recommended; requires `API_DATA_GOV_KEY`):
 
 ```bash
 mkdir -p tests/integration/fixtures
 
-curl -s "https://api.congress.gov/v3/member?congress=119&limit=5&api_key=$CONGRESS_API_KEY" \
+curl -s "https://api.congress.gov/v3/member?congress=119&limit=5&api_key=$API_DATA_GOV_KEY" \
   > tests/integration/fixtures/congress-members-page1.json
 
-curl -s "https://api.congress.gov/v3/bill?congress=119&limit=5&api_key=$CONGRESS_API_KEY" \
+curl -s "https://api.congress.gov/v3/bill?congress=119&limit=5&api_key=$API_DATA_GOV_KEY" \
   > tests/integration/fixtures/congress-bills-page1.json
 
 # The /vote endpoint may not be available in all Congress.gov access tiers.
 # If it returns 404, use the hand-crafted fixture below (Option B).
-curl -s "https://api.congress.gov/v3/vote?congress=119&limit=5&api_key=$CONGRESS_API_KEY" \
+curl -s "https://api.congress.gov/v3/vote?congress=119&limit=5&api_key=$API_DATA_GOV_KEY" \
   > tests/integration/fixtures/congress-votes-page1.json
 ```
 
@@ -1966,7 +1966,7 @@ git commit -m "feat: get_entity surfaces congress.gov source URL for federal ent
 - [ ] `pnpm test` (full suite) passes with no failures
 - [ ] `pnpm typecheck` passes with no type errors
 - [ ] `pnpm build` produces a working `dist/`
-- [ ] Manual smoke: `CONGRESS_API_KEY=... pnpm refresh --source=congress --max-pages=1`
+- [ ] Manual smoke: `API_DATA_GOV_KEY=... pnpm refresh --source=congress --max-pages=1`
       completes without errors against the live API. Logs report
       `entitiesUpserted > 0` and `documentsUpserted > 0`.
 - [ ] In Claude Desktop (configured per README), asking "what federal
@@ -2004,7 +2004,7 @@ git commit -m "feat: get_entity surfaces congress.gov source URL for federal ent
   re-exported; no inline schema objects in `server.ts`.
 - **`mcp.registerTool` only:** The `mcp.tool(...)` four-argument
   deprecated form does not appear anywhere in this phase.
-- **Env var:** `CIVIC_AWARENESS_DB_PATH` (D6). `CONGRESS_API_KEY` for
+- **Env var:** `CIVIC_AWARENESS_DB_PATH` (D6). `API_DATA_GOV_KEY` for
   the new adapter.
 - **UUIDs:** All entity and document IDs are generated via `randomUUID()`
   (already in `entities.ts` and `documents.ts`); no changes needed.

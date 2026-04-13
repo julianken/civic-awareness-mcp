@@ -48,7 +48,7 @@ async function main(): Promise<void> {
 
   if (args.source === "openfec") {
     const adapter = new OpenFecAdapter({
-      apiKey: requireEnv("FEC_API_KEY"),
+      apiKey: requireEnv("API_DATA_GOV_KEY"),
     });
     logger.info("refreshing source", { source: "openfec" });
     const result = await adapter.refresh({ db: store.db, maxPages: args.maxPages });
@@ -63,7 +63,7 @@ async function main(): Promise<void> {
     }
   } else if (args.source === "congress") {
     const adapter = new CongressAdapter({
-      apiKey: requireEnv("CONGRESS_API_KEY"),
+      apiKey: requireEnv("API_DATA_GOV_KEY"),
     });
     logger.info("refreshing source", { source: "congress" });
     const result = await adapter.refresh({ db: store.db, maxPages: args.maxPages });

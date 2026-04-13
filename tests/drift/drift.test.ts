@@ -13,7 +13,7 @@
  *
  *   pnpm test            # mocked tests only; drift blocks skip
  *   pnpm test:drift      # runs this file; blocks skip per missing key
- *   pnpm test:drift      # with all three env vars set → all blocks run
+ *   pnpm test:drift      # with both env vars set → all blocks run
  */
 import { describe, it, expect } from "vitest";
 
@@ -27,8 +27,7 @@ async function pause(ms = 1000): Promise<void> {
 }
 
 const HAS_OPENSTATES = !!process.env.OPENSTATES_API_KEY;
-const HAS_CONGRESS = !!process.env.CONGRESS_API_KEY;
-const HAS_FEC = !!process.env.FEC_API_KEY;
+const HAS_API_DATA_GOV = !!process.env.API_DATA_GOV_KEY;
 
 // ─── OpenStates ──────────────────────────────────────────────────────
 
@@ -82,9 +81,9 @@ describe.skipIf(!HAS_OPENSTATES)("OpenStates drift", () => {
 
 // ─── Congress.gov ────────────────────────────────────────────────────
 
-describe.skipIf(!HAS_CONGRESS)("Congress.gov drift", () => {
+describe.skipIf(!HAS_API_DATA_GOV)("Congress.gov drift", () => {
   const base = "https://api.congress.gov/v3";
-  const key = process.env.CONGRESS_API_KEY!;
+  const key = process.env.API_DATA_GOV_KEY!;
 
   it("/member response shape matches the CongressMember interface", async () => {
     await pause();
@@ -123,9 +122,9 @@ describe.skipIf(!HAS_CONGRESS)("Congress.gov drift", () => {
 
 // ─── OpenFEC ─────────────────────────────────────────────────────────
 
-describe.skipIf(!HAS_FEC)("OpenFEC drift", () => {
+describe.skipIf(!HAS_API_DATA_GOV)("OpenFEC drift", () => {
   const base = "https://api.open.fec.gov/v1";
-  const key = process.env.FEC_API_KEY!;
+  const key = process.env.API_DATA_GOV_KEY!;
 
   it("/candidates/search response shape matches the FecCandidate interface", async () => {
     await pause();
