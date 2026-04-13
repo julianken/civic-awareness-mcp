@@ -1,5 +1,18 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { rmSync, existsSync } from "node:fs";
 import { normalizeName, levenshtein, fuzzyPick } from "../../../src/resolution/fuzzy.js";
+import { openStore, type Store } from "../../../src/core/store.js";
+import { seedJurisdictions } from "../../../src/core/seeds.js";
+import { upsertEntity } from "../../../src/core/entities.js";
+
+const TEST_DB = "./data/test-fuzzy.db";
+let store: Store;
+beforeEach(() => {
+  if (existsSync(TEST_DB)) rmSync(TEST_DB);
+  store = openStore(TEST_DB);
+  seedJurisdictions(store.db);
+});
+afterEach(() => store.close());
 
 describe("normalizeName", () => {
   it("lowercases", () => expect(normalizeName("Jane Doe")).toBe("jane doe"));
@@ -138,5 +151,41 @@ describe("fuzzyPick", () => {
       candidates,
     );
     expect(picked).toBeNull();
+  });
+});
+
+describe("upsertEntity — fuzzy fallback with linking signal", () => {
+  // "Laake" vs "Lake": Levenshtein distance 1, fits ACCEPT_DISTANCE.
+  // Role-jurisdiction overlap is the linking signal.
+  it("resolves typo name to existing legislator when role-jurisdiction overlaps", () => {
+    upsertEntity(store.db, {
+      kind: "person", name: "Lake",
+      external_ids: { openstates_person: "ocd-person/lake" },
+      metadata: {
+        roles: [{ jurisdiction: "us-tx", role: "state_legislator", from: "2021-01-12T00:00:00Z", to: null }],
+      },
+    });
+    const r = upsertEntity(store.db, {
+      kind: "person", name: "Laake",
+      metadata: {
+        roles: [{ jurisdiction: "us-tx", role: "state_legislator", from: "2025-09-01T00:00:00Z", to: null }],
+      },
+    });
+    expect(r.created).toBe(false);
+    expect(r.entity.external_ids.openstates_person).toBe("ocd-person/lake");
+    expect(r.entity.aliases).toContain("Laake");
+  });
+
+  it("does NOT fuzzy-resolve without a linking signal", () => {
+    upsertEntity(store.db, {
+      kind: "person", name: "Lake",
+      external_ids: { openstates_person: "ocd-person/lake" },
+      metadata: { roles: [{ jurisdiction: "us-tx", role: "state_legislator" }] },
+    });
+    // "Laake" is distance-1 from "Lake" but has no linking signal.
+    const r = upsertEntity(store.db, {
+      kind: "person", name: "Laake",
+    });
+    expect(r.created).toBe(true);
   });
 });

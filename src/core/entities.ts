@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { Entity, type EntityKind } from "./types.js";
-import { normalizeName } from "../resolution/fuzzy.js";
+import { fuzzyPick, normalizeName, type FuzzyCandidate, type UpstreamSignals } from "../resolution/fuzzy.js";
 
 export interface UpsertInput {
   kind: EntityKind;
@@ -36,16 +36,24 @@ export function upsertEntity(db: Database.Database, input: UpsertInput): UpsertR
 
   const existing =
     findByExternalIds(db, input.external_ids ?? {}) ??
-    findByExactName(db, input.kind, nameNorm, input.jurisdiction);
+    findByExactName(db, input.kind, nameNorm, input.jurisdiction) ??
+    findByFuzzy(db, input);
 
   if (existing) {
     const mergedIds = { ...existing.external_ids, ...(input.external_ids ?? {}) };
     const mergedAliases = mergeAliases(existing, input.name);
+    const mergedMetadata = mergeMetadata(existing.metadata, input.metadata ?? {});
     db.prepare(
-      "UPDATE entities SET external_ids = ?, aliases = ?, last_seen_at = ? WHERE id = ?",
-    ).run(JSON.stringify(mergedIds), JSON.stringify(mergedAliases), now, existing.id);
+      "UPDATE entities SET external_ids = ?, aliases = ?, metadata = ?, last_seen_at = ? WHERE id = ?",
+    ).run(
+      JSON.stringify(mergedIds),
+      JSON.stringify(mergedAliases),
+      JSON.stringify(mergedMetadata),
+      now,
+      existing.id,
+    );
     return {
-      entity: { ...existing, external_ids: mergedIds, aliases: mergedAliases, last_seen_at: now },
+      entity: { ...existing, external_ids: mergedIds, aliases: mergedAliases, metadata: mergedMetadata, last_seen_at: now },
       created: false,
     };
   }
@@ -110,9 +118,91 @@ function findByExactName(
   return rows.length === 1 ? rowToEntity(rows[0]) : null;
 }
 
+function findByFuzzy(db: Database.Database, input: UpsertInput): Entity | null {
+  const signals: UpstreamSignals = {
+    external_id_sources: Object.keys(input.external_ids ?? {}),
+    middle_name: extractMiddleName(input.name),
+    role_jurisdictions: rolesJurisdictions(input.metadata ?? {}),
+  };
+  const haveSignal =
+    signals.external_id_sources.length > 0 ||
+    signals.middle_name !== null ||
+    signals.role_jurisdictions.length > 0;
+  if (!haveSignal) return null;
+
+  const q = normalizeName(input.name);
+  const rows = db
+    .prepare(
+      `SELECT * FROM entities WHERE kind = ?
+         AND length(name_normalized) BETWEEN ? AND ?`,
+    )
+    .all(input.kind, Math.max(1, q.length - 1), q.length + 1) as Row[];
+  const candidates: (FuzzyCandidate & { row: Row })[] = rows.map((r) => {
+    const meta = JSON.parse(r.metadata) as { roles?: RoleEntry[] };
+    return {
+      id: r.id,
+      name: r.name,
+      external_id_sources: Object.keys(JSON.parse(r.external_ids)),
+      aliases: JSON.parse(r.aliases),
+      role_jurisdictions: (meta.roles ?? []).map((x) => x.jurisdiction),
+      row: r,
+    };
+  });
+  const picked = fuzzyPick(input.name, signals, candidates);
+  return picked ? rowToEntity(picked.row) : null;
+}
+
+function extractMiddleName(full: string): string | null {
+  const parts = full.trim().split(/\s+/);
+  return parts.length >= 3 ? parts[1] : null;
+}
+
+function rolesJurisdictions(metadata: Record<string, unknown>): string[] {
+  const roles = metadata.roles as RoleEntry[] | undefined;
+  return roles ? roles.map((r) => r.jurisdiction) : [];
+}
+
 function mergeAliases(existing: Entity, newName: string): string[] {
   if (newName === existing.name || existing.aliases.includes(newName)) return existing.aliases;
   return [...existing.aliases, newName];
+}
+
+interface RoleEntry {
+  jurisdiction: string;
+  role: string;
+  from?: string | null;
+  to?: string | null;
+}
+
+function mergeMetadata(
+  old: Record<string, unknown>,
+  incoming: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...old };
+  for (const [k, v] of Object.entries(incoming)) {
+    if (k === "roles") continue;
+    if (v === null || v === undefined) continue;
+    out[k] = v;
+  }
+  const mergedRoles = mergeRoles(
+    (old.roles as RoleEntry[] | undefined) ?? [],
+    (incoming.roles as RoleEntry[] | undefined) ?? [],
+  );
+  if (mergedRoles.length > 0) out.roles = mergedRoles;
+  return out;
+}
+
+function mergeRoles(old: RoleEntry[], incoming: RoleEntry[]): RoleEntry[] {
+  const key = (r: RoleEntry) => `${r.jurisdiction}|${r.role}|${r.from ?? ""}`;
+  const seen = new Set(old.map(key));
+  const out = [...old];
+  for (const r of incoming) {
+    if (!seen.has(key(r))) {
+      out.push(r);
+      seen.add(key(r));
+    }
+  }
+  return out;
 }
 
 export function findEntityById(db: Database.Database, id: string): Entity | null {

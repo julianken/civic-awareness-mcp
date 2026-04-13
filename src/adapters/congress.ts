@@ -285,29 +285,6 @@ export class CongressAdapter implements Adapter {
       },
     });
 
-    // If the entity already existed (cross-source merge or re-refresh),
-    // merge the new role into metadata.roles[] without overwriting any
-    // existing roles. upsertEntity only merges external_ids and aliases;
-    // we handle metadata.roles[] here explicitly.
-    if (!created) {
-      const existing = db
-        .prepare("SELECT metadata FROM entities WHERE id = ?")
-        .get(entity.id) as { metadata: string };
-      const meta = JSON.parse(existing.metadata) as { roles?: typeof newRole[] };
-      const currentRoles = meta.roles ?? [];
-      const alreadyHasFederalRole = currentRoles.some(
-        (r) => r.jurisdiction === "us-federal" && r.role === role,
-      );
-      if (!alreadyHasFederalRole) {
-        const updatedRoles = [...currentRoles, newRole];
-        const updatedMeta = { ...meta, roles: updatedRoles };
-        db.prepare("UPDATE entities SET metadata = ? WHERE id = ?").run(
-          JSON.stringify(updatedMeta),
-          entity.id,
-        );
-      }
-    }
-
     return entity.id;
   }
 
