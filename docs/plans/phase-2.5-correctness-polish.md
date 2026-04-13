@@ -295,39 +295,41 @@ Add to `tests/unit/resolution/fuzzy.test.ts`:
 import { upsertEntity } from "../../../src/core/entities.js";
 
 describe("upsertEntity — fuzzy fallback with linking signal", () => {
-  it("resolves surname-only sponsor to existing legislator when role-jurisdiction overlaps", () => {
+  it("resolves close name variant to existing legislator when role-jurisdiction overlaps", () => {
     upsertEntity(store.db, {
-      kind: "person", name: "Tracy King",
-      external_ids: { openstates_person: "ocd-person/king" },
+      kind: "person", name: "Lake",
+      external_ids: { openstates_person: "ocd-person/lake" },
       metadata: {
         roles: [{ jurisdiction: "us-tx", role: "state_legislator", from: "2021-01-12T00:00:00Z", to: null }],
       },
     });
     const r = upsertEntity(store.db, {
-      kind: "person", name: "King",  // surname-only — typical OpenStates journal shorthand
+      kind: "person", name: "Laake",  // distance-1 typo with role-jurisdiction overlap
       metadata: {
         roles: [{ jurisdiction: "us-tx", role: "state_legislator", from: "2025-09-01T00:00:00Z", to: null }],
       },
     });
     expect(r.created).toBe(false);
-    expect(r.entity.external_ids.openstates_person).toBe("ocd-person/king");
-    expect(r.entity.aliases).toContain("King");
+    expect(r.entity.external_ids.openstates_person).toBe("ocd-person/lake");
+    expect(r.entity.aliases).toContain("Laake");
   });
 
   it("does NOT fuzzy-resolve without a linking signal", () => {
     upsertEntity(store.db, {
-      kind: "person", name: "Ron Reynolds",
-      external_ids: { openstates_person: "ocd-person/rr" },
+      kind: "person", name: "Lake",
+      external_ids: { openstates_person: "ocd-person/lake" },
       metadata: { roles: [{ jurisdiction: "us-tx", role: "state_legislator" }] },
     });
     const r = upsertEntity(store.db, {
-      kind: "person", name: "Reynolds",
+      kind: "person", name: "Laake",
       // no external_ids, no role_jurisdictions, no middle name → no link signal
     });
     expect(r.created).toBe(true);
   });
 });
 ```
+
+*(Historical note: an earlier draft of this plan used "Tracy King" / "King" to illustrate surname-only matching. That case is edit-distance 6 and correctly rejected by `fuzzyPick` (ACCEPT_DISTANCE=1); the implementer substituted the distance-1 "Lake"/"Laake" pair. Surname-only resolution from journal shorthand remains an unsolved V1 gap — fuzzy-Levenshtein cannot bridge it; an alias-population path from OpenStates `sort_name` or similar would be needed.)*
 
 - [ ] **Step 3.2: Run to verify failure**
 
