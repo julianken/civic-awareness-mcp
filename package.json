@@ -2,6 +2,25 @@
   "name": "civic-awareness-mcp",
   "version": "0.0.1",
   "description": "MCP server for US federal and state legislative civic data",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "llm-tools",
+    "openstates",
+    "congress-gov",
+    "openfec",
+    "civic-tech",
+    "legislative-data"
+  ],
+  "homepage": "https://github.com/julianken/civic-awareness-mcp#readme",
+  "bugs": "https://github.com/julianken/civic-awareness-mcp/issues",
+  "license": "MIT",
+  "author": "Julian (https://github.com/julianken)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/julianken/civic-awareness-mcp.git"
+  },
   "type": "module",
   "main": "dist/index.js",
   "bin": {
