@@ -113,6 +113,32 @@ describe("recent_bills tool", () => {
     expect(r.sponsor_summary.top[0].role).toBe("sponsor");
   });
 
+  it("falls back to by_party.unknown when a sponsor lacks party metadata", async () => {
+    const { entity: withParty } = upsertEntity(store.db, {
+      kind: "person", name: "HasParty",
+      external_ids: { openstates_person: "hp" },
+      metadata: { party: "Republican" },
+    });
+    const { entity: noParty } = upsertEntity(store.db, {
+      kind: "person", name: "NoPartyPerson",
+    });
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "SB X — Test",
+      occurred_at: new Date().toISOString(),
+      source: { name: "openstates", id: "x", url: "https://ex" },
+      references: [
+        { entity_id: withParty.id, role: "sponsor" },
+        { entity_id: noParty.id,   role: "cosponsor" },
+      ],
+      raw: { actions: [] },
+    });
+    const res = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
+    expect(res.results[0].sponsor_summary.by_party).toMatchObject({
+      Republican: 1,
+      unknown: 1,
+    });
+  });
+
   it("20-bill response fits under 30KB", async () => {
     for (let b = 0; b < 20; b++) {
       const refs: Array<{ entity_id: string; role: "sponsor" | "cosponsor" }> = [];

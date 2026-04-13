@@ -44,12 +44,17 @@ function buildSponsorSummary(
   const allRows = db
     .prepare(`SELECT id, name, metadata FROM entities WHERE id IN (${allPlaceholders})`)
     .all(...filtered.map((r) => r.entity_id)) as Array<{ id: string; name: string; metadata: string }>;
-  const byId = new Map(allRows.map((r) => [r.id, r]));
+  const byId = new Map(
+    allRows.map((r) => [
+      r.id,
+      { name: r.name, meta: JSON.parse(r.metadata) as { party?: string } },
+    ]),
+  );
 
   const by_party: Record<string, number> = {};
   for (const r of filtered) {
     const e = byId.get(r.entity_id);
-    const party = e ? (JSON.parse(e.metadata) as { party?: string }).party ?? "unknown" : "unknown";
+    const party = e?.meta.party ?? "unknown";
     by_party[party] = (by_party[party] ?? 0) + 1;
   }
 
@@ -61,11 +66,10 @@ function buildSponsorSummary(
 
   const top = topRefs.map((r) => {
     const e = byId.get(r.entity_id);
-    const party = e ? (JSON.parse(e.metadata) as { party?: string }).party : undefined;
     return {
       entity_id: r.entity_id,
       name: e?.name ?? "Unknown",
-      party,
+      party: e?.meta.party,
       role: r.role as "sponsor" | "cosponsor",
     };
   });
