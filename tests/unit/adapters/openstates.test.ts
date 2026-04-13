@@ -186,6 +186,42 @@ describe("OpenStatesAdapter", () => {
     expect(row.occurred_at).toMatch(/^2026-04-01T/);
   });
 
+  it("falls back to updated_at when last action lacks a date field", async () => {
+    const bill = {
+      ...SAMPLE_BILL,
+      updated_at: "2026-04-10T10:00:00Z",
+      actions: [
+        { date: "2025-09-17", description: "introduced" },
+        { description: "no date recorded" },
+      ],
+    };
+    vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
+      const u = String(url);
+      if (u.includes("/people")) {
+        return new Response(
+          JSON.stringify({ results: [SAMPLE_PERSON], pagination: { max_page: 1, page: 1 } }),
+          { status: 200 },
+        );
+      }
+      if (u.includes("/bills")) {
+        return new Response(
+          JSON.stringify({ results: [bill], pagination: { max_page: 1, page: 1 } }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    const adapter = new OpenStatesAdapter({ apiKey: "test" });
+    await adapter.refresh({ db: store.db, jurisdiction: "tx" });
+
+    const row = store.db
+      .prepare("SELECT occurred_at FROM documents WHERE kind = 'bill'")
+      .get() as { occurred_at: string };
+    // Last action has no date → adapter falls through to updated_at.
+    expect(row.occurred_at).toMatch(/^2026-04-10T/);
+  });
+
   // Regression test: OpenStates v3 rejects comma-separated `include`
   // with HTTP 422. The API expects `include` as a repeated query
   // parameter (include=sponsorships&include=abstracts&include=actions),
