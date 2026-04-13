@@ -2,6 +2,7 @@ import { openStore } from "../core/store.js";
 import { seedJurisdictions } from "../core/seeds.js";
 import { OpenStatesAdapter } from "../adapters/openstates.js";
 import { CongressAdapter } from "../adapters/congress.js";
+import { OpenFecAdapter } from "../adapters/openfec.js";
 import { requireEnv, optionalEnv } from "../util/env.js";
 import { logger } from "../util/logger.js";
 
@@ -45,7 +46,22 @@ async function main(): Promise<void> {
   const store = openStore(dbPath);
   seedJurisdictions(store.db);
 
-  if (args.source === "congress") {
+  if (args.source === "openfec") {
+    const adapter = new OpenFecAdapter({
+      apiKey: requireEnv("FEC_API_KEY"),
+    });
+    logger.info("refreshing source", { source: "openfec" });
+    const result = await adapter.refresh({ db: store.db, maxPages: args.maxPages });
+    logger.info("refresh complete", {
+      source: result.source,
+      entitiesUpserted: result.entitiesUpserted,
+      documentsUpserted: result.documentsUpserted,
+      errorCount: result.errors.length,
+    });
+    if (result.errors.length > 0) {
+      logger.error("openfec refresh had errors", { errors: result.errors });
+    }
+  } else if (args.source === "congress") {
     const adapter = new CongressAdapter({
       apiKey: requireEnv("CONGRESS_API_KEY"),
     });
@@ -81,7 +97,9 @@ async function main(): Promise<void> {
       }
     }
   } else {
-    logger.error("unknown source; valid values: openstates, congress", { source: args.source });
+    logger.error("unknown source; valid values: openstates, congress, openfec", {
+      source: args.source,
+    });
     process.exit(1);
   }
 

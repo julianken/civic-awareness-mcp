@@ -53,3 +53,58 @@ describe("refresh CLI — congress source", () => {
     expect(urls.every((u) => !/\/[a-z]{2}\//.test(u))).toBe(true);
   });
 });
+
+describe("refresh CLI — openfec source", () => {
+  it("runs OpenFecAdapter.refresh() with no jurisdiction and returns no errors", async () => {
+    vi.spyOn(global, "fetch").mockImplementation(async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u.includes("/candidates/search"))
+        return new Response(
+          JSON.stringify({ results: [], pagination: { count: 0, pages: 1 } }),
+          { status: 200 },
+        );
+      if (u.includes("/committees"))
+        return new Response(
+          JSON.stringify({ results: [], pagination: { count: 0, pages: 1 } }),
+          { status: 200 },
+        );
+      if (u.includes("/schedules/schedule_a"))
+        return new Response(
+          JSON.stringify({ results: [], pagination: { count: 0, pages: 1 } }),
+          { status: 200 },
+        );
+      if (u.includes("/schedules/schedule_b"))
+        return new Response(
+          JSON.stringify({ results: [], pagination: { count: 0, pages: 1 } }),
+          { status: 200 },
+        );
+      return new Response("not found", { status: 404 });
+    });
+
+    const { OpenFecAdapter } = await import("../../../src/adapters/openfec.js");
+    const adapter = new OpenFecAdapter({ apiKey: "test-key", cycles: [2026] });
+    const result = await adapter.refresh({ db: store.db, maxPages: 1 });
+    expect(result.source).toBe("openfec");
+    expect(result.errors).toEqual([]);
+  });
+
+  it("openfec URLs contain no bare 2-letter state path segment", async () => {
+    vi.spyOn(global, "fetch").mockImplementation(async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u.includes("/candidates/search") || u.includes("/committees") ||
+          u.includes("/schedules/schedule_a") || u.includes("/schedules/schedule_b")) {
+        return new Response(
+          JSON.stringify({ results: [], pagination: { count: 0, pages: 1 } }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    });
+    const mockFetch = vi.mocked(global.fetch);
+    const { OpenFecAdapter } = await import("../../../src/adapters/openfec.js");
+    const adapter = new OpenFecAdapter({ apiKey: "test-key", cycles: [2026] });
+    await adapter.refresh({ db: store.db, maxPages: 1 });
+    const urls = mockFetch.mock.calls.map((c) => String(c[0]));
+    expect(urls.every((u) => !/\/[a-z]{2}\//.test(u))).toBe(true);
+  });
+});
