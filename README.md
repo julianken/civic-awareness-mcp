@@ -6,19 +6,62 @@ votes, committees, Members of Congress, state legislators, and
 federal campaign finance — with both time-ordered **feed** tools and
 entity-resolved **profile/connection** tools.
 
-**Status:** Planning complete; implementation not started. All key
-decisions finalized 2026-04-12 (see `docs/06-open-decisions.md`).
+**Status:** Phase 1 scaffolding complete. MCP server skeleton,
+SQLite-backed entity/document store, and TDD harness are in place.
+Phase 2 (OpenStates adapter + first 4 tools) is the next phase.
+
+## Running locally
+
+```bash
+pnpm install
+pnpm bootstrap   # creates ./data/civic-awareness.db with seeded jurisdictions
+pnpm test        # runs the full test suite
+pnpm typecheck   # tsc --noEmit
+pnpm build       # produces dist/
+pnpm start       # runs the MCP over stdio (after build)
+# or:
+pnpm dev         # runs the MCP directly via tsx (no build step)
+```
+
+Environment variables:
+
+- `CIVIC_AWARENESS_DB_PATH` — overrides the default SQLite path
+  (`./data/civic-awareness.db`). Useful when the MCP is launched
+  by Claude Desktop from an arbitrary working directory.
+- `LOG_LEVEL` — one of `debug`, `info`, `warn`, `error` (default
+  `info`). Logs are structured JSON emitted to stderr.
+
+Claude Desktop config
+(`~/Library/Application Support/Claude/claude_desktop_config.json`
+on macOS):
+
+```json
+{
+  "mcpServers": {
+    "civic-awareness": {
+      "command": "node",
+      "args": ["/absolute/path/to/civic-awareness-mcp/dist/index.js"],
+      "env": {
+        "CIVIC_AWARENESS_DB_PATH": "/absolute/path/to/civic-awareness.db"
+      }
+    }
+  }
+}
+```
+
+Phase 1 does not yet expose any tools to the LLM (see
+[`docs/05-tool-surface.md`](./docs/05-tool-surface.md)); the server
+is fully functional as an MCP endpoint but its tool registry is
+empty. Tools land in Phase 2.
 
 ## Quickstart for future Claude Code sessions
 
-This repo is currently a **planning-only** scaffold. To begin building:
-
 1. Open this folder in Claude Code.
-2. Claude will read `CLAUDE.md` automatically.
-3. Claude reads the planning docs, confirms scope understanding with
-   the human, then executes `docs/plans/phase-1-foundation.md`
-   task-by-task via the `superpowers:subagent-driven-development` or
-   `superpowers:executing-plans` skill.
+2. Claude reads `CLAUDE.md` automatically.
+3. Claude reads the planning docs, confirms scope, and proceeds to
+   `docs/plans/phase-2-openstates.md` (Phase 1 is complete). Use
+   `superpowers:subagent-driven-development` or
+   `superpowers:executing-plans`.
 
 ## Documentation map
 
