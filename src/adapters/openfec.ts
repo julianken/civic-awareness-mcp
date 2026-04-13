@@ -93,9 +93,14 @@ export interface OpenFecAdapterOptions {
 
 /**
  * Convert an FEC office code to a human-readable role string used in
- * metadata.roles[].
+ * metadata.roles[]. Distinct roles per office so that downstream
+ * tools can filter "all federal House candidates" vs "all Senate
+ * candidates" without re-parsing raw data.
  */
 function officeToRole(office: string): string {
+  if (office === "H") return "federal_candidate_representative";
+  if (office === "S") return "federal_candidate_senator";
+  if (office === "P") return "federal_candidate_president";
   return "federal_candidate";
 }
 
@@ -122,11 +127,6 @@ function titleCase(name: string): string {
   return name
     .toLowerCase()
     .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-/** Build the human-facing FEC candidate URL. */
-function candidateUrl(candidateId: string): string {
-  return `https://www.fec.gov/data/candidate/${candidateId}/`;
 }
 
 /** Build the human-facing FEC committee URL. */

@@ -145,11 +145,13 @@ describe("OpenFecAdapter", () => {
     // D3b: Persons are cross-jurisdiction — jurisdiction column NULL.
     expect(row.jurisdiction).toBeNull();
 
-    // federal_candidate role in metadata.roles[].
+    // Sample candidate has office="H" → role="federal_candidate_representative".
+    // Other office codes map to "_senator" / "_president" / generic
+    // "federal_candidate" — see officeToRole in src/adapters/openfec.ts.
     const meta = JSON.parse(row.metadata) as {
       roles?: Array<{ jurisdiction: string; role: string }>;
     };
-    expect(meta.roles?.some((r) => r.role === "federal_candidate")).toBe(true);
+    expect(meta.roles?.some((r) => r.role === "federal_candidate_representative")).toBe(true);
     expect(meta.roles?.some((r) => r.jurisdiction === "us-federal")).toBe(true);
   });
 
@@ -305,7 +307,7 @@ describe("OpenFecAdapter", () => {
     };
     const roleNames = (meta.roles ?? []).map((r) => r.role);
     expect(roleNames).toContain("representative");
-    expect(roleNames).toContain("federal_candidate");
+    expect(roleNames).toContain("federal_candidate_representative");
   });
 
   // ── Test 6: Contributor identity isolation ────────────────────────
