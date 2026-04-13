@@ -71,4 +71,35 @@ describe("get_entity", () => {
     const congressSource = res.sources.find((s) => s.name === "congress");
     expect(congressSource?.url).toMatch(/congress\.gov/);
   });
+
+  it("emits fec.gov source URL when entity has a fec_candidate external_id", async () => {
+    const { entity } = upsertEntity(store.db, {
+      kind: "person",
+      name: "Smith, John R.",
+      jurisdiction: undefined,
+      external_ids: { fec_candidate: "H0AZ01234", bioguide: "S001234" },
+      metadata: {
+        roles: [{ jurisdiction: "us-federal", role: "federal_candidate_representative" }],
+      },
+    });
+
+    const res = await handleGetEntity(store.db, { id: entity.id });
+    const fecSource = res.sources.find((s) => s.url.includes("fec.gov/data/candidate"));
+    expect(fecSource).toBeDefined();
+    expect(fecSource!.url).toBe("https://www.fec.gov/data/candidate/H0AZ01234/");
+  });
+
+  it("emits fec.gov source URL when entity has a fec_committee external_id", async () => {
+    const { entity } = upsertEntity(store.db, {
+      kind: "pac",
+      name: "Smith for Congress",
+      jurisdiction: "us-federal",
+      external_ids: { fec_committee: "C00123456" },
+    });
+
+    const res = await handleGetEntity(store.db, { id: entity.id });
+    const fecSource = res.sources.find((s) => s.url.includes("fec.gov/data/committee"));
+    expect(fecSource).toBeDefined();
+    expect(fecSource!.url).toBe("https://www.fec.gov/data/committee/C00123456/");
+  });
 });

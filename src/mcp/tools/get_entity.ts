@@ -38,16 +38,39 @@ export async function handleGetEntity(
     };
   });
 
-  const sources = Array.from(sourceKeys.values()).map(({ name, jurisdiction }) => {
+  const sources: Array<{ name: string; url: string }> = [];
+
+  // Document-level sources (derived from the documents this entity
+  // appears in as a reference).
+  for (const { name, jurisdiction } of sourceKeys.values()) {
     if (name === "openstates") {
       const stateAbbr = jurisdiction.replace(/^us-/, "");
-      return { name, url: `https://openstates.org/${stateAbbr}/` };
+      sources.push({ name, url: `https://openstates.org/${stateAbbr}/` });
+    } else if (name === "congress") {
+      sources.push({ name, url: "https://www.congress.gov/" });
+    } else if (name === "openfec") {
+      sources.push({ name, url: "https://www.fec.gov/" });
+    } else {
+      sources.push({ name, url: "" });
     }
-    if (name === "congress") {
-      return { name, url: "https://www.congress.gov/" };
-    }
-    return { name, url: "" };
-  });
+  }
+
+  // Entity-level FEC URLs — a Person or Organization can be on fec.gov
+  // even when none of the currently-referenced documents come from
+  // openfec (e.g., a Member of Congress with an fec_candidate ID
+  // before any contributions have been ingested).
+  if (entity.external_ids.fec_candidate) {
+    sources.push({
+      name: "openfec",
+      url: `https://www.fec.gov/data/candidate/${entity.external_ids.fec_candidate}/`,
+    });
+  }
+  if (entity.external_ids.fec_committee) {
+    sources.push({
+      name: "openfec",
+      url: `https://www.fec.gov/data/committee/${entity.external_ids.fec_committee}/`,
+    });
+  }
 
   return {
     entity,
