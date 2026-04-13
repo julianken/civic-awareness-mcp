@@ -88,6 +88,47 @@ describe("fuzzyPick", () => {
     expect(picked).toBeNull();
   });
 
+  it("runner-up within distance 3 rejects the match (ambiguity guard)", () => {
+    // Two candidates both very close to the query — classic ambiguity.
+    // Even with a valid linking signal, the result must be null so
+    // under-match bias kicks in and a new entity is created instead
+    // of merging the wrong one.
+    const ambiguousCandidates = [
+      {
+        id: "a",
+        name: "Jane Doe",
+        external_id_sources: ["openstates_person"],
+        aliases: [],
+        role_jurisdictions: ["us-tx"],
+      },
+      {
+        id: "b",
+        name: "Jane Dae",
+        external_id_sources: ["openstates_person"],
+        aliases: [],
+        role_jurisdictions: ["us-tx"],
+      },
+    ];
+    const picked = fuzzyPick(
+      "Jane Doe",
+      { external_id_sources: ["openstates_person"], middle_name: null, role_jurisdictions: [] },
+      ambiguousCandidates,
+    );
+    expect(picked).toBeNull();
+  });
+
+  it("normalizes hyphenated and apostrophised names consistently", () => {
+    // Documents the chosen punctuation-strip behavior so future edits
+    // don't accidentally change it. Hyphens and apostrophes collapse
+    // into adjacent tokens — "O'Brien-Smith" → "obriensmith" — which
+    // means hyphenated surnames will NOT fuzzy-match against their
+    // space-separated equivalents without an alias linking them.
+    // Alias-based linking in hasLinkingSignal is the designed
+    // mitigation for this trade-off.
+    expect(normalizeName("O'Brien-Smith")).toBe("obriensmith");
+    expect(normalizeName("Smith-Jones")).not.toBe(normalizeName("Smith Jones"));
+  });
+
   it("no close match returns null", () => {
     // Query is clearly distant from every candidate — tests that
     // best.d > ACCEPT_DISTANCE produces null even with a linking signal.

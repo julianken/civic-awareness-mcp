@@ -870,9 +870,17 @@ describe("fuzzyPick", () => {
 
 ```ts
 export function normalizeName(input: string): string {
+  // Non-alphanumeric characters are deleted (replaced with ""),
+  // not replaced with a space. This matches the test expectation
+  // that "O'Brien, Jr." → "obrien jr" (the apostrophe and comma
+  // collapse adjacent tokens). The tradeoff: "Pérez-García" becomes
+  // "perezgarca" rather than "perez garca", so hyphenated surnames
+  // will not fuzzy-match against their space-separated equivalents
+  // without an alias linking them. Alias-based linking in
+  // hasLinkingSignal is the designed mitigation.
   return input
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/[^\p{L}\p{N}\s]/gu, "")
     .replace(/\s+/g, " ")
     .trim();
 }
