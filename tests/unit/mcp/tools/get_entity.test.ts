@@ -38,4 +38,37 @@ describe("get_entity", () => {
   it("throws for unknown id", async () => {
     await expect(handleGetEntity(store.db, { id: "missing" })).rejects.toThrow();
   });
+  it("surfaces federal role URL in sources when entity has a bioguide ID", async () => {
+    const { entity } = upsertEntity(store.db, {
+      kind: "person",
+      name: "Schumer, Charles E.",
+      jurisdiction: undefined,
+      external_ids: { bioguide: "S000148" },
+      metadata: {
+        roles: [
+          { jurisdiction: "us-ny",      role: "state_legislator", from: "1981-01-01T00:00:00.000Z", to: "1999-01-03T00:00:00.000Z" },
+          { jurisdiction: "us-federal", role: "senator",          from: "1999-01-03T00:00:00.000Z", to: null },
+        ],
+      },
+    });
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-federal", title: "HR1 — A federal bill",
+      occurred_at: new Date().toISOString(),
+      source: {
+        name: "congress",
+        id: "119-hr-1",
+        url: "https://www.congress.gov/bill/119th-congress/house-bill/1",
+      },
+      references: [{ entity_id: entity.id, role: "sponsor" }],
+    });
+
+    const res = await handleGetEntity(store.db, { id: entity.id });
+    const roles = (res.entity.metadata.roles ?? []) as Array<{ jurisdiction: string }>;
+    const jurisdictions = roles.map((r) => r.jurisdiction);
+    expect(jurisdictions).toContain("us-ny");
+    expect(jurisdictions).toContain("us-federal");
+
+    const congressSource = res.sources.find((s) => s.name === "congress");
+    expect(congressSource?.url).toMatch(/congress\.gov/);
+  });
 });

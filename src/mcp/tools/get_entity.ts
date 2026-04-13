@@ -43,6 +43,9 @@ export async function handleGetEntity(
       const stateAbbr = jurisdiction.replace(/^us-/, "");
       return { name, url: `https://openstates.org/${stateAbbr}/` };
     }
+    if (name === "congress") {
+      return { name, url: "https://www.congress.gov/" };
+    }
     return { name, url: "" };
   });
 
