@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { queryDocuments } from "../../core/documents.js";
 import { RecentContributionsInput } from "../schemas.js";
+import { escapeLike } from "../../util/sql.js";
 
 export interface ContributorRef {
   name: string;
@@ -49,10 +50,10 @@ export async function handleRecentContributions(
       .prepare(
         `SELECT id FROM entities
          WHERE kind IN ('pac', 'organization', 'committee', 'person')
-           AND name_normalized LIKE ?
+           AND name_normalized LIKE ? ESCAPE '\\'
          LIMIT 1`,
       )
-      .get(`%${q}%`) as { id: string } | undefined;
+      .get(`%${escapeLike(q)}%`) as { id: string } | undefined;
     recipientEntityId = match?.id;
   }
 

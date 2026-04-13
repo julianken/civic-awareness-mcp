@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { ResolvePersonInput } from "../schemas.js";
 import { normalizeName, levenshtein } from "../../resolution/fuzzy.js";
+import { escapeLike } from "../../util/sql.js";
 
 interface PersonRow {
   id: string;
@@ -101,8 +102,10 @@ export async function handleResolvePerson(
   // as a substring (fast). Then re-normalize each alias in JS for
   // correctness.
   const aliasPreFilter = db
-    .prepare("SELECT * FROM entities WHERE kind = 'person' AND aliases LIKE ?")
-    .all(`%${input.name}%`) as PersonRow[];
+    .prepare(
+      "SELECT * FROM entities WHERE kind = 'person' AND aliases LIKE ? ESCAPE '\\'",
+    )
+    .all(`%${escapeLike(input.name)}%`) as PersonRow[];
 
   for (const row of aliasPreFilter) {
     if (best.has(row.id)) continue; // already matched as exact

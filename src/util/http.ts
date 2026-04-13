@@ -52,7 +52,14 @@ export async function rateLimitedFetch(url: string, opts: FetchOptions): Promise
   let attempt = 0;
   while (true) {
     if (rateLimiter) await rateLimiter.acquire();
-    const res = await fetch(url, { ...init, headers });
+    // redirect: "error" is a defense-in-depth measure: the three upstream
+    // civic APIs (OpenStates, Congress.gov, OpenFEC) don't issue 30x
+    // responses on their documented endpoints, so an unexpected redirect
+    // is a signal something is wrong (DNS redirection, captive portal,
+    // provider outage redirecting to a status page). Surfacing it loudly
+    // is safer than silently following a redirect that could leak the
+    // request's timing or the User-Agent to an unintended destination.
+    const res = await fetch(url, { ...init, headers, redirect: "error" });
     if (res.status === 429 || res.status >= 500) {
       if (attempt >= retries) return res;
       const retryAfter = Number(res.headers.get("Retry-After") ?? 0) * 1000;

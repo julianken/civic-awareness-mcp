@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { SearchDocumentsInput } from "../schemas.js";
+import { escapeLike } from "../../util/sql.js";
 
 export interface DocumentMatch {
   id: string;
@@ -27,8 +28,8 @@ export async function handleSearchDocuments(
   rawInput: unknown,
 ): Promise<SearchDocumentsResponse> {
   const input = SearchDocumentsInput.parse(rawInput);
-  const clauses = ["title LIKE ?"];
-  const params: unknown[] = [`%${input.q}%`];
+  const clauses = ["title LIKE ? ESCAPE '\\'"];
+  const params: unknown[] = [`%${escapeLike(input.q)}%`];
   if (input.kinds?.length) {
     const qs = input.kinds.map(() => "?").join(",");
     clauses.push(`kind IN (${qs})`);

@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { SearchEntitiesInput } from "../schemas.js";
 import { normalizeName } from "../../resolution/fuzzy.js";
+import { escapeLike } from "../../util/sql.js";
 
 export interface EntityMatch {
   id: string;
@@ -31,9 +32,9 @@ export async function handleSearchEntities(
   rawInput: unknown,
 ): Promise<SearchEntitiesResponse> {
   const input = SearchEntitiesInput.parse(rawInput);
-  const needle = `%${normalizeName(input.q)}%`;
+  const needle = `%${escapeLike(normalizeName(input.q))}%`;
 
-  const clauses = ["e.name_normalized LIKE ?"];
+  const clauses = ["e.name_normalized LIKE ? ESCAPE '\\'"];
   const params: unknown[] = [needle];
   if (input.kind) {
     clauses.push("e.kind = ?");
