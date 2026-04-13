@@ -2,12 +2,14 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { openStore, type Store } from "../core/store.js";
 import { handleRecentBills } from "./tools/recent_bills.js";
 import { handleRecentVotes } from "./tools/recent_votes.js";
+import { handleRecentContributions } from "./tools/recent_contributions.js";
 import { handleSearchEntities } from "./tools/search_entities.js";
 import { handleGetEntity } from "./tools/get_entity.js";
 import { handleSearchDocuments } from "./tools/search_civic_documents.js";
 import {
   RecentBillsInput,
   RecentVotesInput,
+  RecentContributionsInput,
   SearchEntitiesInput,
   GetEntityInput,
   SearchDocumentsInput,
@@ -19,7 +21,7 @@ export interface CivicAwarenessServer { mcp: McpServer; store: Store }
 export function buildServer(opts: BuildServerOptions): CivicAwarenessServer {
   const store = openStore(opts.dbPath);
   const mcp = new McpServer(
-    { name: "civic-awareness-mcp", version: "0.0.3" },
+    { name: "civic-awareness-mcp", version: "0.0.4" },
     { capabilities: { tools: {} } },
   );
 
@@ -54,11 +56,27 @@ export function buildServer(opts: BuildServerOptions): CivicAwarenessServer {
   );
 
   mcp.registerTool(
+    "recent_contributions",
+    {
+      description:
+        "List itemized federal campaign contributions from OpenFEC. " +
+        "A date window (from/to ISO datetimes) is required. " +
+        "Optionally filter by candidate or committee name and minimum amount. " +
+        "Contributor addresses and employer information are never exposed.",
+      inputSchema: RecentContributionsInput.shape,
+    },
+    async (input) => {
+      const data = await handleRecentContributions(store.db, input);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    },
+  );
+
+  mcp.registerTool(
     "search_entities",
     {
       description:
         "Search for people or organizations by name across all ingested jurisdictions " +
-        "(U.S. state legislatures and federal Congress).",
+        "(U.S. state legislatures, federal Congress, and federal campaign committees).",
       inputSchema: SearchEntitiesInput.shape,
     },
     async (input) => {
@@ -73,7 +91,7 @@ export function buildServer(opts: BuildServerOptions): CivicAwarenessServer {
       description:
         "Fetch a single entity by ID with recent related documents. " +
         "For Persons, returns the cross-jurisdiction roles[] history spanning " +
-        "state and federal offices.",
+        "state and federal offices and campaign candidacies.",
       inputSchema: GetEntityInput.shape,
     },
     async (input) => {
@@ -86,8 +104,8 @@ export function buildServer(opts: BuildServerOptions): CivicAwarenessServer {
     "search_civic_documents",
     {
       description:
-        "Search civic documents (U.S. state and federal bills, votes) " +
-        "by title across all ingested jurisdictions.",
+        "Search civic documents (U.S. state and federal bills, votes, and " +
+        "federal campaign contributions) by title across all ingested jurisdictions.",
       inputSchema: SearchDocumentsInput.shape,
     },
     async (input) => {
