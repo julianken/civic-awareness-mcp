@@ -89,6 +89,34 @@ describe("get_entity", () => {
     expect(fecSource!.url).toBe("https://www.fec.gov/data/candidate/H0AZ01234/");
   });
 
+  it("recent_documents exposes action_date on each item and sorts by it", async () => {
+    const { entity } = upsertEntity(store.db, {
+      kind: "person", name: "Sen. B",
+      external_ids: { openstates_person: "ocd-person/b" },
+    });
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "SB 1 — Older action",
+      occurred_at: "2025-06-01T00:00:00Z",
+      source: { name: "openstates", id: "1", url: "https://example.com/1" },
+      references: [{ entity_id: entity.id, role: "sponsor" }],
+      raw: { actions: [{ date: "2025-06-01", description: "intro" }] },
+    });
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "SB 2 — Newer action",
+      occurred_at: "2025-09-18T00:00:00Z",
+      source: { name: "openstates", id: "2", url: "https://example.com/2" },
+      references: [{ entity_id: entity.id, role: "sponsor" }],
+      raw: { actions: [{ date: "2025-09-18", description: "enacted" }] },
+    });
+    const res = await handleGetEntity(store.db, { id: entity.id });
+    expect(res.recent_documents.map((d) => d.title)).toEqual([
+      "SB 2 — Newer action",
+      "SB 1 — Older action",
+    ]);
+    expect(res.recent_documents[0].action_date).toBe("2025-09-18");
+    expect(res.recent_documents[0].occurred_at).toMatch(/^2025-09-18T/);
+  });
+
   it("emits fec.gov source URL when entity has a fec_committee external_id", async () => {
     const { entity } = upsertEntity(store.db, {
       kind: "pac",

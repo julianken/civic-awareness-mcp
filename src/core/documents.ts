@@ -21,14 +21,15 @@ interface DocRow {
   source_name: string; source_id: string; source_url: string; raw: string;
 }
 
-function rowToDoc(r: DocRow, refs: EntityReference[] = []): Document {
-  return Document.parse({
+function rowToDoc(r: DocRow, refs: EntityReference[] = [], actionDate?: string | null): Document {
+  const parsed = Document.parse({
     id: r.id, kind: r.kind, jurisdiction: r.jurisdiction, title: r.title,
     summary: r.summary ?? undefined,
     occurred_at: r.occurred_at, fetched_at: r.fetched_at,
     source: { name: r.source_name, id: r.source_id, url: r.source_url },
     references: refs, raw: JSON.parse(r.raw),
   });
+  return actionDate !== undefined ? { ...parsed, action_date: actionDate } : parsed;
 }
 
 function writeReferences(db: Database.Database, docId: string, refs: EntityReference[]): void {
@@ -154,12 +155,14 @@ export function findDocumentsByEntity(
 ): Document[] {
   const rows = db
     .prepare(
-      `SELECT DISTINCT d.* FROM documents d
-       JOIN document_references r ON d.id = r.document_id
-       WHERE r.entity_id = ?
-       ORDER BY d.occurred_at DESC
-       LIMIT ?`,
+      `SELECT DISTINCT d.*,
+              json_extract(d.raw, '$.actions[#-1].date') AS action_date
+         FROM documents d
+         JOIN document_references r ON d.id = r.document_id
+         WHERE r.entity_id = ?
+         ORDER BY COALESCE(json_extract(d.raw, '$.actions[#-1].date'), d.occurred_at) DESC
+         LIMIT ?`,
     )
-    .all(entityId, limit) as DocRow[];
-  return rows.map((r) => rowToDoc(r, loadRefs(db, r.id)));
+    .all(entityId, limit) as Array<DocRow & { action_date: string | null }>;
+  return rows.map((r) => rowToDoc(r, loadRefs(db, r.id), r.action_date));
 }

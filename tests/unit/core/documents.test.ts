@@ -107,6 +107,54 @@ describe("upsertDocument", () => {
   });
 });
 
+describe("findDocumentsByEntity", () => {
+  it("findDocumentsByEntity returns action_date alongside occurred_at", () => {
+    const { entity } = upsertEntity(store.db, {
+      kind: "person", name: "Test Senator",
+      external_ids: { openstates_person: "ocd-person/t" },
+    });
+    upsertDocument(store.db, {
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "SB 99 — Test",
+      occurred_at: "2025-09-18T00:00:00Z",
+      source: { name: "openstates", id: "ocd-bill/99", url: "https://example.com/99" },
+      references: [{ entity_id: entity.id, role: "sponsor" }],
+      raw: { actions: [
+        { date: "2025-09-01", description: "Introduced" },
+        { date: "2025-09-18", description: "Became law" },
+      ]},
+    });
+
+    const docs = findDocumentsByEntity(store.db, entity.id, 10);
+    expect(docs[0].occurred_at).toMatch(/^2025-09-18T/);
+    expect(docs[0].action_date).toBe("2025-09-18");
+  });
+
+  it("findDocumentsByEntity sorts by action_date DESC when available", () => {
+    const { entity } = upsertEntity(store.db, {
+      kind: "person", name: "Sen A",
+      external_ids: { openstates_person: "ocd-person/a" },
+    });
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "OLDER",
+      occurred_at: "2025-06-01T00:00:00Z",
+      source: { name: "openstates", id: "o1", url: "https://example.com/o1" },
+      references: [{ entity_id: entity.id, role: "sponsor" }],
+      raw: { actions: [{ date: "2025-06-01", description: "intro" }] },
+    });
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "NEWER",
+      occurred_at: "2025-09-18T00:00:00Z",
+      source: { name: "openstates", id: "o2", url: "https://example.com/o2" },
+      references: [{ entity_id: entity.id, role: "sponsor" }],
+      raw: { actions: [{ date: "2025-09-18", description: "enacted" }] },
+    });
+    const docs = findDocumentsByEntity(store.db, entity.id, 10);
+    expect(docs.map((d) => d.title)).toEqual(["NEWER", "OLDER"]);
+  });
+});
+
 describe("queryDocuments", () => {
   beforeEach(() => {
     upsertDocument(store.db, {

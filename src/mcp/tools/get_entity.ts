@@ -11,6 +11,7 @@ export interface GetEntityResponse {
     kind: string;
     title: string;
     occurred_at: string;
+    action_date: string | null;
     source_url: string;
   }>;
   sources: Array<{ name: string; url: string }>;
@@ -34,6 +35,7 @@ export async function handleGetEntity(
       kind: d.kind,
       title: d.title,
       occurred_at: d.occurred_at,
+      action_date: d.action_date ?? null,
       source_url: d.source.url,
     };
   });

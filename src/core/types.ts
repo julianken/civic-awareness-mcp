@@ -58,5 +58,6 @@ export const Document = z.object({
   }),
   references: z.array(EntityReference).default([]),
   raw: z.record(z.string(), z.unknown()).default({}),
+  action_date: z.string().nullable().optional(),
 });
 export type Document = z.infer<typeof Document>;
