@@ -16,11 +16,12 @@ store in two projections — time-first (feeds) and identity-first
 │  Feed tools (B)              Entity tools (A)               │
 │  ─ recent_bills              ─ search_entities              │
 │  ─ recent_votes              ─ get_entity                   │
-│  ─ recent_contributions      ─ entity_activity              │
-│  ─ search_civic_documents    ─ entity_connections           │
-│                              ─ resolve_person               │
+│  ─ recent_contributions      ─ entity_connections           │
+│  ─ search_civic_documents    ─ resolve_person               │
+│                                                             │
+│  Refresh tool (C) — writes      ─ refresh_source            │
 └──────────────────────┬──────────────────────────────────────┘
-                       │  reads
+                       │  reads (B + A)  writes (C, on consent)
                        ▼
 ┌─────────────────────────────────────────────────────────────┐
 │               Normalized Store (SQLite)                     │

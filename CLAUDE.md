@@ -82,8 +82,13 @@ event stream:
   `recent_contributions`, `search_civic_documents` — time-first,
   discovery-oriented.
 - **Entities (A):** `search_entities`, `get_entity`,
-  `entity_activity`, `entity_connections`, `resolve_person` —
-  identity-first, investigation-oriented.
+  `entity_connections`, `resolve_person` — identity-first,
+  investigation-oriented.
+- **Refresh (C):** `refresh_source` — the one write tool, added
+  in Phase 5. Triggers a batch ingest for one upstream source
+  (openstates/congress/openfec) with explicit user consent. Shares
+  the same `refreshSource()` core function as the `pnpm refresh`
+  CLI. See R12 in `docs/00-rationale.md` and the D5 amendment.
 
 Both share the same underlying store. Every adapter writes
 `Document`s with `Entity` references; every tool reads those same
