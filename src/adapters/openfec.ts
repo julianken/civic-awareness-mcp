@@ -318,7 +318,7 @@ export class OpenFecAdapter implements Adapter {
       to: null as string | null,
     };
 
-    const { entity, created } = upsertEntity(db, {
+    const { entity } = upsertEntity(db, {
       kind: "person",
       name: canonicalName,
       jurisdiction: undefined,  // D3b: Persons are cross-jurisdiction
@@ -330,30 +330,6 @@ export class OpenFecAdapter implements Adapter {
         roles: [newRole],
       },
     });
-
-    // If the entity already existed (cross-source merge or re-refresh),
-    // merge the new candidate role into metadata.roles[] without
-    // overwriting existing roles. upsertEntity only merges external_ids
-    // and aliases; metadata.roles[] is the adapter's responsibility.
-    if (!created) {
-      const existing = db
-        .prepare("SELECT metadata FROM entities WHERE id = ?")
-        .get(entity.id) as { metadata: string };
-      const meta = JSON.parse(existing.metadata) as {
-        roles?: typeof newRole[];
-      };
-      const currentRoles = meta.roles ?? [];
-      const alreadyHasRole = currentRoles.some(
-        (r) => r.jurisdiction === "us-federal" && r.role === role,
-      );
-      if (!alreadyHasRole) {
-        const updatedMeta = { ...meta, roles: [...currentRoles, newRole] };
-        db.prepare("UPDATE entities SET metadata = ? WHERE id = ?").run(
-          JSON.stringify(updatedMeta),
-          entity.id,
-        );
-      }
-    }
 
     return entity.id;
   }

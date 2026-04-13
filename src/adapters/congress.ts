@@ -272,7 +272,7 @@ export class CongressAdapter implements Adapter {
       to: endYear ? `${endYear}-01-03T00:00:00.000Z` : null,
     };
 
-    const { entity, created } = upsertEntity(db, {
+    const { entity } = upsertEntity(db, {
       kind: "person",
       name: m.name,
       jurisdiction: undefined,  // D3b: Persons are cross-jurisdiction

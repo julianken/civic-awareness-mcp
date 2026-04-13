@@ -152,6 +152,12 @@ function findByFuzzy(db: Database.Database, input: UpsertInput): Entity | null {
   return picked ? rowToEntity(picked.row) : null;
 }
 
+// Returns the second whitespace token of a 3+ part name as the
+// "middle name" signal for fuzzy-resolution linking. Intentionally
+// naive: hasLinkingSignal (fuzzy.ts) matches the returned token
+// against ALL candidate alias tokens, so multi-middle names like
+// "Jane Marie Elizabeth Doe" still link when any of their middle
+// tokens overlaps an alias.
 function extractMiddleName(full: string): string | null {
   const parts = full.trim().split(/\s+/);
   return parts.length >= 3 ? parts[1] : null;
