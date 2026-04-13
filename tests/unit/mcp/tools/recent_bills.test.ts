@@ -57,10 +57,14 @@ describe("recent_bills tool", () => {
     expect(ca.results[0].identifier).toBe("AB123");
     expect(ca.results[0].title).toBe("california bill");
   });
-  it("includes sponsor info", async () => {
+  it("includes sponsor info via sponsor_summary", async () => {
     const result = await handleRecentBills(store.db, { days: 7, jurisdiction: "us-tx" });
-    expect(result.results[0].sponsors[0].name).toBe("Jane Doe");
-    expect(result.results[0].sponsors[0].party).toBe("Democratic");
+    const r = result.results[0];
+    expect(r).toHaveProperty("sponsor_summary");
+    expect(r).not.toHaveProperty("sponsors");
+    expect(r.sponsor_summary.top[0].name).toBe("Jane Doe");
+    expect(r.sponsor_summary.top[0].party).toBe("Democratic");
+    expect(r.sponsor_summary.top[0].role).toBe("sponsor");
   });
   it("includes source provenance with a jurisdiction-aware URL", async () => {
     const result = await handleRecentBills(store.db, { days: 7, jurisdiction: "us-tx" });
@@ -73,5 +77,62 @@ describe("recent_bills tool", () => {
     await expect(
       handleRecentBills(store.db, { days: 7 }),
     ).rejects.toThrow();
+  });
+
+  it("returns sponsor_summary (count + by_party + top-5), not full sponsors[]", async () => {
+    const sponsorIds: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      const { entity } = upsertEntity(store.db, {
+        kind: "person", name: `TestSponsor${i}Alpha`,
+        metadata: { party: i < 6 ? "Republican" : "Democratic" },
+      });
+      sponsorIds.push(entity.id);
+    }
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "SB 1 — Test",
+      occurred_at: new Date().toISOString(),
+      source: { name: "openstates", id: "1b", url: "https://ex" },
+      references: sponsorIds.map((id, i) => ({
+        entity_id: id,
+        role: (i === 0 ? "sponsor" : "cosponsor") as "sponsor" | "cosponsor",
+      })),
+      raw: { actions: [] },
+    });
+
+    const res = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
+    const billWithSummary = res.results.find((r) => r.identifier === "SB 1");
+    expect(billWithSummary).toBeDefined();
+    const r = billWithSummary!;
+    expect(r).toHaveProperty("sponsor_summary");
+    expect(r).not.toHaveProperty("sponsors");
+    expect(r.sponsor_summary).toMatchObject({
+      count: 10,
+      by_party: { Republican: 6, Democratic: 4 },
+    });
+    expect(r.sponsor_summary.top).toHaveLength(5);
+    expect(r.sponsor_summary.top[0].role).toBe("sponsor");
+  });
+
+  it("20-bill response fits under 30KB", async () => {
+    for (let b = 0; b < 20; b++) {
+      const refs: Array<{ entity_id: string; role: "sponsor" | "cosponsor" }> = [];
+      for (let s = 0; s < 50; s++) {
+        const { entity } = upsertEntity(store.db, {
+          kind: "person", name: `BulkBill${b}Sponsor${s}`,
+          metadata: { party: s % 2 === 0 ? "R" : "D" },
+        });
+        refs.push({ entity_id: entity.id, role: s === 0 ? "sponsor" : "cosponsor" });
+      }
+      upsertDocument(store.db, {
+        kind: "bill", jurisdiction: "us-tx", title: `B${b} — Test`,
+        occurred_at: new Date().toISOString(),
+        source: { name: "openstates", id: `b${b}bulk`, url: "https://ex" },
+        references: refs,
+        raw: { actions: [] },
+      });
+    }
+    const res = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
+    const bytes = Buffer.byteLength(JSON.stringify(res), "utf8");
+    expect(bytes).toBeLessThan(30 * 1024);
   });
 });

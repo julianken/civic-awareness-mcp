@@ -1,14 +1,26 @@
 import type Database from "better-sqlite3";
 import { queryDocuments } from "../../core/documents.js";
 import { findEntityById } from "../../core/entities.js";
+import type { EntityReference } from "../../core/types.js";
 import { RecentBillsInput } from "../schemas.js";
+
+export interface SponsorSummary {
+  count: number;
+  by_party: Record<string, number>;
+  top: Array<{
+    entity_id: string;
+    name: string;
+    party?: string;
+    role: "sponsor" | "cosponsor";
+  }>;
+}
 
 export interface BillSummary {
   id: string;
   identifier: string;
   title: string;
   latest_action: { date: string; description: string } | null;
-  sponsors: Array<{ name: string; party?: string; district?: string; chamber?: string }>;
+  sponsor_summary: SponsorSummary;
   source_url: string;
 }
 
@@ -17,6 +29,48 @@ export interface RecentBillsResponse {
   total: number;
   sources: Array<{ name: string; url: string }>;
   window: { from: string; to: string };
+}
+
+function buildSponsorSummary(
+  db: Database.Database,
+  refs: EntityReference[],
+): SponsorSummary {
+  const filtered = refs.filter((r) => r.role === "sponsor" || r.role === "cosponsor");
+  if (filtered.length === 0) {
+    return { count: 0, by_party: {}, top: [] };
+  }
+  // Single batched SELECT for all sponsor metadata (by_party aggregate).
+  const allPlaceholders = filtered.map(() => "?").join(",");
+  const allRows = db
+    .prepare(`SELECT id, name, metadata FROM entities WHERE id IN (${allPlaceholders})`)
+    .all(...filtered.map((r) => r.entity_id)) as Array<{ id: string; name: string; metadata: string }>;
+  const byId = new Map(allRows.map((r) => [r.id, r]));
+
+  const by_party: Record<string, number> = {};
+  for (const r of filtered) {
+    const e = byId.get(r.entity_id);
+    const party = e ? (JSON.parse(e.metadata) as { party?: string }).party ?? "unknown" : "unknown";
+    by_party[party] = (by_party[party] ?? 0) + 1;
+  }
+
+  // Top-N selection: primaries first (capped at 5), then cosponsors fill the rest.
+  const TOP_N = 5;
+  const primaries = filtered.filter((r) => r.role === "sponsor");
+  const cosponsors = filtered.filter((r) => r.role === "cosponsor");
+  const topRefs = [...primaries, ...cosponsors].slice(0, TOP_N);
+
+  const top = topRefs.map((r) => {
+    const e = byId.get(r.entity_id);
+    const party = e ? (JSON.parse(e.metadata) as { party?: string }).party : undefined;
+    return {
+      entity_id: r.entity_id,
+      name: e?.name ?? "Unknown",
+      party,
+      role: r.role as "sponsor" | "cosponsor",
+    };
+  });
+
+  return { count: filtered.length, by_party, top };
 }
 
 /**
@@ -56,23 +110,12 @@ export async function handleRecentBills(
     const [identifier, ...titleParts] = d.title.split(" — ");
     const actions = (d.raw.actions as Array<{ date: string; description: string }> | undefined) ?? [];
     const latest = actions.length ? actions[actions.length - 1] : null;
-    const sponsors = d.references
-      .filter((r) => r.role === "sponsor" || r.role === "cosponsor")
-      .map((r) => {
-        const e = findEntityById(db, r.entity_id);
-        return {
-          name: e?.name ?? "Unknown",
-          party: e?.metadata.party as string | undefined,
-          district: e?.metadata.district as string | undefined,
-          chamber: e?.metadata.chamber as string | undefined,
-        };
-      });
     return {
       id: d.id,
       identifier: identifier?.trim() ?? d.title,
       title: titleParts.join(" — ").trim() || d.title,
       latest_action: latest,
-      sponsors,
+      sponsor_summary: buildSponsorSummary(db, d.references),
       source_url: d.source.url,
     };
   });
