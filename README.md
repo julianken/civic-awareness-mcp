@@ -218,7 +218,7 @@ Both paths upsert into `./data/civic-awareness.db` (gitignored).
 The schema auto-bootstraps on first server start — no `pnpm
 bootstrap` needed unless you want to create the DB ahead of time.
 
-The 8 read tools remain pure reads from SQLite. Only
+The other 8 tools remain pure reads from SQLite. Only
 `refresh_source` writes, and only when you invoke it.
 
 ### Claude Desktop config

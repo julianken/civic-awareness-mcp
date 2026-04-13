@@ -931,8 +931,8 @@ runs.
 # API keys in .env.local: OPENSTATES_API_KEY, API_DATA_GOV_KEY
 # (the api.data.gov key works for both Congress.gov and OpenFEC)
 pnpm refresh --source=openstates --jurisdictions=tx --max-pages=1
-pnpm refresh --source=congress   --since=2026-01-01
-pnpm refresh --source=openfec    --since=2026-01-01
+pnpm refresh --source=congress   --max-pages=1
+pnpm refresh --source=openfec    --max-pages=1
 ```
 
 Both paths upsert into `./data/civic-awareness.db` (gitignored).
