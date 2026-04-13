@@ -61,8 +61,8 @@ export const ExternalIds = z.record(z.string(), z.string());
 export const PersonRole = z.object({
   jurisdiction: z.string(),
   role: z.string(),
-  from: z.string().datetime().optional(),
-  to: z.string().datetime().nullable().optional(),
+  from: z.iso.datetime().optional(),
+  to: z.iso.datetime().nullable().optional(),
 });
 
 export const Entity = z.object({
@@ -77,8 +77,8 @@ export const Entity = z.object({
   external_ids: ExternalIds.default({}),
   metadata: z.record(z.string(), z.unknown()).default({}),
   // Timestamps
-  first_seen_at: z.string().datetime(),
-  last_seen_at: z.string().datetime(),
+  first_seen_at: z.iso.datetime(),
+  last_seen_at: z.iso.datetime(),
 });
 export type Entity = z.infer<typeof Entity>;
 
@@ -120,13 +120,13 @@ export const Document = z.object({
   title: z.string(),
   summary: z.string().optional(),
   /** ISO 8601. The canonical "when did this happen" date. */
-  occurred_at: z.string().datetime(),
+  occurred_at: z.iso.datetime(),
   /** When we last pulled it from upstream */
-  fetched_at: z.string().datetime(),
+  fetched_at: z.iso.datetime(),
   source: z.object({
     name: z.string(),            // "openstates", "congress", "openfec"
     id: z.string(),              // stable upstream ID
-    url: z.string().url(),       // canonical human-facing URL
+    url: z.url(),       // canonical human-facing URL
   }),
   references: z.array(EntityReference).default([]),
   /** Source-specific payload, for tools that want to surface raw fields */

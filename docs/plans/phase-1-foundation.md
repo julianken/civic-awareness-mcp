@@ -307,8 +307,8 @@ export const Entity = z.object({
   jurisdiction: z.string().optional(),
   external_ids: ExternalIds.default({}),
   metadata: z.record(z.string(), z.unknown()).default({}),
-  first_seen_at: z.string().datetime(),
-  last_seen_at: z.string().datetime(),
+  first_seen_at: z.iso.datetime(),
+  last_seen_at: z.iso.datetime(),
 });
 export type Entity = z.infer<typeof Entity>;
 
@@ -336,12 +336,12 @@ export const Document = z.object({
   jurisdiction: z.string(),
   title: z.string(),
   summary: z.string().optional(),
-  occurred_at: z.string().datetime(),
-  fetched_at: z.string().datetime(),
+  occurred_at: z.iso.datetime(),
+  fetched_at: z.iso.datetime(),
   source: z.object({
     name: z.string(),
     id: z.string(),
-    url: z.string().url(),
+    url: z.url(),
   }),
   references: z.array(EntityReference).default([]),
   raw: z.record(z.string(), z.unknown()).default({}),
