@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import { ResolvePersonInput } from "../schemas.js";
-import { normalizeName, levenshtein, type FuzzyCandidate, type UpstreamSignals } from "../../resolution/fuzzy.js";
+import { normalizeName, levenshtein } from "../../resolution/fuzzy.js";
 
 interface PersonRow {
   id: string;
@@ -127,21 +127,12 @@ export async function handleResolvePerson(
     .all() as PersonRow[];
 
   // Build UpstreamSignals from hints.
-  const signals: UpstreamSignals = {
-    external_id_sources: [],
-    middle_name: null,
-    role_jurisdictions: input.jurisdiction_hint ? [input.jurisdiction_hint] : [],
-  };
+  const hintJurisdictions: string[] = input.jurisdiction_hint
+    ? [input.jurisdiction_hint]
+    : [];
 
   for (const row of fuzzyCandidateRows) {
     if (best.has(row.id)) continue; // already matched at higher confidence
-
-    let aliases: string[];
-    try {
-      aliases = JSON.parse(row.aliases) as string[];
-    } catch {
-      aliases = [];
-    }
 
     let metadataParsed: Record<string, unknown>;
     try {
@@ -154,14 +145,11 @@ export async function handleResolvePerson(
       (r: unknown) => (r as { jurisdiction?: string }).jurisdiction ?? "",
     ).filter(Boolean);
 
-    const candidate: FuzzyCandidate = {
-      id: row.id,
-      name: row.name,
-      external_id_sources: [],
-      aliases,
-      role_jurisdictions: roleJurisdictions,
-    };
-
+    // We deliberately do NOT call fuzzyPick here — that helper picks
+    // exactly one candidate and enforces a runner-up distance guard
+    // suitable for merge decisions. resolve_person is a query surface,
+    // so we surface ALL candidates at distance <= 1 that have a
+    // linking signal (jurisdiction_hint or role_hint match).
     const dist = levenshtein(queryNorm, row.name_normalized);
     if (dist > 1) continue;
 
@@ -171,7 +159,7 @@ export async function handleResolvePerson(
     // match for its first word. Simplified approach: require linking
     // signal (the primary discriminator in D3b).
     let hasSignal = false;
-    for (const j of signals.role_jurisdictions) {
+    for (const j of hintJurisdictions) {
       if (roleJurisdictions.includes(j)) { hasSignal = true; break; }
     }
     if (!hasSignal && input.role_hint) {

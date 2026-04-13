@@ -6,6 +6,8 @@ import { handleRecentContributions } from "./tools/recent_contributions.js";
 import { handleSearchEntities } from "./tools/search_entities.js";
 import { handleGetEntity } from "./tools/get_entity.js";
 import { handleSearchDocuments } from "./tools/search_civic_documents.js";
+import { handleEntityConnections } from "./tools/entity_connections.js";
+import { handleResolvePerson } from "./tools/resolve_person.js";
 import {
   RecentBillsInput,
   RecentVotesInput,
@@ -13,6 +15,8 @@ import {
   SearchEntitiesInput,
   GetEntityInput,
   SearchDocumentsInput,
+  EntityConnectionsInput,
+  ResolvePersonInput,
 } from "./schemas.js";
 
 export interface BuildServerOptions { dbPath: string }
@@ -21,7 +25,7 @@ export interface CivicAwarenessServer { mcp: McpServer; store: Store }
 export function buildServer(opts: BuildServerOptions): CivicAwarenessServer {
   const store = openStore(opts.dbPath);
   const mcp = new McpServer(
-    { name: "civic-awareness-mcp", version: "0.0.4" },
+    { name: "civic-awareness-mcp", version: "0.0.5" },
     { capabilities: { tools: {} } },
   );
 
@@ -110,6 +114,40 @@ export function buildServer(opts: BuildServerOptions): CivicAwarenessServer {
     },
     async (input) => {
       const data = await handleSearchDocuments(store.db, input);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    },
+  );
+
+  mcp.registerTool(
+    "entity_connections",
+    {
+      description:
+        "Given an entity ID, return co-occurrence edges to other entities via " +
+        "shared documents (bills, votes, contributions). Supports depth=1 (direct) " +
+        "or depth=2 (through one hop). Edges are capped at 100 and sorted by " +
+        "co_occurrence_count descending; truncated flag signals whether the cap " +
+        "was hit. Useful for 'who works with this legislator most' queries.",
+      inputSchema: EntityConnectionsInput.shape,
+    },
+    async (input) => {
+      const data = await handleEntityConnections(store.db, input);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    },
+  );
+
+  mcp.registerTool(
+    "resolve_person",
+    {
+      description:
+        "Disambiguate a person by name. Returns all matching Person entities " +
+        "with confidence tiers (exact > alias > fuzzy) and disambiguators " +
+        "(role + jurisdiction + time span per role). Optional jurisdiction_hint " +
+        "and role_hint activate fuzzy matching — without a hint, fuzzy matches " +
+        "are suppressed to avoid false positives.",
+      inputSchema: ResolvePersonInput.shape,
+    },
+    async (input) => {
+      const data = await handleResolvePerson(store.db, input);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     },
   );
