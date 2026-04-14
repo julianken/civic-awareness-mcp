@@ -216,6 +216,62 @@ output:
   }>
 ```
 
+## Detail tools (C) — 1 tool
+
+Identifier-first, full projection of a single resource. Uses
+per-document freshness (R14 / D11) rather than the jurisdiction-
+level cache (R13) — see `docs/00-rationale.md` for the rationale.
+
+### `get_bill` (Phase 7)
+
+```
+input:
+  jurisdiction: string   // "us-<state>"; "us-federal" returns not_yet_supported in V1
+  session: string        // upstream session id, e.g. "20252026" for CA 2025–2026
+  identifier: string     // bill identifier with space, e.g. "SB 1338"
+
+output:
+  bill: {
+    id: string
+    jurisdiction: string
+    session: string
+    identifier: string
+    title: string
+    summary: string | null              // Legislative Counsel's digest
+    subjects: string[]                  // source-provided subject tags
+    primary_sponsor: {                  // null if no primary recorded
+      entity_id: string | null
+      name: string
+      party?: string
+      classification: string
+    } | null
+    cosponsors: Array<{ ...same shape as primary_sponsor }>
+    actions: Array<{ date, description, classification? }>
+    versions: Array<{                   // bill text lives at text_url — MCP does NOT proxy it
+      note: string | null
+      date: string | null
+      text_url: string | null
+      media_type: string | null
+    }>
+    related_bills: Array<{ identifier?, session?, relation? }>
+    latest_action: { date, description } | null
+    introduced_date: string | null
+    source_url: string
+    fetched_at: string
+  } | null
+  sources: Array<{ name, url }>
+  stale_notice?: { ... }                // reason ∈ "not_found" | "not_yet_supported" | ... (R13 reasons)
+```
+
+Freshness: per-document TTL of 1h keyed on `documents.fetched_at`.
+Missing or stale rows trigger a direct fetch of OpenStates v3
+`/bills/{jurisdiction}/{session}/{identifier}`. Upstream failures
+serve the last-known row with a `stale_notice`.
+
+**Full bill text is out of scope by design.** Follow
+`versions[*].text_url` to the state leginfo site. See R9 / D3c —
+summarization is the consuming LLM's job, not the MCP's.
+
 ## Pass-through cache (R13)
 
 Read tools transparently hydrate their jurisdiction from upstream on cache miss. The SQLite store is a TTL cache, not a user concern.
@@ -250,11 +306,13 @@ On upstream failure, rate-limit wait > 2.5s, or daily-budget exhaustion, tools s
 | **3 — Congress.gov** | ✅ done | + `recent_votes`; `recent_bills`, `search_entities`, `get_entity`, `search_civic_documents` expand to include federal |
 | **4 — OpenFEC** | ✅ done | + `recent_contributions`; cross-source entity merge (fec_candidate ↔ bioguide ↔ openstates_person) |
 | **5 — Connections** | ✅ done | + `entity_connections`, `resolve_person` |
+| **6 — Pass-through cache** | ✅ done | No new tools; `refresh_source` removed from MCP surface |
+| **7 — Detail projection** | ✅ done | + `get_bill` (OpenStates state bills only; federal deferred to 7b) |
 
-As of Phase 5 (2026-04-13), the server exposes **8 tools total** at
-`v0.0.5`: `recent_bills`, `recent_votes`, `recent_contributions`,
+As of Phase 7 (2026-04-13), the server exposes **9 tools total**:
+`recent_bills`, `recent_votes`, `recent_contributions`,
 `search_entities`, `get_entity`, `search_civic_documents`,
-`entity_connections`, `resolve_person`.
+`entity_connections`, `resolve_person`, `get_bill`.
 
 The original spec mentioned `entity_activity` as a separate tool.
 That surface is effectively covered by `get_entity.recent_documents`

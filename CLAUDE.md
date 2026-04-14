@@ -83,7 +83,7 @@ When a human opens this repo in Claude Code for the first time:
 
 ## How to think about this MCP
 
-The tool surface has two projections over the same entity-tagged
+The tool surface has three projections over the same entity-tagged
 event stream:
 
 - **Feeds (B):** `recent_bills`, `recent_votes`,
@@ -92,6 +92,10 @@ event stream:
 - **Entities (A):** `search_entities`, `get_entity`,
   `entity_connections`, `resolve_person` — identity-first,
   investigation-oriented.
+- **Details (C):** `get_bill` (and future `get_vote`,
+  `get_contribution`) — identifier-first, full projection of one
+  resource. Uses per-document TTL (R14 / D11) rather than the
+  jurisdiction-level cache of R13.
 - **Pass-through hydration (R13):** Read tools check
   `(source, jurisdiction, scope)` freshness in the `hydrations`
   table before querying the local store. Stale or missing →
