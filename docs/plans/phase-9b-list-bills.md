@@ -1213,6 +1213,13 @@ EOF
 
 - [ ] **Step 1: Write the failing integration test**
 
+> Implementation note (2026-04-14): the original draft of this task
+> assumed `msw` was a project dev dep. It is not — `passthrough-e2e.shaped.test.ts`
+> stubs HTTP with `vi.spyOn(global, "fetch")`. Task 4 was shipped
+> using that same pattern, preserving all four scenarios verbatim.
+> The `setupServer` / `http.get` example below is kept as reference;
+> the live file is the vi.spyOn translation.
+
 Create `tests/integration/list-bills-e2e.test.ts`:
 
 ```ts
