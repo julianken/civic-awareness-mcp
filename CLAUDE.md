@@ -115,9 +115,9 @@ event stream:
   upstream fetches on a `fetch_log` row keyed by
   `(source, endpoint_path, args_hash)`. On a miss they call
   the adapter's narrow shaped method, write-through inside a
-  transaction, and serve from the local store. R13's
-  jurisdiction-wide singleflight and `partial_hydrate` stale
-  notice no longer apply. See
+  transaction, and serve from the local store. Singleflight is
+  kept but re-keyed on the same endpoint tuple; R13's
+  `partial_hydrate` stale-notice reason is retired. See
   `src/core/tool_cache.ts::withShapedFetch`.
 
 Both share the same underlying store. Every adapter writes
