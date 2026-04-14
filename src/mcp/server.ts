@@ -9,6 +9,7 @@ import { handleSearchDocuments } from "./tools/search_civic_documents.js";
 import { handleEntityConnections } from "./tools/entity_connections.js";
 import { handleResolvePerson } from "./tools/resolve_person.js";
 import { handleGetBill } from "./tools/get_bill.js";
+import { handleGetVote } from "./tools/get_vote.js";
 import { handleListBills } from "./tools/list_bills.js";
 import {
   RecentBillsInput,
@@ -20,6 +21,7 @@ import {
   EntityConnectionsInput,
   ResolvePersonInput,
   GetBillInput,
+  GetVoteInput,
   ListBillsInput,
 } from "./schemas.js";
 
@@ -187,6 +189,25 @@ export function buildServer(opts: BuildServerOptions): CivicAwarenessServer {
     },
     async (input) => {
       const data = await handleGetBill(store.db, input);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    },
+  );
+
+  mcp.registerTool(
+    "get_vote",
+    {
+      description:
+        "Fetch full detail for a single roll-call vote, including " +
+        "per-legislator positions (entity_id, name, party, state, " +
+        "yea/nay/present/not_voting). Pass either `vote_id` " +
+        "(the documents.id returned by recent_votes) OR the federal " +
+        "composite `{ congress, chamber, session, roll_number }`. " +
+        "Federal (Congress.gov) only in V2; state-jurisdiction votes " +
+        "are not yet ingested.",
+      inputSchema: GetVoteInput.shape,
+    },
+    async (input) => {
+      const data = await handleGetVote(store.db, input);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     },
   );

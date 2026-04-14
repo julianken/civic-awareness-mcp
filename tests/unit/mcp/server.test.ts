@@ -16,4 +16,12 @@ describe("buildServer", () => {
     expect(tools).toHaveProperty("get_bill");
     store.close();
   });
+
+  it("registers get_vote tool", () => {
+    const { mcp, store } = buildServer({ dbPath: ":memory:" });
+    const tools = (mcp as unknown as { _registeredTools: Record<string, unknown> })
+      ._registeredTools;
+    expect(tools).toHaveProperty("get_vote");
+    store.close();
+  });
 });
