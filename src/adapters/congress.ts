@@ -332,6 +332,72 @@ export class CongressAdapter implements Adapter {
   }
 
   /**
+   * Narrow per-tool fetch for R15 `entity_connections` — one page of
+   * bills this member sponsored, via
+   * `/member/{bioguideId}/sponsored-legislation`. Reuses existing
+   * `upsertBill` write-through so the results project into the same
+   * documents table `findConnections` reads. Returns `documentsUpserted:
+   * 0` on 404 so the fanout handler can tolerate an unknown bioguide
+   * without aborting sibling adapters.
+   */
+  async fetchMemberSponsoredBills(
+    db: Database.Database,
+    bioguideId: string,
+    opts: { limit?: number } = {},
+  ): Promise<{ documentsUpserted: number }> {
+    const url = new URL(`${BASE_URL}/member/${bioguideId}/sponsored-legislation`);
+    url.searchParams.set("limit", String(opts.limit ?? 250));
+    url.searchParams.set("api_key", this.opts.apiKey);
+    const res = await rateLimitedFetch(url.toString(), {
+      userAgent: "civic-awareness-mcp/0.1.0 (+github)",
+      rateLimiter: this.rateLimiter,
+    });
+    if (res.status === 404) return { documentsUpserted: 0 };
+    if (!res.ok) {
+      throw new Error(`Congress.gov /member/${bioguideId}/sponsored-legislation returned ${res.status}`);
+    }
+    const body = (await res.json()) as { sponsoredLegislation?: CongressBill[] };
+    let documentsUpserted = 0;
+    for (const b of body.sponsoredLegislation ?? []) {
+      this.upsertBill(db, b);
+      documentsUpserted += 1;
+    }
+    return { documentsUpserted };
+  }
+
+  /**
+   * Narrow per-tool fetch for R15 `entity_connections` — one page of
+   * bills this member cosponsored, via
+   * `/member/{bioguideId}/cosponsored-legislation`. Mirrors
+   * `fetchMemberSponsoredBills` but reads the `cosponsoredLegislation`
+   * response field instead.
+   */
+  async fetchMemberCosponsoredBills(
+    db: Database.Database,
+    bioguideId: string,
+    opts: { limit?: number } = {},
+  ): Promise<{ documentsUpserted: number }> {
+    const url = new URL(`${BASE_URL}/member/${bioguideId}/cosponsored-legislation`);
+    url.searchParams.set("limit", String(opts.limit ?? 250));
+    url.searchParams.set("api_key", this.opts.apiKey);
+    const res = await rateLimitedFetch(url.toString(), {
+      userAgent: "civic-awareness-mcp/0.1.0 (+github)",
+      rateLimiter: this.rateLimiter,
+    });
+    if (res.status === 404) return { documentsUpserted: 0 };
+    if (!res.ok) {
+      throw new Error(`Congress.gov /member/${bioguideId}/cosponsored-legislation returned ${res.status}`);
+    }
+    const body = (await res.json()) as { cosponsoredLegislation?: CongressBill[] };
+    let documentsUpserted = 0;
+    for (const b of body.cosponsoredLegislation ?? []) {
+      this.upsertBill(db, b);
+      documentsUpserted += 1;
+    }
+    return { documentsUpserted };
+  }
+
+  /**
    * Narrow per-tool fetch for R15 `recent_votes` — one page of recent
    * roll-call votes for the current Congress with optional chamber
    * filter. On 404 (free Congress.gov tier does not expose `/vote`),

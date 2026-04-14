@@ -557,3 +557,73 @@ describe("CongressAdapter.fetchMember", () => {
     expect(result.entitiesUpserted).toBe(0);
   });
 });
+
+describe("CongressAdapter.fetchMemberSponsoredBills", () => {
+  it("fetches /member/{bioguideId}/sponsored-legislation and upserts returned bills", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({ sponsoredLegislation: [SAMPLE_BILL] }),
+        { status: 200 },
+      ),
+    );
+
+    const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
+    const result = await adapter.fetchMemberSponsoredBills(store.db, "S000148");
+
+    expect(result.documentsUpserted).toBe(1);
+    const url = fetchSpy.mock.calls[0][0] as string;
+    expect(url).toMatch(/\/member\/S000148\/sponsored-legislation/);
+    expect(url).toMatch(/api_key=test-key/);
+
+    const bills = store.db
+      .prepare("SELECT id FROM documents WHERE source_name='congress' AND kind='bill'")
+      .all() as Array<{ id: string }>;
+    expect(bills).toHaveLength(1);
+    fetchSpy.mockRestore();
+  });
+
+  it("returns documentsUpserted=0 on 404 without throwing", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ error: "not found" }), { status: 404 }),
+    );
+
+    const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
+    const result = await adapter.fetchMemberSponsoredBills(store.db, "Z999999");
+    expect(result.documentsUpserted).toBe(0);
+  });
+});
+
+describe("CongressAdapter.fetchMemberCosponsoredBills", () => {
+  it("fetches /member/{bioguideId}/cosponsored-legislation and upserts returned bills", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({ cosponsoredLegislation: [SAMPLE_BILL] }),
+        { status: 200 },
+      ),
+    );
+
+    const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
+    const result = await adapter.fetchMemberCosponsoredBills(store.db, "S000148");
+
+    expect(result.documentsUpserted).toBe(1);
+    const url = fetchSpy.mock.calls[0][0] as string;
+    expect(url).toMatch(/\/member\/S000148\/cosponsored-legislation/);
+    expect(url).toMatch(/api_key=test-key/);
+
+    const bills = store.db
+      .prepare("SELECT id FROM documents WHERE source_name='congress' AND kind='bill'")
+      .all() as Array<{ id: string }>;
+    expect(bills).toHaveLength(1);
+    fetchSpy.mockRestore();
+  });
+
+  it("returns documentsUpserted=0 on 404 without throwing", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ error: "not found" }), { status: 404 }),
+    );
+
+    const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
+    const result = await adapter.fetchMemberCosponsoredBills(store.db, "Z999999");
+    expect(result.documentsUpserted).toBe(0);
+  });
+});
