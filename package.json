@@ -27,7 +27,7 @@
     "civic-awareness-mcp": "dist/index.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && rm -rf dist/core/migrations && cp -R src/core/migrations dist/core/migrations",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && cp -R src/core/migrations dist/core/migrations",
     "test": "vitest run --exclude tests/drift/**",
     "test:watch": "vitest",
     "test:drift": "vitest run tests/drift/",
