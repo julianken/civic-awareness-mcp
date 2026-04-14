@@ -3,6 +3,29 @@
 All notable changes to `civic-awareness-mcp` will be documented in
 this file. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.3.0 (2026-04-14)
+
+### Changed
+- Hydration architecture rewritten from R13 (jurisdiction-wide
+  pass-through cache) to R15 (shaped-query hydration per endpoint).
+  All 9 MCP tools now use `withShapedFetch` with narrow
+  shape-specific adapter methods.
+- Cache key migrated from `hydrations(source, jurisdiction, scope)`
+  to `fetch_log(source, endpoint_path, args_hash)`.
+- `stale_notice` narrowed: retired `partial_hydrate`,
+  `rate_limited`, and `daily_budget_exhausted` reasons.
+  `upstream_failure` is the only reason emitted when cached data
+  exists as fallback.
+
+### Removed
+- `hydrations` table (migration 006).
+- `src/core/hydrate.ts`, `src/core/freshness.ts`.
+
+### Cache state
+- Upgraders lose their R13 `hydrations` rows on first launch.
+  Fine-grained `fetch_log` rows are populated fresh on next tool
+  calls. DailyBudget prevents refetch storm.
+
 ## v0.2.0 — 2026-04-13
 
 **Transparent pass-through cache (R13).** The MCP is no longer an

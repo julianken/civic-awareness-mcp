@@ -27,7 +27,7 @@ export interface CivicAwarenessServer { mcp: McpServer; store: Store }
 export function buildServer(opts: BuildServerOptions): CivicAwarenessServer {
   const store = openStore(opts.dbPath);
   const mcp = new McpServer(
-    { name: "civic-awareness-mcp", version: "0.2.0" },
+    { name: "civic-awareness-mcp", version: "0.3.0" },
     { capabilities: { tools: {} } },
   );
 
