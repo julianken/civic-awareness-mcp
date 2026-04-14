@@ -223,6 +223,38 @@ export class OpenFecAdapter implements Adapter {
   }
 
   /**
+   * Narrow per-tool fetch for R15 candidate search — one page of
+   * `/candidates/search` filtered by the `q` (name) parameter. Writes
+   * through to `entities` via `upsertCandidate`. Shared endpoint with
+   * `search_entities` / `resolve_person` so cache rows coalesce.
+   */
+  async searchCandidates(
+    db: Database.Database,
+    opts: { q: string; limit?: number },
+  ): Promise<{ entitiesUpserted: number }> {
+    const url = new URL(`${BASE_URL}/candidates/search/`);
+    url.searchParams.set("q", opts.q);
+    url.searchParams.set("per_page", String(opts.limit ?? 20));
+    url.searchParams.set("api_key", this.opts.apiKey);
+
+    const res = await rateLimitedFetch(url.toString(), {
+      userAgent: "civic-awareness-mcp/0.1.0 (+github)",
+      rateLimiter: this.rateLimiter,
+    });
+    if (!res.ok) {
+      throw new Error(`OpenFEC /candidates/search returned ${res.status}`);
+    }
+    const body = (await res.json()) as { results?: FecCandidate[] };
+    let entitiesUpserted = 0;
+    const cycle = this.cycles[0];
+    for (const c of body.results ?? []) {
+      this.upsertCandidate(db, c, cycle);
+      entitiesUpserted += 1;
+    }
+    return { entitiesUpserted };
+  }
+
+  /**
    * Narrow per-tool fetch for R15 `recent_contributions` — one page of
    * Schedule A using OpenFEC's native `min_date`/`max_date` filters
    * (MM/DD/YYYY format) with optional repeated `committee_id` query

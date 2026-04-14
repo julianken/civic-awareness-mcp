@@ -608,3 +608,42 @@ describe("OpenFecAdapter.fetchRecentContributions", () => {
     fetchSpy.mockRestore();
   });
 });
+
+describe("OpenFecAdapter.searchCandidates", () => {
+  it("fetches /candidates/search with q param and writes upserted candidates", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({
+        results: [SAMPLE_CANDIDATE],
+        pagination: { per_page: 20, page: 1, pages: 1 },
+      }), { status: 200 }),
+    );
+
+    const adapter = new OpenFecAdapter({ apiKey: "test-key" });
+    const result = await adapter.searchCandidates(store.db, { q: "Smith" });
+
+    expect(result.entitiesUpserted).toBe(1);
+    const url = fetchSpy.mock.calls[0][0] as string;
+    expect(url).toMatch(/\/candidates\/search/);
+    expect(url).toMatch(/q=Smith/);
+    expect(url).toMatch(/per_page=20/);
+    expect(url).toMatch(/api_key=test-key/);
+
+    const rows = store.db
+      .prepare(
+        "SELECT name FROM entities WHERE json_extract(external_ids, '$.fec_candidate') = ?",
+      )
+      .all("H0AZ01234") as Array<{ name: string }>;
+    expect(rows).toHaveLength(1);
+    fetchSpy.mockRestore();
+  });
+
+  it("returns 0 entitiesUpserted for an empty results body", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ results: [], pagination: { per_page: 20 } }), { status: 200 }),
+    );
+
+    const adapter = new OpenFecAdapter({ apiKey: "test-key" });
+    const result = await adapter.searchCandidates(store.db, { q: "Nonexistent" });
+    expect(result.entitiesUpserted).toBe(0);
+  });
+});
