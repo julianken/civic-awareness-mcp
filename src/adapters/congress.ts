@@ -5,6 +5,21 @@ import { upsertDocument } from "../core/documents.js";
 import { logger } from "../util/logger.js";
 import type { Adapter, AdapterOptions, RefreshResult } from "./base.js";
 
+export class VoteNotFoundError extends Error {
+  constructor(
+    public readonly congress: number,
+    public readonly chamber: "upper" | "lower",
+    public readonly session: number,
+    public readonly rollNumber: number,
+  ) {
+    const ch = chamber === "upper" ? "senate" : "house";
+    super(
+      `Vote not found: ${ch} ${congress}-${session} roll ${rollNumber}`,
+    );
+    this.name = "VoteNotFoundError";
+  }
+}
+
 const BASE_URL = "https://api.congress.gov/v3";
 
 // ── API types (minimal — only fields we use) ─────────────────────────
@@ -36,7 +51,12 @@ interface CongressBill {
 }
 
 interface CongressVotePosition {
-  member: { bioguideId: string; name: string };
+  member: {
+    bioguideId: string;
+    name: string;
+    partyName?: string;
+    state?: string;
+  };
   votePosition: string;  // "Yea" | "Nay" | "Present" | "Not Voting"
 }
 
@@ -450,6 +470,98 @@ export class CongressAdapter implements Adapter {
     return { documentsUpserted };
   }
 
+  /** Fetches a single roll-call vote by composite
+   *  `(congress, chamber, session, roll_number)` with full member
+   *  positions and upserts it. Used by `get_vote` (R14 per-document
+   *  TTL). The Congress.gov endpoint is
+   *  `/senate-vote/{congress}/{session}/{roll}` or
+   *  `/house-vote/{congress}/{session}/{roll}`. */
+  async fetchVote(
+    db: Database.Database,
+    opts: {
+      congress: number;
+      chamber: "upper" | "lower";
+      session: 1 | 2;
+      roll_number: number;
+    },
+  ): Promise<{ documentId: string }> {
+    const chamberSlug = opts.chamber === "upper" ? "senate-vote" : "house-vote";
+    const path = `/${chamberSlug}/${opts.congress}/${opts.session}/${opts.roll_number}`;
+    const url = new URL(`${BASE_URL}${path}`);
+    url.searchParams.set("api_key", this.opts.apiKey);
+    url.searchParams.set("format", "json");
+
+    const res = await rateLimitedFetch(url.toString(), {
+      userAgent: "civic-awareness-mcp/0.1.0 (+github)",
+      rateLimiter: this.rateLimiter,
+    });
+    if (res.status === 404) {
+      throw new VoteNotFoundError(
+        opts.congress, opts.chamber, opts.session, opts.roll_number,
+      );
+    }
+    if (!res.ok) {
+      throw new Error(`Congress.gov ${path} returned ${res.status}`);
+    }
+
+    interface VoteDetailResponse {
+      voteInformation?: {
+        congress: number;
+        chamber: string;
+        rollNumber: number;
+        date: string;
+        question?: string;
+        result?: string;
+        bill?: { type: string; number: string };
+        totals?: { yea?: number; nay?: number; present?: number; notVoting?: number };
+        members?: {
+          item?: Array<{
+            bioguideId: string;
+            name: string;
+            partyName?: string;
+            state?: string;
+            votePosition: string;
+          }>;
+        };
+      };
+    }
+    const body = (await res.json()) as VoteDetailResponse;
+    const info = body.voteInformation;
+    if (!info) {
+      throw new Error(`Congress.gov ${path} returned no voteInformation`);
+    }
+
+    const vote: CongressVote = {
+      congress: info.congress,
+      chamber: info.chamber,
+      rollNumber: info.rollNumber,
+      date: info.date,
+      question: info.question,
+      result: info.result,
+      bill: info.bill,
+      totals: info.totals,
+      positions: (info.members?.item ?? []).map((m) => ({
+        member: {
+          bioguideId: m.bioguideId,
+          name: m.name,
+          partyName: m.partyName,
+          state: m.state,
+        },
+        votePosition: m.votePosition,
+      })),
+    };
+    this.upsertVote(db, vote);
+
+    const sourceId = `vote-${info.congress}-${info.chamber.toLowerCase()}-${info.rollNumber}`;
+    const row = db
+      .prepare("SELECT id FROM documents WHERE source_id = ?")
+      .get(sourceId) as { id: string } | undefined;
+    if (!row) {
+      throw new Error(`fetchVote upsert failed to produce document row for ${sourceId}`);
+    }
+    return { documentId: row.id };
+  }
+
   // ── Private helpers ────────────────────────────────────────────────
 
   private async fetchAllPages<T, B>(
@@ -588,19 +700,14 @@ export class CongressAdapter implements Adapter {
     const title = `Vote ${v.congress}-${v.chamber}-${v.rollNumber}: ${billId} — ${v.question ?? ""}`;
     const humanUrl = voteUrl(v.congress, v.chamber, v.rollNumber);
 
-    // Each voter is an EntityReference with role='voter' and
-    // qualifier equal to the normalised vote position.
-    // We wrap this in a transaction because we may create/lookup many
-    // Person entities before calling upsertDocument. Without a
-    // transaction, a crash mid-loop would leave orphaned entity rows
-    // that have no corresponding document reference.
-    //
-    // NOTE: upsertDocument itself is already wrapped in db.transaction;
-    // SQLite supports nested transactions via savepoints when using
-    // better-sqlite3, but we don't need nesting here — the member
-    // upserts below are pure INSERTs/SELECTs and do not need the same
-    // atomicity as the document write. We therefore collect refs first,
-    // then call upsertDocument (which handles its own transaction).
+    const positions = (v.positions ?? []).map((pos) => ({
+      bioguideId: pos.member.bioguideId,
+      name: pos.member.name,
+      party: pos.member.partyName ?? null,
+      state: pos.member.state ?? null,
+      position: normalizeVotePosition(pos.votePosition),
+    }));
+
     const refs = (v.positions ?? []).map((pos) => {
       const qualifier = normalizeVotePosition(pos.votePosition);
       const existing = db
@@ -617,6 +724,10 @@ export class CongressAdapter implements Adapter {
           name: pos.member.name,
           jurisdiction: undefined,
           external_ids: { bioguide: pos.member.bioguideId },
+          metadata: {
+            party: pos.member.partyName,
+            state: pos.member.state,
+          },
         });
         entityId = entity.id;
       }
@@ -642,6 +753,7 @@ export class CongressAdapter implements Adapter {
         result: v.result,
         bill: v.bill ?? null,
         totals: v.totals ?? {},
+        positions,
       },
     });
   }

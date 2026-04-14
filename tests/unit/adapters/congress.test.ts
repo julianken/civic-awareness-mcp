@@ -648,3 +648,136 @@ describe("CongressAdapter.fetchMemberCosponsoredBills", () => {
     expect(result.documentsUpserted).toBe(0);
   });
 });
+
+describe("upsertVote persists per-member positions in raw.positions", () => {
+  it("stores bioguideId, name, party, state, and position for each voter", async () => {
+    const adapter = new CongressAdapter({ apiKey: "test" });
+    (adapter as unknown as {
+      upsertVote: (db: typeof store.db, v: unknown) => void;
+    }).upsertVote(store.db, {
+      congress: 119,
+      chamber: "Senate",
+      rollNumber: 42,
+      date: "2026-04-01",
+      question: "On Passage of HR 1234",
+      result: "Passed",
+      bill: { type: "HR", number: "1234" },
+      positions: [
+        {
+          member: {
+            bioguideId: "S000148",
+            name: "Schumer, Charles E.",
+            partyName: "Democratic",
+            state: "NY",
+          },
+          votePosition: "Yea",
+        },
+        {
+          member: {
+            bioguideId: "M000355",
+            name: "McConnell, Mitch",
+            partyName: "Republican",
+            state: "KY",
+          },
+          votePosition: "Nay",
+        },
+      ],
+      totals: { yea: 1, nay: 1, present: 0, notVoting: 0 },
+    });
+
+    const row = store.db
+      .prepare("SELECT raw FROM documents WHERE source_id = ?")
+      .get("vote-119-senate-42") as { raw: string };
+    const raw = JSON.parse(row.raw) as {
+      positions: Array<{
+        bioguideId: string;
+        name: string;
+        party: string | null;
+        state: string | null;
+        position: string;
+      }>;
+    };
+    expect(raw.positions).toHaveLength(2);
+    expect(raw.positions[0]).toMatchObject({
+      bioguideId: "S000148",
+      name: "Schumer, Charles E.",
+      party: "Democratic",
+      state: "NY",
+      position: "yea",
+    });
+    expect(raw.positions[1].position).toBe("nay");
+  });
+});
+
+describe("CongressAdapter.fetchVote", () => {
+  it("fetches one roll-call vote by composite and upserts with positions", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          voteInformation: {
+            congress: 119,
+            chamber: "Senate",
+            rollNumber: 42,
+            date: "2026-04-01",
+            question: "On Passage of HR 1234",
+            result: "Passed",
+            bill: { type: "HR", number: "1234" },
+            totals: { yea: 1, nay: 1, present: 0, notVoting: 0 },
+            members: {
+              item: [
+                {
+                  bioguideId: "S000148",
+                  name: "Schumer, Charles E.",
+                  partyName: "Democratic",
+                  state: "NY",
+                  votePosition: "Yea",
+                },
+                {
+                  bioguideId: "M000355",
+                  name: "McConnell, Mitch",
+                  partyName: "Republican",
+                  state: "KY",
+                  votePosition: "Nay",
+                },
+              ],
+            },
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const adapter = new CongressAdapter({ apiKey: "test-key" });
+    const result = await adapter.fetchVote(store.db, {
+      congress: 119, chamber: "upper", session: 1, roll_number: 42,
+    });
+
+    const calledUrl = String(fetchSpy.mock.calls[0][0]);
+    expect(calledUrl).toMatch(/\/senate-vote\/119\/1\/42/);
+    expect(calledUrl).toMatch(/api_key=test-key/);
+    expect(calledUrl).toMatch(/format=json/);
+
+    expect(result.documentId).toBeTruthy();
+    const row = store.db
+      .prepare("SELECT id, raw FROM documents WHERE source_id = ?")
+      .get("vote-119-senate-42") as { id: string; raw: string };
+    expect(row.id).toBe(result.documentId);
+    const raw = JSON.parse(row.raw) as {
+      positions: Array<{ bioguideId: string; position: string }>;
+    };
+    expect(raw.positions).toHaveLength(2);
+    fetchSpy.mockRestore();
+  });
+
+  it("throws VoteNotFoundError on 404", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ error: "not found" }), { status: 404 }),
+    );
+    const adapter = new CongressAdapter({ apiKey: "test-key" });
+    await expect(
+      adapter.fetchVote(store.db, {
+        congress: 119, chamber: "lower", session: 1, roll_number: 9999,
+      }),
+    ).rejects.toThrow(/not found/i);
+  });
+});
