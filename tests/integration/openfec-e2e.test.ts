@@ -6,6 +6,11 @@ import { upsertEntity } from "../../src/core/entities.js";
 import { OpenFecAdapter } from "../../src/adapters/openfec.js";
 import { handleRecentContributions } from "../../src/mcp/tools/recent_contributions.js";
 
+vi.mock("../../src/core/hydrate.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/core/hydrate.js")>();
+  return { ...actual, ensureFresh: vi.fn().mockResolvedValue({ ok: true }) };
+});
+
 const TEST_DB = "./data/test-openfec-e2e.db";
 let store: Store;
 

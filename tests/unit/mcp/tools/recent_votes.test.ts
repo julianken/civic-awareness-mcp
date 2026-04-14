@@ -215,10 +215,14 @@ describe("recent_votes tool", () => {
     expect(res.stale_notice?.reason).toBe("upstream_failure");
   });
 
-  it("hydration: us-state jurisdiction skips ensureFresh entirely (no state vote source yet)", async () => {
-    // sourcesFor("vote", "us-tx") returns [] — no state-level vote ingest
+  it("hydration: us-state jurisdiction calls ensureFresh with openstates", async () => {
+    // sourcesFor("vote", "us-tx") returns ["openstates"] — openstates is the
+    // source for state votes even though ingest is not yet implemented
+    mockEnsureFresh.mockResolvedValue({ ok: true });
     const res = await handleRecentVotes(store.db, { jurisdiction: "us-tx", days: 7 });
-    expect(mockEnsureFresh).not.toHaveBeenCalled();
+    expect(mockEnsureFresh).toHaveBeenCalledWith(
+      expect.anything(), "openstates", "us-tx", "recent", expect.any(Function),
+    );
     expect(res.stale_notice).toBeUndefined();
   });
 });
