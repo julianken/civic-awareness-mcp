@@ -10,7 +10,7 @@ The interesting part isn't the data, it's the **cross-source entity graph**: a s
 
 ## Status
 
-Phases 1–5 complete. **9 MCP tools live**, all 50 states + federal, backed by OpenStates + Congress.gov + OpenFEC. Pre-public security audit landed at `aafdb73` — see [`SECURITY.md`](./SECURITY.md). Repo went public 2026-04-12.
+Phases 1–6 complete. **8 MCP tools live**, all 50 states + federal, backed by OpenStates + Congress.gov + OpenFEC with transparent pass-through caching. Pre-public security audit landed at `aafdb73` — see [`SECURITY.md`](./SECURITY.md). Repo went public 2026-04-12.
 
 ## Tools
 
@@ -24,7 +24,6 @@ Phases 1–5 complete. **9 MCP tools live**, all 50 states + federal, backed by 
 | [`get_entity`](./docs/05-tool-surface.md#get_entity) | entity | Full entity record including role history (cross-jurisdiction for Persons) plus recent documents |
 | [`entity_connections`](./docs/05-tool-surface.md#entity_connections-phase-5) | entity | Graph of co-occurrence edges (via bills / votes / contributions) out to depth 2 |
 | [`resolve_person`](./docs/05-tool-surface.md#resolve_person-phase-5) | entity | Disambiguate a name into one or more Person entity IDs using role / jurisdiction / context hints |
-| [`refresh_source`](./docs/05-tool-surface.md#refresh_source-phase-5) | refresh | Trigger a batch refresh of one upstream source (openstates, congress, openfec). Writes to the DB; the only non-read tool. |
 
 Every response includes a `sources: { name, url }[]` array so the LLM can cite provenance. No tool synthesizes summaries — that's the LLM's job (per [D3c](./docs/06-open-decisions.md)).
 
@@ -58,7 +57,7 @@ One normalized event store, two projections:
 
 The feed and entity tools read the same two tables (`entities`, `documents`) with different WHERE clauses — a ~20-line SQL difference, not a parallel pipeline. Adapters normalize upstream JSON into `Document`s with `EntityReference`s, so tools never case-split by source and adding a new adapter requires zero tool changes. See [`docs/02-architecture.md`](./docs/02-architecture.md) for the full rationale.
 
-The 9th tool, `refresh_source`, is an in-session handle on the same adapter pipeline shown at the bottom — it lets an LLM populate missing data by invoking the same `refreshSource()` core function as the out-of-process `pnpm refresh` CLI. Both paths write into the same SQLite store.
+The SQLite store is a transparent TTL cache: when a tool request arrives for data that is absent or stale (1h for feeds, 24h for entities), the server fetches upstream automatically before returning results. Upstream failures serve the last-known data with a `stale_notice` field. No manual refresh step required.
 
 ## Entity resolution
 
@@ -193,18 +192,17 @@ pnpm start         # run the MCP over stdio
 pnpm dev           # run via tsx with no build step
 ```
 
-### Populate the store
+### Data hydration
 
-Two paths, same underlying function:
+The server fetches data automatically. Ask Claude about Texas bills,
+federal campaign contributions, or any other supported source — if
+the local cache is empty or stale, the server fetches from upstream
+before returning the result. API keys must be set (see Environment
+variables below); the server hard-fails on startup if they are
+missing.
 
-**In-session via the MCP tool (recommended):**
-
-Ask Claude to refresh: "Refresh Texas bills", "Refresh federal
-campaign contributions for 2026", etc. Claude calls the
-`refresh_source` tool with one consent prompt, then the batch
-runs.
-
-**Out-of-session via the CLI:**
+For bulk pre-population or forced re-ingestion, the CLI is still
+available:
 
 ```bash
 # API keys in .env.local: OPENSTATES_API_KEY, API_DATA_GOV_KEY
@@ -214,12 +212,9 @@ pnpm refresh --source=congress   --max-pages=1
 pnpm refresh --source=openfec    --max-pages=1
 ```
 
-Both paths upsert into `./data/civic-awareness.db` (gitignored).
+All paths upsert into `./data/civic-awareness.db` (gitignored).
 The schema auto-bootstraps on first server start — no `pnpm
 bootstrap` needed unless you want to create the DB ahead of time.
-
-The other 8 tools remain pure reads from SQLite. Only
-`refresh_source` writes, and only when you invoke it.
 
 ### Claude Desktop config
 
@@ -239,7 +234,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 }
 ```
 
-Then restart Claude Desktop; the 9 tools will appear in the tool picker.
+Then restart Claude Desktop; the 8 tools will appear in the tool picker.
 
 ### Environment variables
 
@@ -261,9 +256,8 @@ to your user-level `settings.json` (or the project-level
 }
 ```
 
-After that, calls to any of the 9 tools — including
-`refresh_source` — run without prompts. To silence only read
-tools and keep the refresh prompt:
+After that, calls to any of the 8 tools run without prompts. To approve
+individual tools rather than the whole server:
 
 ```json
 {
@@ -277,8 +271,7 @@ tools and keep the refresh prompt:
       "mcp__civic_awareness__search_civic_documents",
       "mcp__civic_awareness__entity_connections",
       "mcp__civic_awareness__resolve_person"
-    ],
-    "ask": ["mcp__civic_awareness__refresh_source"]
+    ]
   }
 }
 ```
@@ -298,7 +291,7 @@ To run the nightly workflow, set two repo secrets (`OPENSTATES_API_KEY` and `API
 
 ## Security
 
-- Never writes upstream — no posts or mutations against OpenStates / Congress.gov / OpenFEC. The one write tool (`refresh_source`) writes only to the operator's local SQLite store, from sanctioned Tier-1 APIs, and only on explicit user invocation
+- Never writes upstream — no posts or mutations against OpenStates / Congress.gov / OpenFEC. The server transparently writes to the operator's local SQLite store on cache misses, sourced from Tier-1 APIs.
 - All upstream APIs are sanctioned Tier-1 (free-tier keys, documented rate limits) — see [`docs/03-data-sources.md`](./docs/03-data-sources.md)
 - Rate-limited fetch wrapper with per-host token bucket, `Retry-After` honoured, redirects rejected by default
 - Zod-validated tool inputs; `better-sqlite3` parameterized queries; `LIKE ... ESCAPE` on user-supplied patterns

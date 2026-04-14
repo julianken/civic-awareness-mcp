@@ -3,6 +3,49 @@
 All notable changes to `civic-awareness-mcp` will be documented in
 this file. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## v0.2.0 — 2026-04-13
+
+**Transparent pass-through cache (R13).** The MCP is no longer an
+empty database waiting to be filled by the user — it's a live
+interface to OpenStates, Congress.gov, and OpenFEC with the SQLite
+store acting as a TTL cache. Cache misses fetch upstream
+transparently. Upstream failures serve stale local data with a
+`stale_notice` field. Entity tools auto-hydrate their jurisdiction.
+
+### Added
+- `src/core/freshness.ts` — TTL helpers (1h recent / 24h full)
+- `src/core/singleflight.ts` — concurrent-hydrate coalescing
+- `src/core/budget.ts` — daily request budget guard
+  (`CIVIC_AWARENESS_DAILY_BUDGET` env var)
+- `src/core/hydrate.ts` — pass-through orchestrator
+- `src/core/limiters.ts` — shared per-source rate limiter registry
+- `hydrations` table (migration 004)
+- `stale_notice` sibling field on every tool response envelope
+- Adapter `deadline?: number` option for wall-clock bounded pulls
+- `RateLimiter.peekWaitMs()` + `RATE_LIMIT_WAIT_THRESHOLD_MS=2500`
+- Tagged `ConfigurationError` for hard-fail on missing API keys
+
+### Changed
+- All 8 read tools now hydrate transparently when data is stale or
+  missing. No user-visible refresh step.
+- Empty-feed diagnostic hints no longer reference `pnpm refresh`;
+  removed the `no_refresh` variant from `EmptyReason`.
+- Entity tools bound their first-call hydration to `maxPages=5` AND
+  a 20s wall-clock deadline; partial results are marked and
+  surfaced via `stale_notice`.
+
+### Removed
+- `refresh_source` MCP tool (superseded by pass-through). The
+  `pnpm refresh` CLI remains for operator use.
+
+### Docs
+- `docs/00-rationale.md`: R13 added
+- `docs/06-open-decisions.md`: D5 second amendment
+- `CLAUDE.md`: D5 bullet + pass-through mental model
+- `docs/05-tool-surface.md`: pass-through cache section
+- `docs/02-architecture.md`: pass-through hydration layer
+- `docs/plans/phase-5-onboarding-and-refresh-tool.md`: supersede banner
+
 ## [0.1.0] — 2026-04-13
 
 Phase 2.5 correctness and polish, surfaced by a 5-reviewer UX + technical
