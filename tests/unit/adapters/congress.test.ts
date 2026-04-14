@@ -513,3 +513,47 @@ describe("CongressAdapter.searchMembers", () => {
     expect(result.entitiesUpserted).toBe(0);
   });
 });
+
+describe("CongressAdapter.fetchMember", () => {
+  it("fetches /member/{bioguideId} and upserts the returned Member", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ member: SAMPLE_MEMBER }), { status: 200 }),
+    );
+
+    const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
+    const result = await adapter.fetchMember(store.db, "S000148");
+
+    expect(result.entitiesUpserted).toBe(1);
+    const url = fetchSpy.mock.calls[0][0] as string;
+    expect(url).toMatch(/\/member\/S000148/);
+    expect(url).toMatch(/api_key=test-key/);
+
+    const rows = store.db
+      .prepare(
+        "SELECT name FROM entities WHERE json_extract(external_ids, '$.bioguide') = ?",
+      )
+      .all("S000148") as Array<{ name: string }>;
+    expect(rows).toHaveLength(1);
+    fetchSpy.mockRestore();
+  });
+
+  it("returns entitiesUpserted=0 on 404 without throwing", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ error: "not found" }), { status: 404 }),
+    );
+
+    const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
+    const result = await adapter.fetchMember(store.db, "Z999999");
+    expect(result.entitiesUpserted).toBe(0);
+  });
+
+  it("returns 0 when body omits the member field", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({}), { status: 200 }),
+    );
+
+    const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
+    const result = await adapter.fetchMember(store.db, "S000148");
+    expect(result.entitiesUpserted).toBe(0);
+  });
+});

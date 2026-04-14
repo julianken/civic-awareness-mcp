@@ -273,6 +273,33 @@ export class CongressAdapter implements Adapter {
   }
 
   /**
+   * Direct-lookup narrow fetch for R15 `get_entity` — resolves one
+   * Member by bioguide via `/member/{bioguideId}`. Returns
+   * `entitiesUpserted: 0` on 404 (or an empty body) so the handler
+   * can fan out across sources without knowing in advance which one
+   * carries the entity. Reuses `upsertMember` for write-through.
+   */
+  async fetchMember(
+    db: Database.Database,
+    bioguideId: string,
+  ): Promise<{ entitiesUpserted: number }> {
+    const url = new URL(`${BASE_URL}/member/${bioguideId}`);
+    url.searchParams.set("api_key", this.opts.apiKey);
+    const res = await rateLimitedFetch(url.toString(), {
+      userAgent: "civic-awareness-mcp/0.1.0 (+github)",
+      rateLimiter: this.rateLimiter,
+    });
+    if (res.status === 404) return { entitiesUpserted: 0 };
+    if (!res.ok) {
+      throw new Error(`Congress.gov /member/${bioguideId} returned ${res.status}`);
+    }
+    const body = (await res.json()) as { member?: CongressMember };
+    if (!body.member) return { entitiesUpserted: 0 };
+    this.upsertMember(db, body.member);
+    return { entitiesUpserted: 1 };
+  }
+
+  /**
    * Narrow per-tool fetch for R15 member search — one page of
    * `/member?congress=N` for the current Congress. Congress.gov has no
    * name-search endpoint, so this refreshes the full ~250-member page
