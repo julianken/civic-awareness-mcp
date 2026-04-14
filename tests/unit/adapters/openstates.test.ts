@@ -521,3 +521,82 @@ describe("OpenStatesAdapter.fetchRecentBills", () => {
     }
   });
 });
+
+describe("OpenStatesAdapter.searchPeople", () => {
+  const SP_DB = "./data/test-openstates-sp.db";
+  const SP_EMPTY_DB = "./data/test-openstates-sp-empty.db";
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (existsSync(SP_DB)) rmSync(SP_DB, { force: true });
+    if (existsSync(SP_EMPTY_DB)) rmSync(SP_EMPTY_DB, { force: true });
+  });
+
+  it("fetches /people with jurisdiction+name params and writes upserted persons", async () => {
+    let capturedUrl: string | undefined;
+    vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
+      capturedUrl = String(url);
+      return new Response(JSON.stringify({
+        results: [
+          {
+            id: "ocd-person/tx-1",
+            name: "Jane Doe",
+            party: "Democratic",
+            current_role: { title: "Representative", district: "15", org_classification: "lower" },
+            jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
+          },
+        ],
+        pagination: { max_page: 1, page: 1 },
+      }), { status: 200 });
+    });
+
+    if (existsSync(SP_DB)) rmSync(SP_DB, { force: true });
+    const db = openStore(SP_DB);
+    seedJurisdictions(db.db);
+    try {
+      const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+      const result = await adapter.searchPeople(db.db, {
+        jurisdiction: "us-tx",
+        name: "Jane",
+      });
+
+      expect(capturedUrl).toBeDefined();
+      const u = new URL(capturedUrl!);
+      expect(u.searchParams.get("jurisdiction")).toBe("tx");
+      expect(u.searchParams.get("name")).toBe("Jane");
+      expect(u.searchParams.get("per_page")).toBe("20");
+
+      expect(result.entitiesUpserted).toBe(1);
+      const rows = db.db
+        .prepare("SELECT name FROM entities WHERE kind = 'person'")
+        .all() as Array<{ name: string }>;
+      expect(rows).toHaveLength(1);
+      expect(rows[0].name).toBe("Jane Doe");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("returns 0 entitiesUpserted for an empty results body", async () => {
+    vi.spyOn(global, "fetch").mockImplementation(async () =>
+      new Response(
+        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
+        { status: 200 },
+      ),
+    );
+
+    if (existsSync(SP_EMPTY_DB)) rmSync(SP_EMPTY_DB, { force: true });
+    const db = openStore(SP_EMPTY_DB);
+    seedJurisdictions(db.db);
+    try {
+      const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+      const result = await adapter.searchPeople(db.db, {
+        jurisdiction: "us-tx",
+        name: "Nonexistent",
+      });
+      expect(result.entitiesUpserted).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+});

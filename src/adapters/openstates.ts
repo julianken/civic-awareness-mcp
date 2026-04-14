@@ -189,6 +189,37 @@ export class OpenStatesAdapter implements Adapter {
     this.upsertBill(db, body);
   }
 
+  /** Narrow per-tool fetch for R15 people search — one page of
+   *  `/people` filtered by jurisdiction and/or name. Writes through to
+   *  `entities` via `upsertPerson`. Shared endpoint with
+   *  `resolve_person` / `search_entities` so cache rows coalesce. */
+  async searchPeople(
+    db: Database.Database,
+    opts: { jurisdiction?: string; name?: string; limit?: number },
+  ): Promise<{ entitiesUpserted: number }> {
+    const url = new URL(`${BASE_URL}/people`);
+    if (opts.jurisdiction) {
+      const abbr = opts.jurisdiction.replace(/^us-/, "").toLowerCase();
+      url.searchParams.set("jurisdiction", abbr);
+    }
+    if (opts.name) url.searchParams.set("name", opts.name);
+    url.searchParams.set("per_page", String(opts.limit ?? 20));
+
+    const res = await rateLimitedFetch(url.toString(), {
+      userAgent: "civic-awareness-mcp/0.1.0 (+github)",
+      rateLimiter: this.rateLimiter,
+      headers: { "X-API-KEY": this.opts.apiKey },
+    });
+    if (!res.ok) throw new Error(`OpenStates /people returned ${res.status}`);
+    const body = (await res.json()) as { results?: OpenStatesPerson[] };
+    let entitiesUpserted = 0;
+    for (const p of body.results ?? []) {
+      this.upsertPerson(db, p);
+      entitiesUpserted += 1;
+    }
+    return { entitiesUpserted };
+  }
+
   /** Narrow per-tool fetch for R15 `recent_bills` — one page of
    *  recently-updated bills for a jurisdiction, with optional
    *  `updated_since` filter and optional client-side chamber filter.
