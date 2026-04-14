@@ -36,7 +36,7 @@ describe("openStore", () => {
     const count = s.db
       .prepare("SELECT COUNT(*) as c FROM schema_migrations")
       .get() as { c: number };
-    expect(count.c).toBe(4);
+    expect(count.c).toBe(5);
     s.close();
   });
 
