@@ -6,8 +6,6 @@ An [MCP](https://modelcontextprotocol.io) server that gives an LLM first-class a
 ![Node 22+](https://img.shields.io/badge/node-%E2%89%A522-brightgreen)
 [![Nightly drift](https://github.com/julianken/civic-awareness-mcp/actions/workflows/nightly-drift.yml/badge.svg)](https://github.com/julianken/civic-awareness-mcp/actions/workflows/nightly-drift.yml)
 
-The interesting part isn't the data, it's the **cross-source entity graph**: a sitting Senator has a Congress.gov `bioguide_id`, an OpenStates `ocd-person` ID from their state-legislature days, and an OpenFEC `candidate_id` for their federal campaigns. This MCP collapses those three records into one `Person` entity so an LLM can ask *"What bills did this Senator sponsor, and who funded her last campaign?"* and get one coherent answer.
-
 ## Status
 
 Phases 1–7 complete. **9 MCP tools live**, all 50 states + federal, backed by OpenStates + Congress.gov + OpenFEC with transparent pass-through caching. Pre-public security audit landed at `aafdb73` — see [`SECURITY.md`](./SECURITY.md). Repo went public 2026-04-12.
