@@ -410,3 +410,67 @@ describe("CongressAdapter.fetchRecentBills", () => {
     expect(titles[0].title).toMatch(/Senate Bill/);
   });
 });
+
+describe("CongressAdapter.fetchRecentVotes", () => {
+  it("fetches votes for current congress and writes them", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({
+        votes: [{
+          congress: 119, chamber: "Senate", rollNumber: 42,
+          date: "2026-04-10T12:00:00Z",
+          question: "Motion to proceed",
+          result: "Passed",
+          bill: { type: "S", number: "1234" },
+          positions: [],
+          totals: { yea: 60, nay: 40 },
+        }],
+        pagination: { count: 1 },
+      }), { status: 200 }),
+    );
+
+    const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
+    const result = await adapter.fetchRecentVotes(store.db);
+
+    expect(result.documentsUpserted).toBe(1);
+    const url = fetchSpy.mock.calls[0][0] as string;
+    expect(url).toMatch(/\/vote\?/);
+    expect(url).toMatch(/congress=119/);
+    expect(url).toMatch(/api_key=test-key/);
+    const written = store.db.prepare(
+      "SELECT kind FROM documents WHERE source_name='congress' AND kind='vote'",
+    ).all();
+    expect(written).toHaveLength(1);
+    fetchSpy.mockRestore();
+  });
+
+  it("gracefully degrades on 404 (free-tier API limitation)", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({}), { status: 404 }),
+    );
+
+    const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
+    const result = await adapter.fetchRecentVotes(store.db);
+
+    expect(result.documentsUpserted).toBe(0);
+    expect(result.degraded).toBe(true);
+    fetchSpy.mockRestore();
+  });
+
+  it("chamber filter selects senate/house votes client-side", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({
+        votes: [
+          { congress: 119, chamber: "Senate", rollNumber: 1, date: "2026-04-10", positions: [], totals: {} },
+          { congress: 119, chamber: "House", rollNumber: 2, date: "2026-04-10", positions: [], totals: {} },
+        ],
+        pagination: { count: 2 },
+      }), { status: 200 }),
+    );
+
+    const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
+    const result = await adapter.fetchRecentVotes(store.db, { chamber: "upper" });
+
+    expect(result.documentsUpserted).toBe(1);
+    fetchSpy.mockRestore();
+  });
+});

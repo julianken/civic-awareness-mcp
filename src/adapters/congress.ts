@@ -272,6 +272,53 @@ export class CongressAdapter implements Adapter {
     return { documentsUpserted };
   }
 
+  /**
+   * Narrow per-tool fetch for R15 `recent_votes` — one page of recent
+   * roll-call votes for the current Congress with optional chamber
+   * filter. On 404 (free Congress.gov tier does not expose `/vote`),
+   * returns `{ documentsUpserted: 0, degraded: true }` rather than
+   * throwing, matching `refresh()`'s existing graceful-degradation
+   * behavior.
+   */
+  async fetchRecentVotes(
+    db: Database.Database,
+    opts: { chamber?: "upper" | "lower"; limit?: number } = {},
+  ): Promise<{ documentsUpserted: number; degraded?: boolean }> {
+    const congress = this.congresses[0];
+    const url = new URL(`${BASE_URL}/vote`);
+    url.searchParams.set("congress", String(congress));
+    url.searchParams.set("sort", "updateDate+desc");
+    url.searchParams.set("limit", String(opts.limit ?? 250));
+    url.searchParams.set("api_key", this.opts.apiKey);
+
+    const res = await rateLimitedFetch(url.toString(), {
+      userAgent: "civic-awareness-mcp/0.1.0 (+github)",
+      rateLimiter: this.rateLimiter,
+    });
+    if (res.status === 404) {
+      logger.warn("congress /vote 404 — free tier limitation; skipping", {
+        url: url.toString(),
+      });
+      return { documentsUpserted: 0, degraded: true };
+    }
+    if (!res.ok) throw new Error(`Congress.gov /vote returned ${res.status}`);
+    const body = (await res.json()) as { votes?: CongressVote[] };
+
+    const chamberMatch = (chamber: string): boolean => {
+      if (!opts.chamber) return true;
+      const senate = chamber.toLowerCase().includes("senate");
+      return opts.chamber === "upper" ? senate : !senate;
+    };
+
+    let documentsUpserted = 0;
+    for (const v of body.votes ?? []) {
+      if (!chamberMatch(v.chamber)) continue;
+      this.upsertVote(db, v);
+      documentsUpserted += 1;
+    }
+    return { documentsUpserted };
+  }
+
   // ── Private helpers ────────────────────────────────────────────────
 
   private async fetchAllPages<T, B>(
