@@ -222,6 +222,50 @@ export class OpenFecAdapter implements Adapter {
     return result;
   }
 
+  /**
+   * Narrow per-tool fetch for R15 `recent_contributions` — one page of
+   * Schedule A using OpenFEC's native `min_date`/`max_date` filters
+   * (MM/DD/YYYY format) with optional repeated `committee_id` query
+   * params. Caveat: OpenFEC's date filters operate on REPORTING date
+   * (form filing), not contribution-receipt date — documented in D3d
+   * / docs/03-data-sources.md.
+   */
+  async fetchRecentContributions(
+    db: Database.Database,
+    opts: {
+      min_date: string;
+      max_date?: string;
+      committee_ids?: string[];
+      limit?: number;
+    },
+  ): Promise<{ documentsUpserted: number }> {
+    const url = new URL(`${BASE_URL}/schedules/schedule_a/`);
+    url.searchParams.set("min_date", opts.min_date);
+    if (opts.max_date) url.searchParams.set("max_date", opts.max_date);
+    for (const id of opts.committee_ids ?? []) {
+      url.searchParams.append("committee_id", id);
+    }
+    url.searchParams.set("per_page", String(opts.limit ?? 100));
+    url.searchParams.set("sort", "-contribution_receipt_date");
+    url.searchParams.set("api_key", this.opts.apiKey);
+
+    const res = await rateLimitedFetch(url.toString(), {
+      userAgent: "civic-awareness-mcp/0.1.0 (+github)",
+      rateLimiter: this.rateLimiter,
+    });
+    if (!res.ok) {
+      throw new Error(`OpenFEC /schedules/schedule_a returned ${res.status}`);
+    }
+    const body = (await res.json()) as FecPage<FecScheduleA>;
+
+    let documentsUpserted = 0;
+    for (const item of body.results ?? []) {
+      this.upsertContribution(db, item);
+      documentsUpserted += 1;
+    }
+    return { documentsUpserted };
+  }
+
   // ── Private helpers ────────────────────────────────────────────────
 
   /**

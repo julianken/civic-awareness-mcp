@@ -557,3 +557,54 @@ describe("OpenFecAdapter", () => {
     expect(scheduleACalls[1]).toContain("last_contribution_receipt_date=2026-01-15");
   });
 });
+
+describe("OpenFecAdapter.fetchRecentContributions", () => {
+  it("fetches schedule_a page with date range", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({
+        results: [{
+          transaction_id: "T1", committee_id: "C001",
+          contributor_name: "SMITH, JANE",
+          contribution_receipt_amount: 2500,
+          contribution_receipt_date: "2026-04-10",
+        }],
+        pagination: { per_page: 100 },
+      }), { status: 200 }),
+    );
+
+    const adapter = new OpenFecAdapter({ apiKey: "test-key" });
+    const result = await adapter.fetchRecentContributions(store.db, {
+      min_date: "04/01/2026",
+      max_date: "04/30/2026",
+    });
+
+    expect(result.documentsUpserted).toBe(1);
+    const url = fetchSpy.mock.calls[0][0] as string;
+    expect(url).toMatch(/\/schedules\/schedule_a/);
+    expect(url).toMatch(/min_date=04%2F01%2F2026/);
+    expect(url).toMatch(/max_date=04%2F30%2F2026/);
+    expect(url).toMatch(/api_key=test-key/);
+    const written = store.db.prepare(
+      "SELECT kind FROM documents WHERE source_name='openfec' AND kind='contribution'",
+    ).all();
+    expect(written).toHaveLength(1);
+    fetchSpy.mockRestore();
+  });
+
+  it("passes committee_id when provided", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ results: [], pagination: { per_page: 100 } }), { status: 200 }),
+    );
+
+    const adapter = new OpenFecAdapter({ apiKey: "test-key" });
+    await adapter.fetchRecentContributions(store.db, {
+      min_date: "04/01/2026",
+      committee_ids: ["C001", "C002"],
+    });
+
+    const url = fetchSpy.mock.calls[0][0] as string;
+    expect(url).toMatch(/committee_id=C001/);
+    expect(url).toMatch(/committee_id=C002/);
+    fetchSpy.mockRestore();
+  });
+});
