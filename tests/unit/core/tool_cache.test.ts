@@ -133,7 +133,7 @@ describe("withShapedFetch — singleflight", () => {
     const results = await Promise.all([p1, p2, p3]);
 
     expect(fetchCount).toBe(1);
-    expect(results.map((r) => r.value)).toEqual([["result"], ["result"], ["result"]]);
+    expect(results.map((r: { value: string[] }) => r.value)).toEqual([["result"], ["result"], ["result"]]);
   });
 
   it("different args do NOT coalesce", async () => {
