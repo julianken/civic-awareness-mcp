@@ -8,6 +8,12 @@ export const RecentBillsInput = z.object({
   jurisdiction: z.string().min(1),
   chamber: z.enum(["upper", "lower"]).optional(),
   session: z.string().optional(),
+  // Optional row cap. When set, the handler drops the days-derived
+  // `updated_since` upstream filter and returns top-N by
+  // OpenStates' native `sort=updated_desc` / Congress.gov's
+  // `sort=updateDate+desc`. Use to query biennial or off-session
+  // jurisdictions where the time window is empty. See D12 / R16.
+  limit: z.number().int().min(1).max(20).optional(),
 });
 export type RecentBillsInput = z.infer<typeof RecentBillsInput>;
 

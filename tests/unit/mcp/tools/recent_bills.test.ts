@@ -12,6 +12,7 @@ import { RateLimiter } from "../../../../src/util/http.js";
 import { OpenStatesAdapter } from "../../../../src/adapters/openstates.js";
 import { CongressAdapter } from "../../../../src/adapters/congress.js";
 import { handleRecentBills } from "../../../../src/mcp/tools/recent_bills.js";
+import { RecentBillsInput } from "../../../../src/mcp/schemas.js";
 
 const TEST_DB = "./data/test-tool-recent-bills.db";
 let store: Store;
@@ -204,6 +205,24 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
   it("rejects days above 365", async () => {
     await expect(
       handleRecentBills(store.db, { jurisdiction: "us-or", days: 366 }),
+    ).rejects.toThrow();
+  });
+
+  it("accepts limit between 1 and 20", () => {
+    expect(() =>
+      RecentBillsInput.parse({ jurisdiction: "us-tx", days: 7, limit: 5 }),
+    ).not.toThrow();
+  });
+
+  it("rejects limit=0", async () => {
+    await expect(
+      handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7, limit: 0 }),
+    ).rejects.toThrow();
+  });
+
+  it("rejects limit above 20", async () => {
+    await expect(
+      handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7, limit: 21 }),
     ).rejects.toThrow();
   });
 
