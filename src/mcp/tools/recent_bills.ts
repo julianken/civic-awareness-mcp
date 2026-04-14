@@ -41,7 +41,7 @@ export interface RecentBillsResponse {
   stale_notice?: StaleNotice;
 }
 
-function buildSponsorSummary(
+export function buildSponsorSummary(
   db: Database.Database,
   refs: EntityReference[],
 ): SponsorSummary {

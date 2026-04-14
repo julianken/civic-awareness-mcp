@@ -9,6 +9,7 @@ import { handleSearchDocuments } from "./tools/search_civic_documents.js";
 import { handleEntityConnections } from "./tools/entity_connections.js";
 import { handleResolvePerson } from "./tools/resolve_person.js";
 import { handleGetBill } from "./tools/get_bill.js";
+import { handleListBills } from "./tools/list_bills.js";
 import {
   RecentBillsInput,
   RecentVotesInput,
@@ -19,6 +20,7 @@ import {
   EntityConnectionsInput,
   ResolvePersonInput,
   GetBillInput,
+  ListBillsInput,
 } from "./schemas.js";
 
 export interface BuildServerOptions { dbPath: string }
@@ -42,6 +44,23 @@ export function buildServer(opts: BuildServerOptions): CivicAwarenessServer {
     },
     async (input) => {
       const data = await handleRecentBills(store.db, input);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    },
+  );
+
+  mcp.registerTool(
+    "list_bills",
+    {
+      description:
+        "List legislative bills by structured predicates — sponsor, subject, " +
+        "classification, session, chamber, introduction/update date ranges. " +
+        "Distinct from recent_bills (which is a time-windowed feed). " +
+        'Jurisdiction is required; pass "us-<state>" (e.g. "us-ca"). ' +
+        "us-federal is not yet supported and returns a stale_notice.",
+      inputSchema: ListBillsInput.shape,
+    },
+    async (input) => {
+      const data = await handleListBills(store.db, input);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     },
   );
