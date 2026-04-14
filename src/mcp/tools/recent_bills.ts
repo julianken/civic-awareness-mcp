@@ -90,6 +90,18 @@ function buildSponsorSummary(
 /**
  * Returns recently-updated bills for the given jurisdiction.
  *
+ * Sort order is **last-updated desc**, not introduced-date — upstream
+ * APIs (OpenStates `sort=updated_desc`, Congress.gov
+ * `sort=updateDate+desc`) place re-touched older bills above freshly
+ * introduced ones when the older bill has the more recent activity.
+ *
+ * Semantics when both `days` and `limit` are set: BOTH apply as
+ * upper bounds. The window filters; `limit` caps. When only `limit`
+ * is set (callers omit `days`), the default `days=7` still applies
+ * in the local projection, but the upstream `updated_since` filter
+ * is dropped so biennial / off-session jurisdictions can surface
+ * older entries. To ask for "last N ever," pass `days=365, limit=N`.
+ *
  * R15 vertical: the handler is a thin orchestrator around
  * `withShapedFetch`. It branches on jurisdiction — `us-federal` uses
  * the Congress.gov adapter's `fetchRecentBills`, state jurisdictions
@@ -109,19 +121,27 @@ export async function handleRecentBills(
   const from = new Date(to.getTime() - input.days * 86400 * 1000);
 
   const projectLocal = (): RecentBillsResponse => {
+    // Headroom for chamber/session filters before the final cap.
+    const ceiling = Math.max(50, (input.limit ?? 0) * 3);
     const docs = input.session
       ? queryDocuments(db, {
           kind: "bill",
           jurisdiction: input.jurisdiction,
-          limit: 100,
+          limit: Math.max(100, ceiling),
         })
-      : queryDocuments(db, {
-          kind: "bill",
-          jurisdiction: input.jurisdiction,
-          from: from.toISOString(),
-          to: to.toISOString(),
-          limit: 50,
-        });
+      : input.limit !== undefined
+        ? queryDocuments(db, {
+            kind: "bill",
+            jurisdiction: input.jurisdiction,
+            limit: ceiling,
+          })
+        : queryDocuments(db, {
+            kind: "bill",
+            jurisdiction: input.jurisdiction,
+            from: from.toISOString(),
+            to: to.toISOString(),
+            limit: 50,
+          });
 
     const sessionFiltered = input.session
       ? docs.filter((d) => (d.raw as { session?: string }).session === input.session)
@@ -150,6 +170,10 @@ export async function handleRecentBills(
       };
     });
 
+    const capped = input.limit !== undefined
+      ? results.slice(0, input.limit)
+      : results;
+
     // Build source URLs from each document's actual source_name —
     // openstates for state bills, congress for federal, etc. Matches
     // the pattern in get_entity.ts.
@@ -170,12 +194,12 @@ export async function handleRecentBills(
     }
 
     const base: RecentBillsResponse = {
-      results,
-      total: results.length,
+      results: capped,
+      total: capped.length,
       sources: Array.from(sourceByName, ([name, url]) => ({ name, url })),
       window: { from: from.toISOString(), to: to.toISOString() },
     };
-    if (results.length === 0) {
+    if (capped.length === 0) {
       const diag = emptyFeedDiagnostic(db, { jurisdiction: input.jurisdiction, kind: "bill" });
       return { ...base, ...diag };
     }
@@ -198,9 +222,17 @@ export async function handleRecentBills(
         apiKey: requireEnv("API_DATA_GOV_KEY"),
         rateLimiter: getLimiter("congress"),
       });
+      // Congress.gov requires fromDateTime for sort=updateDate+desc
+      // to be meaningful; when `limit` is set we widen the window
+      // to 365d so older re-touched bills can surface and the
+      // native sort + limit do the real work.
+      const fromDateTime = input.limit !== undefined
+        ? new Date(to.getTime() - 365 * 86400 * 1000).toISOString()
+        : from.toISOString();
       const { documentsUpserted } = await adapter.fetchRecentBills(db, {
-        fromDateTime: from.toISOString(),
+        fromDateTime,
         chamber: input.chamber,
+        limit: input.limit,
       });
       return { primary_rows_written: documentsUpserted };
     }
@@ -208,10 +240,16 @@ export async function handleRecentBills(
       apiKey: requireEnv("OPENSTATES_API_KEY"),
       rateLimiter: getLimiter("openstates"),
     });
+    // When `limit` is set we drop updated_since so biennial / off-
+    // session jurisdictions can return their last-N-updated bills
+    // regardless of recency. See D12 / R16.
     const { documentsUpserted } = await adapter.fetchRecentBills(db, {
       jurisdiction: input.jurisdiction,
-      updated_since: from.toISOString().slice(0, 10),
+      updated_since: input.limit !== undefined
+        ? undefined
+        : from.toISOString().slice(0, 10),
       chamber: input.chamber,
+      limit: input.limit,
     });
     return { primary_rows_written: documentsUpserted };
   };
@@ -226,6 +264,7 @@ export async function handleRecentBills(
         days: input.days,
         chamber: input.chamber,
         session: input.session,
+        limit: input.limit,
       },
       tool: "recent_bills",
     },

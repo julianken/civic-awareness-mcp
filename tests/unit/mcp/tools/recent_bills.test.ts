@@ -429,6 +429,95 @@ describe("recent_bills tool — R15 hydration path", () => {
     fetchSpy.mockRestore();
   });
 
+  it("cold fetch with limit=5: calls OpenStates fetchRecentBills WITHOUT updated_since", async () => {
+    const fetchSpy = vi
+      .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
+      .mockImplementation(async () => ({ documentsUpserted: 0 }));
+
+    await handleRecentBills(store.db, { jurisdiction: "us-mt", days: 7, limit: 5 });
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const callOpts = fetchSpy.mock.calls[0][1];
+    expect(callOpts).toMatchObject({ jurisdiction: "us-mt", limit: 5 });
+    expect(callOpts.updated_since).toBeUndefined();
+
+    fetchSpy.mockRestore();
+  });
+
+  it("cold fetch with limit=5: caps the local projection at 5 results", async () => {
+    // Seed 10 bills for us-tx so the projection has plenty to cap.
+    for (let i = 0; i < 10; i++) {
+      upsertDocument(store.db, {
+        kind: "bill", jurisdiction: "us-tx",
+        title: `SB ${100 + i} — Bulk ${i}`,
+        occurred_at: new Date(Date.now() - i * 86400 * 1000).toISOString(),
+        source: { name: "openstates", id: `bulk-${i}`, url: `https://ex/${i}` },
+        references: [], raw: { actions: [] },
+      });
+    }
+    const fetchSpy = vi
+      .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
+      .mockImplementation(async () => ({ documentsUpserted: 10 }));
+
+    const res = await handleRecentBills(store.db, {
+      jurisdiction: "us-tx", days: 7, limit: 5,
+    });
+
+    expect(res.results).toHaveLength(5);
+    fetchSpy.mockRestore();
+  });
+
+  it("distinct limit values produce distinct fetch_log rows", async () => {
+    const fetchSpy = vi
+      .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
+      .mockImplementation(async () => ({ documentsUpserted: 0 }));
+
+    await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7, limit: 5 });
+    await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7, limit: 10 });
+    await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+
+    const rows = store.db
+      .prepare(
+        `SELECT DISTINCT args_hash FROM fetch_log
+         WHERE source='openstates' AND endpoint_path='/bills'`,
+      )
+      .all() as Array<{ args_hash: string }>;
+    expect(rows.length).toBe(3);
+
+    fetchSpy.mockRestore();
+  });
+
+  it("limit unset: still passes updated_since (existing behaviour)", async () => {
+    const fetchSpy = vi
+      .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
+      .mockImplementation(async () => ({ documentsUpserted: 0 }));
+
+    await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
+
+    const callOpts = fetchSpy.mock.calls[0][1];
+    expect(callOpts.updated_since).toBeDefined();
+    expect(callOpts.limit).toBeUndefined();
+
+    fetchSpy.mockRestore();
+  });
+
+  it("us-federal with limit: threads limit into Congress adapter", async () => {
+    const fetchSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchRecentBills")
+      .mockImplementation(async () => ({ documentsUpserted: 0 }));
+
+    await handleRecentBills(store.db, { jurisdiction: "us-federal", days: 7, limit: 5 });
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const callOpts = fetchSpy.mock.calls[0][1];
+    expect(callOpts.limit).toBe(5);
+    expect(callOpts.fromDateTime).toBeDefined();
+
+    fetchSpy.mockRestore();
+  });
+
   it("stale_notice propagates into empty-results diagnostic response", async () => {
     upsertFetchLog(store.db, {
       source: "openstates",
