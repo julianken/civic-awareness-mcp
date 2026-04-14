@@ -151,9 +151,9 @@ export class OpenStatesAdapter implements Adapter {
     return all;
   }
 
-  private upsertPerson(db: Database.Database, p: OpenStatesPerson): string {
+  private upsertPerson(db: Database.Database, p: OpenStatesPerson, fallbackStateAbbr?: string): string {
     const chamber = p.current_role?.org_classification;
-    const stateAbbr = extractStateAbbr(p.jurisdiction?.id);
+    const stateAbbr = extractStateAbbr(p.jurisdiction?.id) ?? fallbackStateAbbr;
     const now = new Date().toISOString();
     const roles = stateAbbr
       ? [{
@@ -190,7 +190,7 @@ export class OpenStatesAdapter implements Adapter {
 
     const refs = (b.sponsorships ?? []).map((s) => {
       const personId = s.person
-        ? this.upsertPerson(db, s.person)
+        ? this.upsertPerson(db, s.person, billStateAbbr)
         : upsertEntity(db, { kind: "person", name: s.name, jurisdiction: undefined }).entity.id;
       return {
         entity_id: personId,

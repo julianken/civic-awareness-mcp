@@ -222,6 +222,62 @@ describe("OpenStatesAdapter", () => {
     expect(row.occurred_at).toMatch(/^2026-04-10T/);
   });
 
+  it("populates roles[] from bill jurisdiction when sponsor person lacks jurisdiction", async () => {
+    // Sponsorship-only person: has current_role but no jurisdiction
+    // (matches OpenStates' actual sponsorship payload shape).
+    const sponsorPerson = {
+      id: "ocd-person/sponsor-only",
+      name: "Brandon Creighton",
+      party: "Republican",
+      current_role: { title: "Senator", district: "4", org_classification: "upper" },
+      // deliberately no jurisdiction field
+    };
+    const bill = {
+      ...SAMPLE_BILL,
+      id: "ocd-bill/with-sponsor-only",
+      sponsorships: [{ name: "Brandon Creighton", classification: "primary", person: sponsorPerson }],
+    };
+    // /people returns empty (so the person is ONLY created via the sponsorship
+    // path), /bills returns the above bill.
+    vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
+      const u = String(url);
+      if (u.includes("/people")) {
+        return new Response(
+          JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
+          { status: 200 },
+        );
+      }
+      if (u.includes("/bills")) {
+        return new Response(
+          JSON.stringify({ results: [bill], pagination: { max_page: 1, page: 1 } }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    const adapter = new OpenStatesAdapter({ apiKey: "test" });
+    await adapter.refresh({ db: store.db, jurisdiction: "tx" });
+
+    const row = store.db.prepare(
+      "SELECT metadata FROM entities WHERE json_extract(external_ids, '$.openstates_person') = ?",
+    ).get("ocd-person/sponsor-only") as { metadata: string };
+    const meta = JSON.parse(row.metadata);
+    expect(meta.roles).toHaveLength(1);
+    expect(meta.roles[0]).toMatchObject({
+      jurisdiction: "us-tx",
+      role: "state_legislator",
+      to: null,
+    });
+    // Scalar metadata from the sponsorship's current_role should still land too.
+    expect(meta).toMatchObject({
+      party: "Republican",
+      title: "Senator",
+      district: "4",
+      chamber: "upper",
+    });
+  });
+
   // Regression test: OpenStates v3 rejects comma-separated `include`
   // with HTTP 422. The API expects `include` as a repeated query
   // parameter (include=sponsorships&include=abstracts&include=actions),

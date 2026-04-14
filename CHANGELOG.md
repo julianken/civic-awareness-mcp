@@ -38,6 +38,12 @@ analysis. Full plan at `docs/plans/phase-2.5-correctness-polish.md`.
 - **`data_freshness.last_refreshed_at` reflects fetch time, not event
   time.** Corrected the underlying SQL from `occurred_at` to
   `fetched_at`. (T5 polish)
+- **Sponsorship-only legislators get roles populated from the bill's
+  jurisdiction.** OpenStates sponsorship payloads include legislator
+  scalar metadata but omit `jurisdiction.id`; the adapter now uses
+  the bill's own jurisdiction as a fallback when creating/updating a
+  person seen only as a sponsor. (Fix caught by smoke test, outside
+  the six planned Phase 2.5 tasks.)
 
 ### Added
 
