@@ -746,3 +746,205 @@ describe("OpenStatesAdapter.fetchPerson", () => {
     }
   });
 });
+
+describe("OpenStatesAdapter.listBills", () => {
+  const LB_PARAMS_DB = "./data/test-openstates-lb-params.db";
+  const LB_DATES_DB = "./data/test-openstates-lb-dates.db";
+  const LB_SORT_DB = "./data/test-openstates-lb-sort.db";
+  const LB_WRITE_DB = "./data/test-openstates-lb-write.db";
+  const LB_SPONSOR_DB = "./data/test-openstates-lb-sponsor.db";
+  const LB_FAIL_DB = "./data/test-openstates-lb-fail.db";
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    for (const p of [LB_PARAMS_DB, LB_DATES_DB, LB_SORT_DB, LB_WRITE_DB, LB_SPONSOR_DB, LB_FAIL_DB]) {
+      if (existsSync(p)) rmSync(p, { force: true });
+    }
+  });
+
+  it("maps jurisdiction, session, chamber, classification, subject to query params", async () => {
+    let capturedUrl: string | undefined;
+    vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
+      capturedUrl = String(url);
+      return new Response(
+        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
+        { status: 200 },
+      );
+    });
+
+    if (existsSync(LB_PARAMS_DB)) rmSync(LB_PARAMS_DB, { force: true });
+    const db = openStore(LB_PARAMS_DB);
+    seedJurisdictions(db.db);
+    try {
+      const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+      await adapter.listBills(db.db, {
+        jurisdiction: "us-tx",
+        session: "89R",
+        chamber: "upper",
+        classification: "bill",
+        subject: "Vehicles",
+        sort: "updated_desc",
+        limit: 20,
+      });
+
+      expect(capturedUrl).toBeDefined();
+      const params = new URL(capturedUrl!).searchParams;
+      expect(params.get("jurisdiction")).toBe("tx");
+      expect(params.get("session")).toBe("89R");
+      expect(params.get("chamber")).toBe("upper");
+      expect(params.get("classification")).toBe("bill");
+      expect(params.get("subject")).toBe("Vehicles");
+      expect(params.get("sort")).toBe("updated_desc");
+      expect(params.get("per_page")).toBe("20");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("maps introduced_since to created_since and updated_since directly", async () => {
+    let capturedUrl: string | undefined;
+    vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
+      capturedUrl = String(url);
+      return new Response(
+        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
+        { status: 200 },
+      );
+    });
+
+    if (existsSync(LB_DATES_DB)) rmSync(LB_DATES_DB, { force: true });
+    const db = openStore(LB_DATES_DB);
+    seedJurisdictions(db.db);
+    try {
+      const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+      await adapter.listBills(db.db, {
+        jurisdiction: "us-tx",
+        introduced_since: "2026-01-01",
+        updated_since: "2026-03-01",
+        sort: "updated_desc",
+        limit: 20,
+      });
+
+      expect(capturedUrl).toBeDefined();
+      const params = new URL(capturedUrl!).searchParams;
+      expect(params.get("created_since")).toBe("2026-01-01");
+      expect(params.get("updated_since")).toBe("2026-03-01");
+      expect(params.has("created_before")).toBe(false);
+      expect(params.has("updated_before")).toBe(false);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("maps introduced_desc sort to first_action_desc", async () => {
+    let capturedUrl: string | undefined;
+    vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
+      capturedUrl = String(url);
+      return new Response(
+        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
+        { status: 200 },
+      );
+    });
+
+    if (existsSync(LB_SORT_DB)) rmSync(LB_SORT_DB, { force: true });
+    const db = openStore(LB_SORT_DB);
+    seedJurisdictions(db.db);
+    try {
+      const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+      await adapter.listBills(db.db, {
+        jurisdiction: "us-tx",
+        sort: "introduced_desc",
+        limit: 20,
+      });
+
+      expect(capturedUrl).toBeDefined();
+      expect(new URL(capturedUrl!).searchParams.get("sort")).toBe("first_action_desc");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("writes through with upsertBill on successful fetch", async () => {
+    vi.spyOn(global, "fetch").mockImplementation(async () =>
+      new Response(JSON.stringify({
+        results: [{
+          id: "ocd-bill/tx/listbills-1",
+          identifier: "HB42",
+          title: "Listed Test",
+          session: "89R",
+          updated_at: "2026-04-10T00:00:00Z",
+          openstates_url: "https://openstates.org/tx/bills/89R/HB42",
+          jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
+          sponsorships: [],
+          actions: [{ date: "2026-04-10", description: "Introduced" }],
+        }],
+        pagination: { max_page: 1, page: 1 },
+      }), { status: 200 }),
+    );
+
+    if (existsSync(LB_WRITE_DB)) rmSync(LB_WRITE_DB, { force: true });
+    const db = openStore(LB_WRITE_DB);
+    seedJurisdictions(db.db);
+    try {
+      const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+      const result = await adapter.listBills(db.db, {
+        jurisdiction: "us-tx", sort: "updated_desc", limit: 20,
+      });
+
+      expect(result.documentsUpserted).toBe(1);
+      const rows = db.db.prepare(
+        "SELECT title FROM documents WHERE source_name='openstates' AND kind='bill'",
+      ).all() as Array<{ title: string }>;
+      expect(rows).toHaveLength(1);
+      expect(rows[0].title).toMatch(/^HB42 — /);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("passes sponsor as the sponsor query parameter when provided", async () => {
+    let capturedUrl: string | undefined;
+    vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
+      capturedUrl = String(url);
+      return new Response(
+        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
+        { status: 200 },
+      );
+    });
+
+    if (existsSync(LB_SPONSOR_DB)) rmSync(LB_SPONSOR_DB, { force: true });
+    const db = openStore(LB_SPONSOR_DB);
+    seedJurisdictions(db.db);
+    try {
+      const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+      await adapter.listBills(db.db, {
+        jurisdiction: "us-tx",
+        sponsor: "ocd-person/abc",
+        sort: "updated_desc",
+        limit: 20,
+      });
+
+      expect(capturedUrl).toBeDefined();
+      expect(new URL(capturedUrl!).searchParams.get("sponsor")).toBe("ocd-person/abc");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("throws on non-200 response", async () => {
+    vi.spyOn(global, "fetch").mockImplementation(async () =>
+      new Response("boom", { status: 500 }),
+    );
+
+    if (existsSync(LB_FAIL_DB)) rmSync(LB_FAIL_DB, { force: true });
+    const db = openStore(LB_FAIL_DB);
+    seedJurisdictions(db.db);
+    try {
+      const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+      await expect(
+        adapter.listBills(db.db, { jurisdiction: "us-tx", sort: "updated_desc", limit: 20 }),
+      ).rejects.toThrow(/OpenStates \/bills returned 500/);
+    } finally {
+      db.close();
+    }
+  });
+});

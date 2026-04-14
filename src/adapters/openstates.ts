@@ -27,6 +27,16 @@ function extractStateAbbr(ocdId: string | undefined): string | undefined {
   return m ? m[1].toLowerCase() : undefined;
 }
 
+function mapSort(sort: string): string {
+  switch (sort) {
+    case "updated_desc": return "updated_desc";
+    case "updated_asc": return "updated_asc";
+    case "introduced_desc": return "first_action_desc";
+    case "introduced_asc": return "first_action_asc";
+    default: return "updated_desc";
+  }
+}
+
 interface OpenStatesPerson {
   id: string;
   name: string;
@@ -313,6 +323,62 @@ export class OpenStatesAdapter implements Adapter {
         const classification = b.from_organization?.classification;
         if (classification && classification !== opts.chamber) continue;
       }
+      this.upsertBill(db, b);
+      documentsUpserted += 1;
+    }
+    return { documentsUpserted };
+  }
+
+  /** Narrow per-tool fetch for R15 `list_bills` — one page of bills
+   *  matching a set of structured predicates (session, chamber,
+   *  sponsor, classification, subject, date windows). Writes through
+   *  to `documents` via `upsertBill`. Uses distinct endpoint_path
+   *  `/bills/list` in the shaped-fetch key so cache rows never
+   *  collide with `recent_bills` (endpoint_path `/bills`). Note that
+   *  OpenStates itself exposes only one `/bills` endpoint — the
+   *  `/list` suffix is a cache-key discriminator, not a path the
+   *  upstream sees. */
+  async listBills(
+    db: Database.Database,
+    opts: {
+      jurisdiction: string;
+      session?: string;
+      chamber?: "upper" | "lower";
+      sponsor?: string;
+      classification?: string;
+      subject?: string;
+      introduced_since?: string;
+      updated_since?: string;
+      sort: "updated_desc" | "updated_asc" | "introduced_desc" | "introduced_asc";
+      limit: number;
+    },
+  ): Promise<{ documentsUpserted: number }> {
+    const abbr = opts.jurisdiction.replace(/^us-/, "").toLowerCase();
+    const url = new URL(`${BASE_URL}/bills`);
+    url.searchParams.set("jurisdiction", abbr);
+    url.searchParams.set("sort", mapSort(opts.sort));
+    url.searchParams.set("per_page", String(opts.limit));
+    if (opts.session) url.searchParams.set("session", opts.session);
+    if (opts.chamber) url.searchParams.set("chamber", opts.chamber);
+    if (opts.sponsor) url.searchParams.set("sponsor", opts.sponsor);
+    if (opts.classification) url.searchParams.set("classification", opts.classification);
+    if (opts.subject) url.searchParams.set("subject", opts.subject);
+    if (opts.introduced_since) url.searchParams.set("created_since", opts.introduced_since);
+    if (opts.updated_since) url.searchParams.set("updated_since", opts.updated_since);
+    for (const inc of ["sponsorships", "abstracts", "actions"]) {
+      url.searchParams.append("include", inc);
+    }
+
+    const res = await rateLimitedFetch(url.toString(), {
+      userAgent: "civic-awareness-mcp/0.1.0 (+github)",
+      rateLimiter: this.rateLimiter,
+      headers: { "X-API-KEY": this.opts.apiKey },
+    });
+    if (!res.ok) throw new Error(`OpenStates /bills returned ${res.status}`);
+    const body = (await res.json()) as { results?: OpenStatesBill[] };
+
+    let documentsUpserted = 0;
+    for (const b of body.results ?? []) {
       this.upsertBill(db, b);
       documentsUpserted += 1;
     }
