@@ -3,6 +3,7 @@ import { queryDocuments } from "../../core/documents.js";
 import { findEntityById } from "../../core/entities.js";
 import type { EntityReference } from "../../core/types.js";
 import { RecentBillsInput } from "../schemas.js";
+import { emptyFeedDiagnostic, type EmptyFeedDiagnostic } from "../shared.js";
 
 export interface SponsorSummary {
   count: number;
@@ -29,6 +30,9 @@ export interface RecentBillsResponse {
   total: number;
   sources: Array<{ name: string; url: string }>;
   window: { from: string; to: string };
+  empty_reason?: EmptyFeedDiagnostic["empty_reason"];
+  data_freshness?: EmptyFeedDiagnostic["data_freshness"];
+  hint?: string;
 }
 
 function buildSponsorSummary(
@@ -133,10 +137,15 @@ export async function handleRecentBills(
   const sourceUrls = new Map<string, string>();
   for (const d of filtered) sourceUrls.set(d.source.name, openstatesUrl);
 
-  return {
+  const base: RecentBillsResponse = {
     results,
     total: results.length,
     sources: Array.from(sourceUrls, ([name, url]) => ({ name, url })),
     window: { from: from.toISOString(), to: to.toISOString() },
   };
+  if (results.length === 0) {
+    const diag = emptyFeedDiagnostic(db, { jurisdiction: input.jurisdiction, kind: "bill" });
+    return { ...base, ...diag };
+  }
+  return base;
 }

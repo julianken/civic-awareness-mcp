@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { queryDocuments } from "../../core/documents.js";
 import { RecentVotesInput } from "../schemas.js";
+import { emptyFeedDiagnostic, type EmptyFeedDiagnostic } from "../shared.js";
 
 export interface VoteTally {
   yea: number;
@@ -24,6 +25,9 @@ export interface RecentVotesResponse {
   total: number;
   sources: Array<{ name: string; url: string }>;
   window: { from: string; to: string };
+  empty_reason?: EmptyFeedDiagnostic["empty_reason"];
+  data_freshness?: EmptyFeedDiagnostic["data_freshness"];
+  hint?: string;
 }
 
 const CHAMBER_MAP: Record<string, string> = {
@@ -94,10 +98,15 @@ export async function handleRecentVotes(
     };
   });
 
-  return {
+  const base: RecentVotesResponse = {
     results,
     total: results.length,
     sources: results.length > 0 ? [{ name: "congress", url: "https://www.congress.gov/" }] : [],
     window: { from: from.toISOString(), to: to.toISOString() },
   };
+  if (results.length === 0) {
+    const diag = emptyFeedDiagnostic(db, { jurisdiction: input.jurisdiction, kind: "vote" });
+    return { ...base, ...diag };
+  }
+  return base;
 }

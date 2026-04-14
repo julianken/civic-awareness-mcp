@@ -107,4 +107,22 @@ describe("recent_votes tool", () => {
       handleRecentVotes(store.db, { days: 7 }),
     ).rejects.toThrow();
   });
+
+  it("attaches empty_reason diagnostic when results are empty", async () => {
+    const res = await handleRecentVotes(store.db, { jurisdiction: "us-or", days: 7 });
+    expect(res.results).toHaveLength(0);
+    expect(res).toHaveProperty("empty_reason", "no_refresh");
+  });
+
+  it("omits empty_reason on non-empty responses", async () => {
+    upsertDocument(store.db, {
+      kind: "vote", jurisdiction: "us-or", title: "Vote 1",
+      occurred_at: new Date().toISOString(),
+      source: { name: "openstates", id: "v1", url: "https://ex" },
+      references: [], raw: {},
+    });
+    const res = await handleRecentVotes(store.db, { jurisdiction: "us-or", days: 7 });
+    expect(res.results).toHaveLength(1);
+    expect(res).not.toHaveProperty("empty_reason");
+  });
 });

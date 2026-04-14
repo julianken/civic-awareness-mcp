@@ -139,6 +139,26 @@ describe("recent_bills tool", () => {
     });
   });
 
+  it("attaches empty_reason diagnostic when results are empty", async () => {
+    const res = await handleRecentBills(store.db, { jurisdiction: "us-or", days: 7 });
+    expect(res.results).toHaveLength(0);
+    expect(res).toHaveProperty("empty_reason", "no_refresh");
+    expect(res).toHaveProperty("data_freshness");
+    expect(res).toHaveProperty("hint");
+  });
+
+  it("omits empty_reason on non-empty responses", async () => {
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-or", title: "SB 1 — Test",
+      occurred_at: new Date().toISOString(),
+      source: { name: "openstates", id: "or-1", url: "https://ex" },
+      references: [], raw: { actions: [] },
+    });
+    const res = await handleRecentBills(store.db, { jurisdiction: "us-or", days: 7 });
+    expect(res.results).toHaveLength(1);
+    expect(res).not.toHaveProperty("empty_reason");
+  });
+
   it("20-bill response fits under 30KB", async () => {
     for (let b = 0; b < 20; b++) {
       const refs: Array<{ entity_id: string; role: "sponsor" | "cosponsor" }> = [];
