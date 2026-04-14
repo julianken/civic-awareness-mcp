@@ -4,6 +4,7 @@ import { CongressAdapter } from "../adapters/congress.js";
 import { OpenFecAdapter } from "../adapters/openfec.js";
 import { requireEnv } from "../util/env.js";
 import { logger } from "../util/logger.js";
+import { getLimiter } from "./limiters.js";
 
 export type RefreshSource = "openstates" | "congress" | "openfec";
 
@@ -11,6 +12,7 @@ export interface RefreshSourceOptions {
   source: RefreshSource;
   maxPages?: number;
   jurisdictions?: string[];
+  deadline?: number;
 }
 
 export interface RefreshSourceResult {
@@ -26,9 +28,9 @@ export async function refreshSource(
   opts: RefreshSourceOptions,
 ): Promise<RefreshSourceResult> {
   if (opts.source === "openfec") {
-    const adapter = new OpenFecAdapter({ apiKey: requireEnv("API_DATA_GOV_KEY") });
+    const adapter = new OpenFecAdapter({ apiKey: requireEnv("API_DATA_GOV_KEY"), rateLimiter: getLimiter("openfec") });
     logger.info("refreshing source", { source: "openfec" });
-    const r = await adapter.refresh({ db, maxPages: opts.maxPages });
+    const r = await adapter.refresh({ db, maxPages: opts.maxPages, deadline: opts.deadline });
     return {
       source: "openfec",
       entitiesUpserted: r.entitiesUpserted,
@@ -37,9 +39,9 @@ export async function refreshSource(
     };
   }
   if (opts.source === "congress") {
-    const adapter = new CongressAdapter({ apiKey: requireEnv("API_DATA_GOV_KEY") });
+    const adapter = new CongressAdapter({ apiKey: requireEnv("API_DATA_GOV_KEY"), rateLimiter: getLimiter("congress") });
     logger.info("refreshing source", { source: "congress" });
-    const r = await adapter.refresh({ db, maxPages: opts.maxPages });
+    const r = await adapter.refresh({ db, maxPages: opts.maxPages, deadline: opts.deadline });
     return {
       source: "congress",
       entitiesUpserted: r.entitiesUpserted,
@@ -48,14 +50,14 @@ export async function refreshSource(
     };
   }
   if (opts.source === "openstates") {
-    const adapter = new OpenStatesAdapter({ apiKey: requireEnv("OPENSTATES_API_KEY") });
+    const adapter = new OpenStatesAdapter({ apiKey: requireEnv("OPENSTATES_API_KEY"), rateLimiter: getLimiter("openstates") });
     const targets = opts.jurisdictions ?? listStateJurisdictions(db);
     let entities = 0;
     let documents = 0;
     const errors: string[] = [];
     for (const state of targets) {
       logger.info("refreshing state", { state });
-      const r = await adapter.refresh({ db, maxPages: opts.maxPages, jurisdiction: state });
+      const r = await adapter.refresh({ db, maxPages: opts.maxPages, deadline: opts.deadline, jurisdiction: state });
       entities += r.entitiesUpserted;
       documents += r.documentsUpserted;
       for (const err of r.errors) errors.push(`${state}: ${err}`);

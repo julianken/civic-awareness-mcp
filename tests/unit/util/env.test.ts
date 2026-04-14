@@ -1,10 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { requireEnv, optionalEnv } from "../../../src/util/env.js";
+import { requireEnv, optionalEnv, ConfigurationError } from "../../../src/util/env.js";
 
 describe("env loaders", () => {
   it("requireEnv throws when missing", () => {
     delete process.env.TEST_VAR;
     expect(() => requireEnv("TEST_VAR")).toThrow(/TEST_VAR/);
+  });
+  it("requireEnv throws ConfigurationError (not plain Error)", () => {
+    delete process.env.NONEXISTENT_VAR;
+    expect(() => requireEnv("NONEXISTENT_VAR")).toThrow(ConfigurationError);
   });
   it("requireEnv returns value when present", () => {
     process.env.TEST_VAR = "hello";
