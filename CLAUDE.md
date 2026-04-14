@@ -47,19 +47,6 @@ When a human opens this repo in Claude Code for the first time:
   new dated line AND add a new R entry to `docs/00-rationale.md`.
   Preserve history; don't rewrite it. R11 is the pattern to follow.
 
-> **⚠️ Phase-8 migration in flight (started 2026-04-14):** The
-> hydration model is moving from R13 (transparent pass-through
-> cache, jurisdiction-keyed) to R15 (shaped-query hydration,
-> endpoint-keyed). Existing tools still call `ensureFresh` via
-> `src/core/hydrate.ts`; new adapter methods and `withShapedFetch`
-> in `src/core/tool_cache.ts` are the target pattern for all tool
-> rewrites starting in phase 8b. See
-> `docs/superpowers/specs/2026-04-14-shaped-query-hydration-design.md`
-> and `docs/plans/phase-8a-shaped-fetch-infra.md` for the full
-> design and rollout. During the migration window, do not
-> introduce new `ensureFresh` calls — use `withShapedFetch` for
-> any new code paths.
-
 ## Key conventions (locked by decision records)
 
 - **Language:** TypeScript on Node.js 22+ (D1)
@@ -74,17 +61,14 @@ When a human opens this repo in Claude Code for the first time:
 - **Scraping posture (D4):** All V1 sources are Tier 1 (sanctioned
   API, free with key). `src/util/http.ts` enforces User-Agent,
   per-host token bucket, backoff, `Retry-After`.
-- **Refresh (D5 → R13 → R15):** Under the phase-8 migration
-  (in flight), tools call `withShapedFetch(db, key, ttl,
-  fetchAndWrite, readLocal)` from `src/core/tool_cache.ts`. The
-  cache key is `(source, endpoint_path, args_hash)`; freshness
-  rows live in the `fetch_log` table. Upstream fetch +
-  write-through happen in one transaction and `fetch_log` is
-  updated in the same transaction. `stale_notice` fires only
-  when an upstream fetch failed and cached data exists as
-  fallback. The `hydrations` table and `ensureFresh` still exist
-  for tools not yet rewritten; both are removed in phase 8.10.
-  `pnpm refresh` CLI remains for operator use.
+- **Refresh (D5 → R15):** Tools call `withShapedFetch(db, key, ttl,
+  fetchAndWrite, readLocal, peekWaitMs)` from `src/core/tool_cache.ts`.
+  Cache key is `(source, endpoint_path, args_hash)`; freshness rows
+  live in the `fetch_log` table. Upstream fetch + write-through happen
+  in one transaction; `fetch_log` is updated in the same transaction.
+  `stale_notice` fires only when an upstream fetch failed and cached
+  data exists as fallback. `pnpm refresh` CLI remains for operator
+  bulk pre-fill.
 - **Storage (D6):** `./data/civic-awareness.db` default; env var
   `CIVIC_AWARENESS_DB_PATH` overrides for installed use.
 - **License (D7):** MIT
@@ -111,8 +95,8 @@ event stream:
   resource. Uses per-document TTL (R14 / D11) tracked in
   documents.fetched_at, independent of the endpoint-level
   fetch_log cache used by feed and entity tools.
-- **Shaped-query hydration (R15, in flight):** Tools gate their
-  upstream fetches on a `fetch_log` row keyed by
+- **Shaped-query hydration (R15):** Tools gate their upstream
+  fetches on a `fetch_log` row keyed by
   `(source, endpoint_path, args_hash)`. On a miss they call
   the adapter's narrow shaped method, write-through inside a
   transaction, and serve from the local store. Singleflight is
@@ -142,12 +126,9 @@ middle-name match, or role-jurisdiction overlap). See
 - Don't over-engineer entity resolution. V1 is **external-IDs, exact
   name, and fuzzy Levenshtein with linking-signal merges**. No ML,
   no embeddings, no vector search. See `docs/04-entity-schema.md`.
-- The SQLite store IS the cache (`fetch_log` table under R15;
-  `hydrations` table retained for not-yet-migrated tools until
-  phase 8.10). Don't add a second cache layer in memory or
-  elsewhere. Per-tool TTLs live in `src/core/tool_cache.ts`;
-  legacy per-jurisdiction TTLs live in `src/core/freshness.ts`
-  until their removal in phase 8.10.
+- The SQLite store IS the cache (`fetch_log` table under R15).
+  Don't add a second cache layer in memory or elsewhere. Per-tool
+  TTLs live in `src/core/tool_cache.ts`.
 - Don't bake jurisdiction into Person entity uniqueness constraints.
   Per D3b, `entities` must not have a UNIQUE on
   `(kind, jurisdiction, name_normalized)` that includes Person rows.
