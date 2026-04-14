@@ -1,11 +1,15 @@
 import type Database from "better-sqlite3";
-import { GetEntityInput } from "../schemas.js";
-import { findEntityById } from "../../core/entities.js";
+import { CongressAdapter } from "../../adapters/congress.js";
+import { OpenFecAdapter } from "../../adapters/openfec.js";
+import { OpenStatesAdapter } from "../../adapters/openstates.js";
 import { findDocumentsByEntity } from "../../core/documents.js";
-import type { Entity, Document } from "../../core/types.js";
-import type { StaleNotice } from "../shared.js";
-import { ensureFresh, sourcesForFullHydrate } from "../../core/hydrate.js";
+import { findEntityById } from "../../core/entities.js";
 import { getLimiter } from "../../core/limiters.js";
+import { withShapedFetch } from "../../core/tool_cache.js";
+import type { Document, Entity } from "../../core/types.js";
+import { requireEnv } from "../../util/env.js";
+import { GetEntityInput } from "../schemas.js";
+import type { StaleNotice } from "../shared.js";
 
 export interface GetEntityResponse {
   entity: Entity;
@@ -29,17 +33,99 @@ export async function handleGetEntity(
   const entity = findEntityById(db, input.id);
   if (!entity) throw new Error(`Entity not found: ${input.id}`);
 
-  let stale_notice: StaleNotice | undefined;
-  const roles = (entity.metadata?.roles as Array<{ jurisdiction?: string }> | undefined) ?? [];
-  const jurisdictions = [...new Set(roles.map((r) => r.jurisdiction).filter(Boolean))] as string[];
-  outer: for (const juris of jurisdictions) {
-    for (const src of sourcesForFullHydrate(juris)) {
-      const r = await ensureFresh(db, src, juris, "full", () => getLimiter(src).peekWaitMs());
-      if (r.stale_notice) { stale_notice = r.stale_notice; break outer; }
-    }
+  const ttl = { scope: "detail" as const, ms: 24 * 60 * 60 * 1000 };
+  const noop = (): void => {};
+  const calls: Promise<{ stale_notice?: StaleNotice }>[] = [];
+
+  if (entity.external_ids.bioguide) {
+    const bioguide = entity.external_ids.bioguide;
+    calls.push(
+      withShapedFetch(
+        db,
+        {
+          source: "congress",
+          endpoint_path: `/member/${bioguide}`,
+          args: { bioguide },
+          tool: "fetchMember",
+        },
+        ttl,
+        async () => {
+          const adapter = new CongressAdapter({
+            apiKey: requireEnv("API_DATA_GOV_KEY"),
+            rateLimiter: getLimiter("congress"),
+          });
+          const r = await adapter.fetchMember(db, bioguide);
+          return { primary_rows_written: r.entitiesUpserted };
+        },
+        noop,
+        () => getLimiter("congress").peekWaitMs(),
+      ),
+    );
   }
 
-  const docs = findDocumentsByEntity(db, entity.id, 10);
+  if (entity.external_ids.openstates_person) {
+    const ocdId = entity.external_ids.openstates_person;
+    calls.push(
+      withShapedFetch(
+        db,
+        {
+          source: "openstates",
+          endpoint_path: `/people/${ocdId}`,
+          args: { ocdId },
+          tool: "fetchPerson",
+        },
+        ttl,
+        async () => {
+          const adapter = new OpenStatesAdapter({
+            apiKey: requireEnv("OPENSTATES_API_KEY"),
+            rateLimiter: getLimiter("openstates"),
+          });
+          const r = await adapter.fetchPerson(db, ocdId);
+          return { primary_rows_written: r.entitiesUpserted };
+        },
+        noop,
+        () => getLimiter("openstates").peekWaitMs(),
+      ),
+    );
+  }
+
+  if (entity.external_ids.fec_candidate) {
+    const fecId = entity.external_ids.fec_candidate;
+    calls.push(
+      withShapedFetch(
+        db,
+        {
+          source: "openfec",
+          endpoint_path: `/candidate/${fecId}`,
+          args: { fecId },
+          tool: "fetchCandidate",
+        },
+        ttl,
+        async () => {
+          const adapter = new OpenFecAdapter({
+            apiKey: requireEnv("API_DATA_GOV_KEY"),
+            rateLimiter: getLimiter("openfec"),
+          });
+          const r = await adapter.fetchCandidate(db, fecId);
+          return { primary_rows_written: r.entitiesUpserted };
+        },
+        noop,
+        () => getLimiter("openfec").peekWaitMs(),
+      ),
+    );
+  }
+
+  let stale_notice: StaleNotice | undefined;
+  for (const res of await Promise.all(calls)) {
+    if (res.stale_notice && !stale_notice) stale_notice = res.stale_notice;
+  }
+
+  // Re-read the entity — the fanout may have merged new external IDs
+  // or metadata into it (e.g., adding a federal role to a Person
+  // previously known only through state-legislature data).
+  const refreshedEntity = findEntityById(db, input.id) ?? entity;
+
+  const docs = findDocumentsByEntity(db, refreshedEntity.id, 10);
   const sourceKeys = new Map<string, { name: string; jurisdiction: string }>();
   const simplified = docs.map((d: Document) => {
     const key = `${d.source.name}|${d.jurisdiction}`;
@@ -75,21 +161,21 @@ export async function handleGetEntity(
   // even when none of the currently-referenced documents come from
   // openfec (e.g., a Member of Congress with an fec_candidate ID
   // before any contributions have been ingested).
-  if (entity.external_ids.fec_candidate) {
+  if (refreshedEntity.external_ids.fec_candidate) {
     sources.push({
       name: "openfec",
-      url: `https://www.fec.gov/data/candidate/${entity.external_ids.fec_candidate}/`,
+      url: `https://www.fec.gov/data/candidate/${refreshedEntity.external_ids.fec_candidate}/`,
     });
   }
-  if (entity.external_ids.fec_committee) {
+  if (refreshedEntity.external_ids.fec_committee) {
     sources.push({
       name: "openfec",
-      url: `https://www.fec.gov/data/committee/${entity.external_ids.fec_committee}/`,
+      url: `https://www.fec.gov/data/committee/${refreshedEntity.external_ids.fec_committee}/`,
     });
   }
 
   const response: GetEntityResponse = {
-    entity,
+    entity: refreshedEntity,
     recent_documents: simplified,
     sources,
   };

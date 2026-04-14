@@ -4,29 +4,36 @@ import { openStore, type Store } from "../../../../src/core/store.js";
 import { seedJurisdictions } from "../../../../src/core/seeds.js";
 import { upsertEntity } from "../../../../src/core/entities.js";
 import { upsertDocument } from "../../../../src/core/documents.js";
+import { upsertFetchLog } from "../../../../src/core/fetch_log.js";
+import { hashArgs } from "../../../../src/core/args_hash.js";
+import { _resetToolCacheForTesting } from "../../../../src/core/tool_cache.js";
+import { _resetLimitersForTesting } from "../../../../src/core/limiters.js";
+import { CongressAdapter } from "../../../../src/adapters/congress.js";
+import { OpenFecAdapter } from "../../../../src/adapters/openfec.js";
+import { OpenStatesAdapter } from "../../../../src/adapters/openstates.js";
 import { handleGetEntity } from "../../../../src/mcp/tools/get_entity.js";
-
-vi.mock("../../../../src/core/hydrate.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../../../src/core/hydrate.js")>();
-  return { ...actual, ensureFresh: vi.fn() };
-});
-import { ensureFresh } from "../../../../src/core/hydrate.js";
-const mockEnsureFresh = vi.mocked(ensureFresh);
 
 const TEST_DB = "./data/test-tool-get-entity.db";
 let store: Store;
 
 beforeEach(() => {
-  mockEnsureFresh.mockReset();
-  mockEnsureFresh.mockResolvedValue({ ok: true });
+  _resetToolCacheForTesting();
+  _resetLimitersForTesting();
+  process.env.OPENSTATES_API_KEY = "test-key";
+  process.env.API_DATA_GOV_KEY = "test-key";
 
   if (existsSync(TEST_DB)) rmSync(TEST_DB);
   store = openStore(TEST_DB);
   seedJurisdictions(store.db);
 });
-afterEach(() => store.close());
+afterEach(() => {
+  store.close();
+  vi.restoreAllMocks();
+  delete process.env.OPENSTATES_API_KEY;
+  delete process.env.API_DATA_GOV_KEY;
+});
 
-describe("get_entity", () => {
+describe("get_entity — projection", () => {
   it("returns entity with recent documents", async () => {
     const { entity } = upsertEntity(store.db, {
       kind: "person", name: "Jane Doe", jurisdiction: undefined,
@@ -72,6 +79,10 @@ describe("get_entity", () => {
       references: [{ entity_id: entity.id, role: "sponsor" }],
     });
 
+    // Stub the fetchMember call triggered by the bioguide external ID.
+    vi.spyOn(CongressAdapter.prototype, "fetchMember")
+      .mockResolvedValue({ entitiesUpserted: 0 });
+
     const res = await handleGetEntity(store.db, { id: entity.id });
     const roles = (res.entity.metadata.roles ?? []) as Array<{ jurisdiction: string }>;
     const jurisdictions = roles.map((r) => r.jurisdiction);
@@ -92,6 +103,12 @@ describe("get_entity", () => {
         roles: [{ jurisdiction: "us-federal", role: "federal_candidate_representative" }],
       },
     });
+
+    // Stub fanout — we only care about projection here.
+    vi.spyOn(CongressAdapter.prototype, "fetchMember")
+      .mockResolvedValue({ entitiesUpserted: 0 });
+    vi.spyOn(OpenFecAdapter.prototype, "fetchCandidate")
+      .mockResolvedValue({ entitiesUpserted: 0 });
 
     const res = await handleGetEntity(store.db, { id: entity.id });
     const fecSource = res.sources.find((s) => s.url.includes("fec.gov/data/candidate"));
@@ -118,6 +135,12 @@ describe("get_entity", () => {
       references: [{ entity_id: entity.id, role: "sponsor" }],
       raw: { actions: [{ date: "2025-09-18", description: "enacted" }] },
     });
+
+    // The openstates_person external ID triggers a fetchPerson call —
+    // stub it so the test is projection-only.
+    vi.spyOn(OpenStatesAdapter.prototype, "fetchPerson")
+      .mockResolvedValue({ entitiesUpserted: 0 });
+
     const res = await handleGetEntity(store.db, { id: entity.id });
     expect(res.recent_documents.map((d) => d.title)).toEqual([
       "SB 2 — Newer action",
@@ -140,64 +163,213 @@ describe("get_entity", () => {
     expect(fecSource).toBeDefined();
     expect(fecSource!.url).toBe("https://www.fec.gov/data/committee/C00123456/");
   });
+});
 
-  // ── hydration ─────────────────────────────────────────────────────────────
+describe("get_entity — R15 fanout", () => {
+  it("entity with no external IDs → zero adapter calls", async () => {
+    const openstatesSpy = vi.spyOn(OpenStatesAdapter.prototype, "fetchPerson")
+      .mockResolvedValue({ entitiesUpserted: 0 });
+    const congressSpy = vi.spyOn(CongressAdapter.prototype, "fetchMember")
+      .mockResolvedValue({ entitiesUpserted: 0 });
+    const fecSpy = vi.spyOn(OpenFecAdapter.prototype, "fetchCandidate")
+      .mockResolvedValue({ entitiesUpserted: 0 });
 
-  it("hydration: entity not found → ensureFresh not called (throws before hydrate)", async () => {
-    await expect(handleGetEntity(store.db, { id: "missing" })).rejects.toThrow();
-    expect(mockEnsureFresh).not.toHaveBeenCalled();
-  });
-
-  it("hydration: entity with no roles → ensureFresh not called", async () => {
-    const { entity } = upsertEntity(store.db, { kind: "person", name: "No Roles" });
-    await handleGetEntity(store.db, { id: entity.id });
-    expect(mockEnsureFresh).not.toHaveBeenCalled();
-  });
-
-  it("hydration: entity with roles → ensureFresh called with scope=full per jurisdiction", async () => {
     const { entity } = upsertEntity(store.db, {
       kind: "person",
-      name: "Multi Role Person",
+      name: "Bare Person",
       metadata: {
-        roles: [
-          { jurisdiction: "us-tx", role: "state_legislator" },
-        ],
+        roles: [{ jurisdiction: "us-tx", role: "state_legislator" }],
       },
     });
     await handleGetEntity(store.db, { id: entity.id });
-    expect(mockEnsureFresh).toHaveBeenCalledWith(
-      store.db,
-      "openstates",
-      "us-tx",
-      "full",
-      expect.any(Function),
-    );
+
+    expect(openstatesSpy).not.toHaveBeenCalled();
+    expect(congressSpy).not.toHaveBeenCalled();
+    expect(fecSpy).not.toHaveBeenCalled();
+
+    openstatesSpy.mockRestore();
+    congressSpy.mockRestore();
+    fecSpy.mockRestore();
   });
 
-  it("hydration: ok=true → no stale_notice", async () => {
+  it("bioguide only → only CongressAdapter.fetchMember is invoked", async () => {
+    const openstatesSpy = vi.spyOn(OpenStatesAdapter.prototype, "fetchPerson")
+      .mockResolvedValue({ entitiesUpserted: 0 });
+    const congressSpy = vi.spyOn(CongressAdapter.prototype, "fetchMember")
+      .mockResolvedValue({ entitiesUpserted: 0 });
+    const fecSpy = vi.spyOn(OpenFecAdapter.prototype, "fetchCandidate")
+      .mockResolvedValue({ entitiesUpserted: 0 });
+
     const { entity } = upsertEntity(store.db, {
       kind: "person",
-      name: "Healthy Entity",
-      metadata: { roles: [{ jurisdiction: "us-tx", role: "state_legislator" }] },
+      name: "Schumer, Charles E.",
+      external_ids: { bioguide: "S000148" },
     });
-    const res = await handleGetEntity(store.db, { id: entity.id });
-    expect(res.stale_notice).toBeUndefined();
+    await handleGetEntity(store.db, { id: entity.id });
+
+    expect(congressSpy).toHaveBeenCalledOnce();
+    expect(congressSpy).toHaveBeenCalledWith(store.db, "S000148");
+    expect(openstatesSpy).not.toHaveBeenCalled();
+    expect(fecSpy).not.toHaveBeenCalled();
+
+    openstatesSpy.mockRestore();
+    congressSpy.mockRestore();
+    fecSpy.mockRestore();
   });
 
-  it("hydration: upstream failure → stale_notice attached, entity still returned", async () => {
-    const notice = {
-      as_of: "2026-04-13T00:00:00.000Z",
-      reason: "upstream_failure" as const,
-      message: "Upstream openstates fetch failed; serving stale local data.",
-    };
-    mockEnsureFresh.mockResolvedValue({ ok: false, stale_notice: notice });
+  it("openstates_person only → only OpenStatesAdapter.fetchPerson is invoked", async () => {
+    const openstatesSpy = vi.spyOn(OpenStatesAdapter.prototype, "fetchPerson")
+      .mockResolvedValue({ entitiesUpserted: 0 });
+    const congressSpy = vi.spyOn(CongressAdapter.prototype, "fetchMember")
+      .mockResolvedValue({ entitiesUpserted: 0 });
+    const fecSpy = vi.spyOn(OpenFecAdapter.prototype, "fetchCandidate")
+      .mockResolvedValue({ entitiesUpserted: 0 });
+
     const { entity } = upsertEntity(store.db, {
       kind: "person",
-      name: "Stale Entity",
-      metadata: { roles: [{ jurisdiction: "us-tx", role: "state_legislator" }] },
+      name: "Jane Doe",
+      external_ids: { openstates_person: "ocd-person/tx-1" },
     });
+    await handleGetEntity(store.db, { id: entity.id });
+
+    expect(openstatesSpy).toHaveBeenCalledOnce();
+    expect(openstatesSpy).toHaveBeenCalledWith(store.db, "ocd-person/tx-1");
+    expect(congressSpy).not.toHaveBeenCalled();
+    expect(fecSpy).not.toHaveBeenCalled();
+
+    openstatesSpy.mockRestore();
+    congressSpy.mockRestore();
+    fecSpy.mockRestore();
+  });
+
+  it("fec_candidate only → only OpenFecAdapter.fetchCandidate is invoked", async () => {
+    const openstatesSpy = vi.spyOn(OpenStatesAdapter.prototype, "fetchPerson")
+      .mockResolvedValue({ entitiesUpserted: 0 });
+    const congressSpy = vi.spyOn(CongressAdapter.prototype, "fetchMember")
+      .mockResolvedValue({ entitiesUpserted: 0 });
+    const fecSpy = vi.spyOn(OpenFecAdapter.prototype, "fetchCandidate")
+      .mockResolvedValue({ entitiesUpserted: 0 });
+
+    const { entity } = upsertEntity(store.db, {
+      kind: "person",
+      name: "Smith, John R.",
+      external_ids: { fec_candidate: "H0AZ01234" },
+    });
+    await handleGetEntity(store.db, { id: entity.id });
+
+    expect(fecSpy).toHaveBeenCalledOnce();
+    expect(fecSpy).toHaveBeenCalledWith(store.db, "H0AZ01234");
+    expect(openstatesSpy).not.toHaveBeenCalled();
+    expect(congressSpy).not.toHaveBeenCalled();
+
+    openstatesSpy.mockRestore();
+    congressSpy.mockRestore();
+    fecSpy.mockRestore();
+  });
+
+  it("all three external IDs → all three adapters are invoked exactly once", async () => {
+    const openstatesSpy = vi.spyOn(OpenStatesAdapter.prototype, "fetchPerson")
+      .mockResolvedValue({ entitiesUpserted: 0 });
+    const congressSpy = vi.spyOn(CongressAdapter.prototype, "fetchMember")
+      .mockResolvedValue({ entitiesUpserted: 0 });
+    const fecSpy = vi.spyOn(OpenFecAdapter.prototype, "fetchCandidate")
+      .mockResolvedValue({ entitiesUpserted: 0 });
+
+    const { entity } = upsertEntity(store.db, {
+      kind: "person",
+      name: "Multi-ID Person",
+      external_ids: {
+        bioguide: "S000148",
+        openstates_person: "ocd-person/ny-schumer",
+        fec_candidate: "S2NY00123",
+      },
+    });
+    await handleGetEntity(store.db, { id: entity.id });
+
+    expect(openstatesSpy).toHaveBeenCalledOnce();
+    expect(congressSpy).toHaveBeenCalledOnce();
+    expect(fecSpy).toHaveBeenCalledOnce();
+
+    openstatesSpy.mockRestore();
+    congressSpy.mockRestore();
+    fecSpy.mockRestore();
+  });
+
+  it("cache hit: second call within TTL skips the adapter", async () => {
+    const congressSpy = vi.spyOn(CongressAdapter.prototype, "fetchMember")
+      .mockResolvedValue({ entitiesUpserted: 0 });
+
+    const { entity } = upsertEntity(store.db, {
+      kind: "person",
+      name: "Cached Person",
+      external_ids: { bioguide: "S000148" },
+    });
+    await handleGetEntity(store.db, { id: entity.id });
+    await handleGetEntity(store.db, { id: entity.id });
+
+    expect(congressSpy).toHaveBeenCalledOnce();
+    congressSpy.mockRestore();
+  });
+
+  it("upstream failure with stale cache → stale_notice, entity still returned", async () => {
+    const { entity } = upsertEntity(store.db, {
+      kind: "person",
+      name: "Stale Person",
+      external_ids: { bioguide: "S000148" },
+    });
+    // Seed a stale fetch_log row so the failure falls back to cached.
+    upsertFetchLog(store.db, {
+      source: "congress",
+      endpoint_path: "/member/S000148",
+      args_hash: hashArgs("fetchMember", { bioguide: "S000148" }),
+      scope: "detail",
+      fetched_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+      last_rowcount: 1,
+    });
+    const congressSpy = vi.spyOn(CongressAdapter.prototype, "fetchMember")
+      .mockRejectedValue(new Error("simulated upstream failure"));
+
     const res = await handleGetEntity(store.db, { id: entity.id });
     expect(res.stale_notice?.reason).toBe("upstream_failure");
-    expect(res.entity.name).toBe("Stale Entity");
+    expect(res.entity.name).toBe("Stale Person");
+    congressSpy.mockRestore();
+  });
+
+  it("upstream failure with no cache → error propagates", async () => {
+    const { entity } = upsertEntity(store.db, {
+      kind: "person",
+      name: "Cold-Fail Person",
+      external_ids: { bioguide: "S000148" },
+    });
+    const congressSpy = vi.spyOn(CongressAdapter.prototype, "fetchMember")
+      .mockRejectedValue(new Error("network down"));
+
+    await expect(handleGetEntity(store.db, { id: entity.id })).rejects.toThrow(/network down/);
+    congressSpy.mockRestore();
+  });
+
+  it("endpoint_path includes the ID → different entities get different cache rows", async () => {
+    const congressSpy = vi.spyOn(CongressAdapter.prototype, "fetchMember")
+      .mockResolvedValue({ entitiesUpserted: 0 });
+
+    const { entity: e1 } = upsertEntity(store.db, {
+      kind: "person",
+      name: "Person One",
+      external_ids: { bioguide: "AAA111" },
+    });
+    const { entity: e2 } = upsertEntity(store.db, {
+      kind: "person",
+      name: "Person Two",
+      external_ids: { bioguide: "BBB222" },
+    });
+
+    await handleGetEntity(store.db, { id: e1.id });
+    await handleGetEntity(store.db, { id: e2.id });
+    // Both should fire — separate cache keys via the ID in endpoint_path.
+    expect(congressSpy).toHaveBeenCalledTimes(2);
+    // And repeating the first is a cache hit.
+    await handleGetEntity(store.db, { id: e1.id });
+    expect(congressSpy).toHaveBeenCalledTimes(2);
+    congressSpy.mockRestore();
   });
 });
