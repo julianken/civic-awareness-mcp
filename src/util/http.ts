@@ -1,3 +1,5 @@
+export const RATE_LIMIT_WAIT_THRESHOLD_MS = 2500;
+
 export interface RateLimiterOptions {
   tokensPerInterval: number;
   intervalMs: number;
@@ -19,6 +21,13 @@ export class RateLimiter {
     const waitMs = this.opts.intervalMs / this.opts.tokensPerInterval;
     await sleep(waitMs);
     return this.acquire();
+  }
+  peekWaitMs(): number {
+    this.refill();
+    if (this.tokens >= 1) return 0;
+    const msPerToken = this.opts.intervalMs / this.opts.tokensPerInterval;
+    const elapsed = Date.now() - this.lastRefill;
+    return Math.ceil(msPerToken - (elapsed % msPerToken));
   }
   private refill(): void {
     const now = Date.now();
