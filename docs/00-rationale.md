@@ -449,3 +449,51 @@ This keeps `hydrations` bounded (one row per jurisdiction×scope
 pair) while still serving arbitrary bills on demand. Stale-on-
 failure semantics match R13: upstream errors serve the existing
 local row with a `stale_notice`.
+
+## R15 — Shaped-query hydration replaces jurisdiction-wide pass-through (2026-04-14)
+
+R13 introduced a transparent pass-through cache keyed on
+`(source, jurisdiction, scope)`. On any cache miss the server
+ran `refreshSource()`, which paginates the upstream — for
+Congress.gov that's `/member` + `/bill` + `/vote` across two
+Congresses at 250/page × up to 5 pages each. Cold `us-federal`
+calls consistently hit the 20s deadline, returned
+`partial_hydrate` stale notices, and frequently served empty
+results. The cost model didn't match the call model:
+`resolve_person("Angus King")` needs one endpoint, not
+thousands of records.
+
+R15 replaces the jurisdiction-wide pattern with per-tool
+shaped upstream fetches. Each tool call does:
+
+1. A narrow upstream fetch shaped to the source's capability
+   (OpenStates `/people?name=`, Congress.gov
+   `/member/{bioguide}/sponsored-legislation`, OpenFEC
+   `/candidates/search?q=`, etc.)
+2. Atomic write-through to `documents` + `entities` +
+   `document_references` inside a single `db.transaction`.
+3. Local SQL read using existing projection logic.
+4. Return.
+
+Freshness tracking moves to a new `fetch_log` table keyed on
+`(source, endpoint_path, args_hash)`. The key sits at the real
+deduplication boundary — the upstream request — so tools that
+hit the same endpoint with the same args (e.g., `resolve_person`
+and `search_entities` both calling OpenStates `/people`) share
+warm cache rows.
+
+`stale_notice` narrows to one case: an upstream fetch failed AND
+we have stale cached data to fall back on. `partial_hydrate`,
+`rate_limited`, and `daily_budget_exhausted` stale reasons are
+retired — narrow calls either fit the bucket, or the caller sees
+`upstream_failure` with stale fallback, or a real error.
+
+R14 (per-document TTL via `documents.fetched_at`, used by
+`get_bill`) is preserved alongside R15. The two are
+complementary: R14 for single-resource tools where freshness is
+inherent to the row; R15 for listing/search endpoints where
+per-endpoint tracking in `fetch_log` is needed.
+
+Rolls out in 11 sub-phases (phase-8a through phase-8.11); see
+`docs/superpowers/specs/2026-04-14-shaped-query-hydration-design.md`
+for the full design.

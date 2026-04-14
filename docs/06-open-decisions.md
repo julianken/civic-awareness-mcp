@@ -195,6 +195,19 @@ initiate writes; the server transparently writes through to SQLite
 on cache misses. See R13 in `docs/00-rationale.md` and
 `docs/plans/phase-6-passthrough-cache.md`.
 
+**Amended 2026-04-14 (R15):** D5's transparent-cache approach is
+re-shaped from jurisdiction-wide pass-through to per-endpoint
+shaped fetches. Cache keying moves from
+`(source, jurisdiction, scope)` in the `hydrations` table to
+`(source, endpoint_path, args_hash)` in a new `fetch_log` table.
+Each tool call issues the narrow upstream query its shape
+permits, writes-through atomically, and serves from local. The
+20s jurisdiction hydration budget and its `partial_hydrate`
+stale notice are eliminated — narrow fetches don't accrete
+enough work to exceed rate-limit windows. The `pnpm refresh`
+CLI continues to exist for operator bulk pre-fill and should
+write `fetch_log` rows for the endpoints it covers.
+
 ---
 
 ## D6 — Storage location and lifecycle
