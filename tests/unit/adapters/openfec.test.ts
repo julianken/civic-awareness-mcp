@@ -647,3 +647,50 @@ describe("OpenFecAdapter.searchCandidates", () => {
     expect(result.entitiesUpserted).toBe(0);
   });
 });
+
+describe("OpenFecAdapter.fetchCandidate", () => {
+  it("fetches /candidate/{id}/ and upserts the returned candidate", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({
+        results: [SAMPLE_CANDIDATE],
+        pagination: { per_page: 20, page: 1, pages: 1 },
+      }), { status: 200 }),
+    );
+
+    const adapter = new OpenFecAdapter({ apiKey: "test-key" });
+    const result = await adapter.fetchCandidate(store.db, "H0AZ01234");
+
+    expect(result.entitiesUpserted).toBe(1);
+    const url = fetchSpy.mock.calls[0][0] as string;
+    expect(url).toMatch(/\/candidate\/H0AZ01234\//);
+    expect(url).toMatch(/api_key=test-key/);
+
+    const rows = store.db
+      .prepare(
+        "SELECT name FROM entities WHERE json_extract(external_ids, '$.fec_candidate') = ?",
+      )
+      .all("H0AZ01234") as Array<{ name: string }>;
+    expect(rows).toHaveLength(1);
+    fetchSpy.mockRestore();
+  });
+
+  it("returns entitiesUpserted=0 on 404 without throwing", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ error: "not found" }), { status: 404 }),
+    );
+
+    const adapter = new OpenFecAdapter({ apiKey: "test-key" });
+    const result = await adapter.fetchCandidate(store.db, "H9ZZ99999");
+    expect(result.entitiesUpserted).toBe(0);
+  });
+
+  it("returns 0 when results array is empty", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ results: [], pagination: { per_page: 20 } }), { status: 200 }),
+    );
+
+    const adapter = new OpenFecAdapter({ apiKey: "test-key" });
+    const result = await adapter.fetchCandidate(store.db, "H0AZ01234");
+    expect(result.entitiesUpserted).toBe(0);
+  });
+});

@@ -223,6 +223,36 @@ export class OpenFecAdapter implements Adapter {
   }
 
   /**
+   * Direct-lookup narrow fetch for R15 `get_entity` — resolves one
+   * candidate by its FEC ID via `/candidate/{id}/`. OpenFEC returns
+   * a singleton-in-array (`{ results: [candidate] }`), not a bare
+   * object. Returns `entitiesUpserted: 0` on 404 or empty results
+   * so the handler can fan out without pre-checking which source
+   * carries the entity. Uses the current cycle (`this.cycles[0]`)
+   * for role metadata, matching `refresh()` and `searchCandidates`.
+   */
+  async fetchCandidate(
+    db: Database.Database,
+    candidateId: string,
+  ): Promise<{ entitiesUpserted: number }> {
+    const url = new URL(`${BASE_URL}/candidate/${candidateId}/`);
+    url.searchParams.set("api_key", this.opts.apiKey);
+    const res = await rateLimitedFetch(url.toString(), {
+      userAgent: "civic-awareness-mcp/0.1.0 (+github)",
+      rateLimiter: this.rateLimiter,
+    });
+    if (res.status === 404) return { entitiesUpserted: 0 };
+    if (!res.ok) {
+      throw new Error(`OpenFEC /candidate/${candidateId} returned ${res.status}`);
+    }
+    const body = (await res.json()) as { results?: FecCandidate[] };
+    const c = body.results?.[0];
+    if (!c) return { entitiesUpserted: 0 };
+    this.upsertCandidate(db, c, this.cycles[0]);
+    return { entitiesUpserted: 1 };
+  }
+
+  /**
    * Narrow per-tool fetch for R15 candidate search — one page of
    * `/candidates/search` filtered by the `q` (name) parameter. Writes
    * through to `entities` via `upsertCandidate`. Shared endpoint with
