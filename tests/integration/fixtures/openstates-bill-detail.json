@@ -1,0 +1,39 @@
+{
+  "id": "ocd-bill/e2e-ca-sb1338",
+  "identifier": "SB 1338",
+  "title": "Vehicles: repossession.",
+  "session": "20252026",
+  "updated_at": "2026-04-09T00:00:00Z",
+  "openstates_url": "https://openstates.org/ca/bills/20252026/SB1338/",
+  "jurisdiction": { "id": "ocd-jurisdiction/country:us/state:ca/government" },
+  "subject": ["Vehicles", "Repossession"],
+  "abstracts": [{ "abstract": "Existing law prohibits interference with the transport of a vehicle..." }],
+  "sponsorships": [{
+    "name": "Brian Jones",
+    "classification": "primary",
+    "person": {
+      "id": "ocd-person/e2e-jones",
+      "name": "Brian Jones",
+      "party": "Republican",
+      "jurisdiction": { "id": "ocd-jurisdiction/country:us/state:ca/government" }
+    }
+  }],
+  "actions": [
+    { "date": "2026-02-20", "description": "Introduced." },
+    { "date": "2026-04-09", "description": "Set for hearing April 14." }
+  ],
+  "versions": [
+    {
+      "note": "Introduced",
+      "date": "2026-02-20",
+      "links": [{ "url": "https://leginfo.legislature.ca.gov/faces/billPdfClient.xhtml?bill_id=202520260SB1338&version=INT", "media_type": "application/pdf" }]
+    },
+    {
+      "note": "Amended Senate",
+      "date": "2026-03-25",
+      "links": [{ "url": "https://leginfo.legislature.ca.gov/faces/billPdfClient.xhtml?bill_id=202520260SB1338&version=AMD", "media_type": "application/pdf" }]
+    }
+  ],
+  "documents": [],
+  "related_bills": []
+}
