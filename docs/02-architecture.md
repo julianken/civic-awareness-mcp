@@ -19,7 +19,7 @@ store in two projections — time-first (feeds) and identity-first
 │  ─ recent_contributions      ─ entity_connections           │
 │  ─ search_civic_documents    ─ resolve_person               │
 └──────────────────────┬──────────────────────────────────────┘
-                       │  reads (via ensureFresh)
+                       │  reads (via withShapedFetch)
                        ▼
 ┌─────────────────────────────────────────────────────────────┐
 │               Normalized Store (SQLite)                     │
@@ -29,6 +29,7 @@ store in two projections — time-first (feeds) and identity-first
 │  ─ Person (cross-jurisdiction), Organization, Committee     │
 │  ─ Bill, Vote, Contribution, Expenditure                    │
 │  ─ source_id, source_name, source_url, fetched_at           │
+│  ─ fetch_log(source, endpoint_path, args_hash, fetched_at)  │
 └──────────────────────▲──────────────────────────────────────┘
                        │  writes
 ┌──────────────────────┴──────────────────────────────────────┐
@@ -90,12 +91,14 @@ All of this fits in one local SQLite file well under a gigabyte for
 V1, and comfortably under tens of gigabytes at full Phase 4 scope.
 
 This means:
-- Tool calls are local queries (fast, deterministic, testable).
-- Refresh is a background job (adapters re-fetch and write).
+- Tool calls read local rows after an optional shaped upstream fetch (R15). Cache hits are local-only; misses fetch and write-through inside one SQLite transaction.
 - No separate caching layer. No Redis. No Postgres. One file.
+- The `pnpm refresh` CLI exists for bulk seeding and operator cron, but is not on the user-facing read path.
 
-Freshness is per-source, driven by adapter refresh intervals defined
-in `docs/03-data-sources.md`.
+Freshness is tracked per `(source, endpoint_path, args_hash)` in the
+`fetch_log` table under R15, with per-document freshness on
+`documents.fetched_at` for the single-resource `get_bill` tool (R14).
+TTL values live in `src/core/tool_cache.ts` and are set per-tool.
 
 ### Entity resolution is simple on purpose
 
@@ -131,31 +134,49 @@ src/
 ├── index.ts                   # MCP server entry point
 ├── mcp/
 │   ├── server.ts              # Wires tools + transport
+│   ├── shared.ts              # StaleNotice, shared response types
 │   ├── tools/
 │   │   ├── recent_bills.ts
-│   │   ├── recent_votes.ts             # Phase 3
-│   │   ├── recent_contributions.ts     # Phase 4
+│   │   ├── recent_votes.ts
+│   │   ├── recent_contributions.ts
 │   │   ├── search_civic_documents.ts
 │   │   ├── search_entities.ts
 │   │   ├── get_entity.ts
-│   │   ├── entity_activity.ts
-│   │   ├── entity_connections.ts       # Phase 5
-│   │   └── resolve_person.ts           # Phase 5
+│   │   ├── get_bill.ts
+│   │   ├── entity_connections.ts
+│   │   └── resolve_person.ts
 │   └── schemas.ts             # zod schemas for tool inputs/outputs
 ├── core/
 │   ├── types.ts               # Entity, Document, Reference types
 │   ├── store.ts               # SQLite open + migrations
 │   ├── entities.ts            # CRUD + resolution
-│   └── documents.ts           # CRUD + query helpers
+│   ├── documents.ts           # CRUD + query helpers
+│   ├── connections.ts         # entity_connections graph query
+│   ├── tool_cache.ts          # withShapedFetch (R15 cache wrapper)
+│   ├── fetch_log.ts           # per-endpoint freshness table
+│   ├── args_hash.ts           # canonical JSON + hash for cache keys
+│   ├── budget.ts              # daily upstream budget guard
+│   ├── singleflight.ts        # per-key in-flight request coalescing
+│   ├── limiters.ts            # per-host token buckets
+│   ├── sources.ts             # HydrationSource enum + helpers
+│   ├── hydrate_bill.ts        # R14 per-document hydration (get_bill)
+│   ├── refresh.ts             # batch refresh (pnpm refresh CLI)
+│   ├── seeds.ts               # bootstrap seed data
+│   └── migrations/            # SQLite schema migrations
 ├── adapters/
 │   ├── base.ts                # Adapter interface
-│   ├── openstates.ts          # Phase 2 — all 50 states
-│   ├── congress.ts            # Phase 3 — federal legislature
-│   └── openfec.ts             # Phase 4 — federal campaign finance
+│   ├── openstates.ts          # all 50 states
+│   ├── congress.ts            # federal legislature
+│   └── openfec.ts             # federal campaign finance
+├── cli/                       # pnpm refresh entry
 ├── resolution/
 │   └── fuzzy.ts               # Name normalization + Levenshtein ≤ 1
 └── util/
     ├── http.ts                # fetch wrapper with rate limiting
+    ├── datetime.ts
+    ├── env.ts
+    ├── env-file.ts
+    ├── sql.ts
     └── logger.ts
 tests/
 ├── unit/
@@ -167,18 +188,26 @@ tests/
 
 ## Two design decisions to call out
 
-### 1. We don't do background refresh in-process
+### 1. Upstream fetches are shaped per-tool, not jurisdiction-wide
 
-The MCP server serves queries only. A separate script,
-`src/jobs/refresh.ts`, runs adapters and writes to SQLite. It can be
-invoked manually, via cron, or (later) as a long-lived process. The
-separation keeps the MCP server simple and stateless from the LLM's
-perspective.
+Each read tool call performs a narrow upstream fetch shaped to its
+exact need (one OpenStates `/people?name=` request, one Congress.gov
+`/member/{bioguide}/sponsored-legislation` request, one OpenFEC
+`/candidates/search?q=` request) rather than refreshing a whole
+jurisdiction. The cost model matches the call model: a single
+`resolve_person("Angus King")` costs one upstream request, not
+thousands. See R15 in `docs/00-rationale.md`.
 
-Refresh under the 50-state + federal scope has to be rate-aware,
-resumable, and incremental (`--since=<date>`) — see
+Bulk refresh across a full jurisdiction is still available via the
+`pnpm refresh` CLI (`src/cli/refresh.ts`) for operator cron and
+historical backfill — rate-aware, resumable, and incremental
+(`--since=<date>`). It's not on the user-facing read path; tool calls
+fetch and write through on their own.
+
+Rate-limit and daily-budget guards in `src/util/http.ts` +
+`src/core/budget.ts` govern both paths — see
 `docs/03-data-sources.md` for the OpenStates 500/day free-tier
-constraint that drives this.
+constraint.
 
 ### 2. We use synchronous SQLite (`better-sqlite3`)
 
@@ -188,12 +217,14 @@ simpler error handling, and eliminate a class of race conditions.
 Network fetch in adapters is async; local DB access is sync. That's
 intentional.
 
-### Pass-through hydration (R13)
+### Shaped-query hydration (R15)
 
-Read tool handlers do not query the store directly. They call `src/core/hydrate.ts#ensureFresh(db, source, jurisdiction, scope)` first. That function:
-1. Checks `hydrations(source, jurisdiction, scope)` TTL.
-2. If fresh → returns immediately; handler queries local.
-3. If stale/missing → acquires singleflight lock; checks daily budget; checks rate-limit-wait threshold (2.5s); if all clear, calls a scoped `refreshSource()` (narrow window for `recent`, bounded pull for `full` with 20s deadline + partial fallback). Marks freshness. Releases lock.
-4. On any failure (upstream 5xx, rate-limit exceeded, budget exhausted, deadline fired) → returns a `StaleNotice`; handler attaches it to the response and serves whatever local data matches.
+Read tool handlers do not query the store directly. They call `src/core/tool_cache.ts#withShapedFetch(db, key, ttl, fetcher, writer)` first. The key is a `{source, endpoint_path, args_hash}` tuple that names the exact upstream request needed to satisfy the tool call. That function:
+1. Checks `fetch_log(source, endpoint_path, args_hash)` TTL.
+2. If fresh → skips the upstream call; handler queries local.
+3. If stale/missing → issues the shaped upstream fetch (e.g., OpenStates `/people?name=`, Congress.gov `/member/{bioguide}/sponsored-legislation`, OpenFEC `/candidates/search?q=`). On success, writes the normalized `Document`s + `Entity`s + references in a single `db.transaction`, stamps `fetch_log`, returns to the handler.
+4. On upstream failure → if stale cached data exists, returns it with `stale_notice{reason:"upstream_failure"}`; otherwise propagates the error (or returns `stale_notice{reason:"not_found"}` when the endpoint correctly signals empty).
 
-Writes remain batch-normalized (same code path as the CLI) so entity resolution produces the same graph regardless of trigger.
+The key sits at the real deduplication boundary — the upstream request — so tools that hit the same endpoint with the same args (e.g., `resolve_person` and `search_entities` both calling OpenStates `/people`) share warm cache rows. R14's per-document TTL (`documents.fetched_at`, used by `get_bill`) coexists with R15: R14 for single-resource tools where freshness is inherent to the row; R15 for listing/search endpoints where per-endpoint tracking is needed.
+
+Writes remain batch-normalized (same code path as the CLI `pnpm refresh`) so entity resolution produces the same graph regardless of trigger.
