@@ -186,7 +186,7 @@ describe("recent_bills tool", () => {
   it("attaches empty_reason diagnostic when results are empty", async () => {
     const res = await handleRecentBills(store.db, { jurisdiction: "us-or", days: 7 });
     expect(res.results).toHaveLength(0);
-    expect(res).toHaveProperty("empty_reason", "no_refresh");
+    expect(res).toHaveProperty("empty_reason", "no_events_in_window");
     expect(res).toHaveProperty("data_freshness");
     expect(res).toHaveProperty("hint");
   });

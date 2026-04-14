@@ -15,11 +15,12 @@ beforeEach(() => {
 afterEach(() => store.close());
 
 describe("emptyFeedDiagnostic", () => {
-  it("returns no_refresh when the jurisdiction has no documents at all", () => {
+  it("returns no_events_in_window when the jurisdiction has no documents at all", () => {
     const d = emptyFeedDiagnostic(store.db, { jurisdiction: "us-tx", kind: "bill" });
-    expect(d.empty_reason).toBe("no_refresh");
+    expect(d.empty_reason).toBe("no_events_in_window");
     expect(d.data_freshness.last_refreshed_at).toBeNull();
     expect(d.data_freshness.source).toBeNull();
+    expect(d.hint).toMatch(/stale_notice/);
   });
 
   it("returns no_events_in_window when rows exist but outside the window", () => {
@@ -52,8 +53,10 @@ describe("emptyFeedDiagnostic", () => {
     expect(d.data_freshness.source).toBe("openstates");
   });
 
-  it("returns no_refresh for jurisdiction '*' when store is empty", () => {
+  it("returns no_events_in_window for jurisdiction '*' when store is empty", () => {
     const d = emptyFeedDiagnostic(store.db, { jurisdiction: "*", kind: "bill" });
-    expect(d.empty_reason).toBe("no_refresh");
+    expect(d.empty_reason).toBe("no_events_in_window");
+    expect(d.data_freshness.last_refreshed_at).toBeNull();
+    expect(d.hint).toMatch(/stale_notice/);
   });
 });

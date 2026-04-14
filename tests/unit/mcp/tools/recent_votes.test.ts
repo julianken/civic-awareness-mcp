@@ -154,7 +154,7 @@ describe("recent_votes tool", () => {
   it("attaches empty_reason diagnostic when results are empty", async () => {
     const res = await handleRecentVotes(store.db, { jurisdiction: "us-or", days: 7 });
     expect(res.results).toHaveLength(0);
-    expect(res).toHaveProperty("empty_reason", "no_refresh");
+    expect(res).toHaveProperty("empty_reason", "no_events_in_window");
   });
 
   it("omits empty_reason on non-empty responses", async () => {

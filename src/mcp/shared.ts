@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { DocumentKind } from "../core/types.js";
 
-export type EmptyReason = "no_refresh" | "no_events_in_window" | "unknown_jurisdiction";
+export type EmptyReason = "no_events_in_window" | "unknown_jurisdiction";
 
 export interface DataFreshness {
   last_refreshed_at: string | null;
@@ -65,13 +65,12 @@ export function emptyFeedDiagnostic(
       | undefined;
 
   if (!latest) {
-    const hint = ctx.jurisdiction === "*"
-      ? `No ${ctx.kind}s ingested yet. Run: pnpm refresh --source=openstates --jurisdictions=<state>`
-      : `No ${ctx.kind}s ingested yet for ${ctx.jurisdiction}. Run: pnpm refresh --source=openstates --jurisdictions=${ctx.jurisdiction.replace(/^us-/, "")}`;
     return {
-      empty_reason: "no_refresh",
+      empty_reason: "no_events_in_window",
       data_freshness: { last_refreshed_at: null, source: null },
-      hint,
+      hint:
+        `No ${ctx.kind}s for ${ctx.jurisdiction} returned by upstream. ` +
+        "If this is unexpected, check stale_notice for hydrate failures.",
     };
   }
 
