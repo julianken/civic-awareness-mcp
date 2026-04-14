@@ -1,0 +1,37 @@
+{
+  "voteInformation": {
+    "congress": 119,
+    "chamber": "Senate",
+    "rollNumber": 42,
+    "date": "2026-04-01",
+    "question": "On Passage of HR 1234",
+    "result": "Passed",
+    "bill": { "type": "HR", "number": "1234" },
+    "totals": { "yea": 52, "nay": 47, "present": 0, "notVoting": 1 },
+    "members": {
+      "item": [
+        {
+          "bioguideId": "S000148",
+          "name": "Schumer, Charles E.",
+          "partyName": "Democratic",
+          "state": "NY",
+          "votePosition": "Yea"
+        },
+        {
+          "bioguideId": "M000355",
+          "name": "McConnell, Mitch",
+          "partyName": "Republican",
+          "state": "KY",
+          "votePosition": "Nay"
+        },
+        {
+          "bioguideId": "C001098",
+          "name": "Collins, Susan M.",
+          "partyName": "Republican",
+          "state": "ME",
+          "votePosition": "Yea"
+        }
+      ]
+    }
+  }
+}
