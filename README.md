@@ -6,10 +6,6 @@ An [MCP](https://modelcontextprotocol.io) server that gives an LLM first-class a
 ![Node 22+](https://img.shields.io/badge/node-%E2%89%A522-brightgreen)
 [![Nightly drift](https://github.com/julianken/civic-awareness-mcp/actions/workflows/nightly-drift.yml/badge.svg)](https://github.com/julianken/civic-awareness-mcp/actions/workflows/nightly-drift.yml)
 
-## Status
-
-Phases 1–7 complete. **9 MCP tools live**, all 50 states + federal, backed by OpenStates + Congress.gov + OpenFEC with transparent pass-through caching. Pre-public security audit landed at `aafdb73` — see [`SECURITY.md`](./SECURITY.md). Repo went public 2026-04-12.
-
 ## Tools
 
 | Tool | Kind | What it answers |
@@ -299,7 +295,7 @@ To run the nightly workflow, set two repo secrets (`OPENSTATES_API_KEY` and `API
 - Third-party GitHub Actions pinned to commit SHAs (not mutable tags)
 - GitHub secret scanning + push protection + Dependabot alerts enabled
 
-Pre-public audit hardening landed at `aafdb73`. Full write-up in [`SECURITY.md`](./SECURITY.md).
+See [`SECURITY.md`](./SECURITY.md) for the security posture write-up.
 
 ## Documentation
 
@@ -313,7 +309,7 @@ Full design rationale lives in [`docs/`](./docs). The starting points:
 | [`docs/04-entity-schema.md`](./docs/04-entity-schema.md) | Entity schema + resolution algorithm |
 | [`docs/05-tool-surface.md`](./docs/05-tool-surface.md) | Full tool specs |
 | [`docs/06-open-decisions.md`](./docs/06-open-decisions.md) | 10 design decisions (all finalized 2026-04-12) |
-| [`docs/plans/`](./docs/plans) | Per-phase TDD implementation plans (Phase 1–7) |
+| [`docs/plans/`](./docs/plans) | Per-phase TDD implementation plans |
 
 ## License
 
