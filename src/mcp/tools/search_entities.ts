@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { SearchEntitiesInput } from "../schemas.js";
 import { normalizeName } from "../../resolution/fuzzy.js";
 import { escapeLike } from "../../util/sql.js";
+import type { StaleNotice } from "../shared.js";
 
 export interface EntityMatch {
   id: string;
@@ -16,6 +17,7 @@ export interface SearchEntitiesResponse {
   results: EntityMatch[];
   total: number;
   sources: Array<{ name: string; url: string }>;
+  stale_notice?: StaleNotice;
 }
 
 interface Row {

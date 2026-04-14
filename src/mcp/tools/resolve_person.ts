@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { ResolvePersonInput } from "../schemas.js";
 import { normalizeName, levenshtein } from "../../resolution/fuzzy.js";
 import { escapeLike } from "../../util/sql.js";
+import type { StaleNotice } from "../shared.js";
 
 interface PersonRow {
   id: string;
@@ -20,6 +21,7 @@ export interface ResolvePersonMatch {
 
 export interface ResolvePersonResponse {
   matches: ResolvePersonMatch[];
+  stale_notice?: StaleNotice;
 }
 
 const CONFIDENCE_RANK: Record<"exact" | "alias" | "fuzzy", number> = {

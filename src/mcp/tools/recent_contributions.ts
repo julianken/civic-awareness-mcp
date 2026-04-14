@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { queryDocuments } from "../../core/documents.js";
 import { RecentContributionsInput } from "../schemas.js";
 import { escapeLike } from "../../util/sql.js";
+import type { StaleNotice } from "../shared.js";
 
 export interface ContributorRef {
   name: string;
@@ -27,6 +28,7 @@ export interface RecentContributionsResponse {
   total: number;
   sources: Array<{ name: string; url: string }>;
   window: { from: string; to: string };
+  stale_notice?: StaleNotice;
 }
 
 export async function handleRecentContributions(

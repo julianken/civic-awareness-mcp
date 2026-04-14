@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { EntityConnectionsInput } from "../schemas.js";
 import { findConnections } from "../../core/connections.js";
 import { findEntityById } from "../../core/entities.js";
+import type { StaleNotice } from "../shared.js";
 
 interface EntityMatch {
   id: string;
@@ -33,6 +34,7 @@ export interface EntityConnectionsResponse {
   nodes: EntityMatch[];
   sources: Array<{ name: string; url: string }>;
   truncated: boolean;
+  stale_notice?: StaleNotice;
 }
 
 interface EntityRow {

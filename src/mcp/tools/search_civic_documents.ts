@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { SearchDocumentsInput } from "../schemas.js";
 import { escapeLike } from "../../util/sql.js";
+import type { StaleNotice } from "../shared.js";
 
 export interface DocumentMatch {
   id: string;
@@ -15,6 +16,7 @@ export interface SearchDocumentsResponse {
   results: DocumentMatch[];
   total: number;
   sources: Array<{ name: string; url: string }>;
+  stale_notice?: StaleNotice;
 }
 
 interface Row {

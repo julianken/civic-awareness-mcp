@@ -3,6 +3,7 @@ import { GetEntityInput } from "../schemas.js";
 import { findEntityById } from "../../core/entities.js";
 import { findDocumentsByEntity } from "../../core/documents.js";
 import type { Entity, Document } from "../../core/types.js";
+import type { StaleNotice } from "../shared.js";
 
 export interface GetEntityResponse {
   entity: Entity;
@@ -15,6 +16,7 @@ export interface GetEntityResponse {
     source_url: string;
   }>;
   sources: Array<{ name: string; url: string }>;
+  stale_notice?: StaleNotice;
 }
 
 export async function handleGetEntity(

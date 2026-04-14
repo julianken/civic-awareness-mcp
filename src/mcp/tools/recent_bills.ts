@@ -3,7 +3,7 @@ import { queryDocuments } from "../../core/documents.js";
 import { findEntityById } from "../../core/entities.js";
 import type { EntityReference } from "../../core/types.js";
 import { RecentBillsInput } from "../schemas.js";
-import { emptyFeedDiagnostic, type EmptyFeedDiagnostic } from "../shared.js";
+import { emptyFeedDiagnostic, type EmptyFeedDiagnostic, type StaleNotice } from "../shared.js";
 
 export interface SponsorSummary {
   count: number;
@@ -33,6 +33,7 @@ export interface RecentBillsResponse {
   empty_reason?: EmptyFeedDiagnostic["empty_reason"];
   data_freshness?: EmptyFeedDiagnostic["data_freshness"];
   hint?: string;
+  stale_notice?: StaleNotice;
 }
 
 function buildSponsorSummary(

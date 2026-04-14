@@ -19,6 +19,20 @@ export interface EmptyFeedContext {
   kind: DocumentKind;
 }
 
+export type StaleReason =
+  | "upstream_failure"
+  | "rate_limited"
+  | "partial_hydrate"
+  | "daily_budget_exhausted";
+
+export interface StaleNotice {
+  as_of: string;
+  reason: StaleReason;
+  message: string;
+  retry_after_s?: number;
+  completeness?: string;
+}
+
 export function emptyFeedDiagnostic(
   db: Database.Database,
   ctx: EmptyFeedContext,

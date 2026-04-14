@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { queryDocuments } from "../../core/documents.js";
 import { RecentVotesInput } from "../schemas.js";
-import { emptyFeedDiagnostic, type EmptyFeedDiagnostic } from "../shared.js";
+import { emptyFeedDiagnostic, type EmptyFeedDiagnostic, type StaleNotice } from "../shared.js";
 
 export interface VoteTally {
   yea: number;
@@ -28,6 +28,7 @@ export interface RecentVotesResponse {
   empty_reason?: EmptyFeedDiagnostic["empty_reason"];
   data_freshness?: EmptyFeedDiagnostic["data_freshness"];
   hint?: string;
+  stale_notice?: StaleNotice;
 }
 
 const CHAMBER_MAP: Record<string, string> = {
