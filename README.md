@@ -112,17 +112,17 @@ See [`examples/`](./examples) for complete request/response fixtures.
 
 A real interaction an LLM can carry off using three tools in sequence:
 
-> **User:** *Who are Ted Cruz's top institutional donors this cycle, and has he sponsored any bills related to them?*
+> **User:** *Who are Angus King's top institutional donors this cycle, and has he sponsored any bills related to them?*
 >
-> **LLM** → `resolve_person({ name: "Ted Cruz", role_hint: "senator" })`
-> ← `{ matches: [{ entity_id: "person-8e2c...", confidence: "exact", disambiguators: ["senator (us-federal) 2013–present", "fec_candidate: S2TX00312"] }] }`
+> **LLM** → `resolve_person({ name: "Angus King", role_hint: "senator" })`
+> ← `{ matches: [{ entity_id: "person-8e2c...", confidence: "exact", disambiguators: ["senator (us-federal) 2013–present", "fec_candidate: S2ME00109"] }] }`
 >
 > **LLM** → `entity_connections({ id: "person-8e2c...", depth: 1, min_co_occurrences: 5 })`
 > ← *(graph showing top co-occurring committees and PACs via `contribution` edges)*
 >
 > **LLM** → `recent_bills({ jurisdiction: "us-federal", days: 90 })` *(then cross-references sponsors)*
 >
-> **LLM:** *"This cycle Senator Cruz's highest-volume institutional contributors are [committee A], [PAC B], and [committee C]. In the last 90 days he has sponsored S.1789 (energy infrastructure) and cosponsored S.1622 (…). Sources: openfec schedule A; congress.gov bill."*
+> **LLM:** *"This cycle Senator King's highest-volume institutional contributors are [committee A], [PAC B], and [committee C]. In the last 90 days he has sponsored S.1789 (energy infrastructure) and cosponsored S.1622 (…). Sources: openfec schedule A; congress.gov bill."*
 
 ## Installation
 
