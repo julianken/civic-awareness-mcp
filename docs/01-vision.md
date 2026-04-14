@@ -98,8 +98,12 @@ answers questions that no existing MCP can.
   correctly sourced than more results that are sometimes wrong.
 - **Provenance everywhere.** Every tool response includes source
   URL(s) so the LLM can cite them.
-- **Fail loud.** If Congress.gov or OpenStates is down, the MCP
-  returns a clear error, not stale cached data masquerading as fresh.
+- **Fail transparently.** Under R13, the SQLite store is a
+  transparent TTL cache. When an upstream is down, rate-limited
+  beyond a 2.5s wait, or the daily budget is exhausted, the MCP
+  returns the last-known local data with a `stale_notice` sibling
+  field explaining why. Callers always get something back, and
+  stale data never masquerades as fresh.
 - **Respect upstreams.** Cache aggressively. Back off on rate limits.
   Do not hammer public civic infrastructure — these are public goods
   maintained by government agencies and nonprofits, and in several

@@ -1,10 +1,11 @@
 # 05 — MCP Tool Surface
 
-The MCP exposes **8 tools**, split into two groups by query
+The MCP exposes **9 tools**, split into three groups by query
 projection. Feed tools (B) answer "what's happening?"; entity tools
-(A) answer "who is X and what have they done?". Both groups query
-the same underlying store with different SELECT projections — see
-`docs/02-architecture.md`.
+(A) answer "who is X and what have they done?"; detail tools (C)
+answer "give me the full record of this one resource by ID". All
+three groups query the same underlying store with different SELECT
+projections — see `docs/02-architecture.md`.
 
 Under R11's scope pivot (US-federal + all-50-state legislative), the
 original design's `recent_council_matters` and `upcoming_meetings`

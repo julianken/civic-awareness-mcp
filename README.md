@@ -10,7 +10,7 @@ The interesting part isn't the data, it's the **cross-source entity graph**: a s
 
 ## Status
 
-Phases 1–6 complete. **8 MCP tools live**, all 50 states + federal, backed by OpenStates + Congress.gov + OpenFEC with transparent pass-through caching. Pre-public security audit landed at `aafdb73` — see [`SECURITY.md`](./SECURITY.md). Repo went public 2026-04-12.
+Phases 1–7 complete. **9 MCP tools live**, all 50 states + federal, backed by OpenStates + Congress.gov + OpenFEC with transparent pass-through caching. Pre-public security audit landed at `aafdb73` — see [`SECURITY.md`](./SECURITY.md). Repo went public 2026-04-12.
 
 ## Tools
 
@@ -24,6 +24,7 @@ Phases 1–6 complete. **8 MCP tools live**, all 50 states + federal, backed by 
 | [`get_entity`](./docs/05-tool-surface.md#get_entity) | entity | Full entity record including role history (cross-jurisdiction for Persons) plus recent documents |
 | [`entity_connections`](./docs/05-tool-surface.md#entity_connections-phase-5) | entity | Graph of co-occurrence edges (via bills / votes / contributions) out to depth 2 |
 | [`resolve_person`](./docs/05-tool-surface.md#resolve_person-phase-5) | entity | Disambiguate a name into one or more Person entity IDs using role / jurisdiction / context hints |
+| [`get_bill`](./docs/05-tool-surface.md#get_bill-phase-7) | detail | Full projection of a single bill by `(jurisdiction, identifier)` with per-document TTL |
 
 Every response includes a `sources: { name, url }[]` array so the LLM can cite provenance. No tool synthesizes summaries — that's the LLM's job (per [D3c](./docs/06-open-decisions.md)).
 
@@ -234,7 +235,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 }
 ```
 
-Then restart Claude Desktop; the 8 tools will appear in the tool picker.
+Then restart Claude Desktop; the 9 tools will appear in the tool picker.
 
 ### Environment variables
 
@@ -256,7 +257,7 @@ to your user-level `settings.json` (or the project-level
 }
 ```
 
-After that, calls to any of the 8 tools run without prompts. To approve
+After that, calls to any of the 9 tools run without prompts. To approve
 individual tools rather than the whole server:
 
 ```json
@@ -270,7 +271,8 @@ individual tools rather than the whole server:
       "mcp__civic_awareness__get_entity",
       "mcp__civic_awareness__search_civic_documents",
       "mcp__civic_awareness__entity_connections",
-      "mcp__civic_awareness__resolve_person"
+      "mcp__civic_awareness__resolve_person",
+      "mcp__civic_awareness__get_bill"
     ]
   }
 }
@@ -313,7 +315,7 @@ Full design rationale lives in [`docs/`](./docs). The starting points:
 | [`docs/04-entity-schema.md`](./docs/04-entity-schema.md) | Entity schema + resolution algorithm |
 | [`docs/05-tool-surface.md`](./docs/05-tool-surface.md) | Full tool specs |
 | [`docs/06-open-decisions.md`](./docs/06-open-decisions.md) | 10 design decisions (all finalized 2026-04-12) |
-| [`docs/plans/`](./docs/plans) | Per-phase TDD implementation plans (Phase 1–5) |
+| [`docs/plans/`](./docs/plans) | Per-phase TDD implementation plans (Phase 1–7) |
 
 ## License
 

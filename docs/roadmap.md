@@ -4,14 +4,15 @@ Scope is locked by R11 in `docs/00-rationale.md` (US-federal +
 all-50-state legislative). Former AZ/Phoenix-municipal phases are
 retired.
 
-> **Status update (2026-04-13):** Phases 1–6 are all complete.
-> TDD plans live in `docs/plans/phase-{1..6}-*.md` and were executed
+> **Status update (2026-04-13):** Phases 1–7 are all complete.
+> TDD plans live in `docs/plans/phase-{1..7}-*.md` and were executed
 > task-by-task via `superpowers:subagent-driven-development`. The
-> server ships with **8 tools** exposing a cross-source entity graph
+> server ships with **9 tools** exposing a cross-source entity graph
 > spanning OpenStates (50 states), Congress.gov (federal legislature
 > + votes), and OpenFEC (federal campaign finance), with a transparent
 > pass-through TTL cache (R13) replacing the former `refresh_source`
-> tool. See `README.md` for the final run instructions.
+> tool, plus a `get_bill` detail tool with per-document TTL (R14 / D11).
+> See `README.md` for the final run instructions.
 >
 > This document is preserved as the historical intent-level roadmap.
 > The implementation plans (and their post-execution amendments) are
