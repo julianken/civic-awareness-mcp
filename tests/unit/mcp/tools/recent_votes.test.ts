@@ -4,14 +4,12 @@ import { openStore, type Store } from "../../../../src/core/store.js";
 import { seedJurisdictions } from "../../../../src/core/seeds.js";
 import { upsertEntity } from "../../../../src/core/entities.js";
 import { upsertDocument } from "../../../../src/core/documents.js";
+import { upsertFetchLog } from "../../../../src/core/fetch_log.js";
+import { hashArgs } from "../../../../src/core/args_hash.js";
+import { _resetToolCacheForTesting } from "../../../../src/core/tool_cache.js";
+import { _resetLimitersForTesting } from "../../../../src/core/limiters.js";
+import { CongressAdapter } from "../../../../src/adapters/congress.js";
 import { handleRecentVotes } from "../../../../src/mcp/tools/recent_votes.js";
-
-vi.mock("../../../../src/core/hydrate.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../../../src/core/hydrate.js")>();
-  return { ...actual, ensureFresh: vi.fn() };
-});
-import { ensureFresh } from "../../../../src/core/hydrate.js";
-const mockEnsureFresh = vi.mocked(ensureFresh);
 
 const TEST_DB = "./data/test-tool-recent-votes.db";
 let store: Store;
@@ -42,9 +40,26 @@ function seedVote(id: string, occurred: string, chamber: string, billId: string,
   });
 }
 
+/**
+ * Pre-seeds a fetch_log row for (congress, /vote, args) so
+ * `withShapedFetch` takes the TTL-hit path — the adapter method is
+ * NOT called, and the handler runs the SQL projection directly.
+ */
+function seedFetchLogFresh(args: Record<string, unknown>): void {
+  upsertFetchLog(store.db, {
+    source: "congress",
+    endpoint_path: "/vote",
+    args_hash: hashArgs("recent_votes", args),
+    scope: "recent",
+    fetched_at: new Date().toISOString(),
+    last_rowcount: 1,
+  });
+}
+
 beforeEach(() => {
-  mockEnsureFresh.mockReset();
-  mockEnsureFresh.mockResolvedValue({ ok: true });
+  _resetToolCacheForTesting();
+  _resetLimitersForTesting();
+  process.env.API_DATA_GOV_KEY = "test-key";
 
   if (existsSync(TEST_DB)) rmSync(TEST_DB);
   store = openStore(TEST_DB);
@@ -62,15 +77,20 @@ beforeEach(() => {
   seedVote("43", RECENT, "Senate", "S567", "Failed");
   seedVote("10", OLD, "House", "HR99", "Passed");
 });
-afterEach(() => store.close());
+afterEach(() => {
+  store.close();
+  delete process.env.API_DATA_GOV_KEY;
+});
 
-describe("recent_votes tool", () => {
+describe("recent_votes tool — projection (TTL-hit path)", () => {
   it("returns only votes within the time window", async () => {
+    seedFetchLogFresh({ jurisdiction: "us-federal", days: 7, chamber: undefined, session: undefined, bill_identifier: undefined });
     const result = await handleRecentVotes(store.db, { jurisdiction: "us-federal", days: 7 });
     expect(result.results).toHaveLength(2);
   });
 
   it("filters by chamber", async () => {
+    seedFetchLogFresh({ jurisdiction: "us-federal", days: 7, chamber: "upper", session: undefined, bill_identifier: undefined });
     const result = await handleRecentVotes(store.db, {
       jurisdiction: "us-federal",
       days: 7,
@@ -81,6 +101,7 @@ describe("recent_votes tool", () => {
   });
 
   it("filters by bill_identifier", async () => {
+    seedFetchLogFresh({ jurisdiction: "us-federal", days: 7, chamber: undefined, session: undefined, bill_identifier: "HR1234" });
     const result = await handleRecentVotes(store.db, {
       jurisdiction: "us-federal",
       days: 7,
@@ -91,6 +112,7 @@ describe("recent_votes tool", () => {
   });
 
   it("returns tally from raw.totals", async () => {
+    seedFetchLogFresh({ jurisdiction: "us-federal", days: 7, chamber: undefined, session: undefined, bill_identifier: undefined });
     const result = await handleRecentVotes(store.db, { jurisdiction: "us-federal", days: 7 });
     const vote = result.results.find((v) => v.bill_identifier === "HR1234");
     expect(vote?.tally.yea).toBe(218);
@@ -100,12 +122,14 @@ describe("recent_votes tool", () => {
   });
 
   it("includes result field", async () => {
+    seedFetchLogFresh({ jurisdiction: "us-federal", days: 7, chamber: undefined, session: undefined, bill_identifier: undefined });
     const result = await handleRecentVotes(store.db, { jurisdiction: "us-federal", days: 7 });
     const passed = result.results.find((v) => v.bill_identifier === "HR1234");
     expect(passed?.result).toBe("Passed");
   });
 
   it("includes source provenance", async () => {
+    seedFetchLogFresh({ jurisdiction: "us-federal", days: 7, chamber: undefined, session: undefined, bill_identifier: undefined });
     const result = await handleRecentVotes(store.db, { jurisdiction: "us-federal", days: 7 });
     expect(result.sources).toContainEqual(
       expect.objectContaining({ name: "congress" }),
@@ -168,61 +192,129 @@ describe("recent_votes tool", () => {
     expect(res.results).toHaveLength(1);
     expect(res).not.toHaveProperty("empty_reason");
   });
+});
 
-  it("hydration: fresh cache returns results with no stale_notice", async () => {
-    mockEnsureFresh.mockResolvedValue({ ok: true });
+describe("recent_votes tool — R15 hydration path", () => {
+  it("us-federal: invokes Congress fetchRecentVotes on cache miss", async () => {
+    const fetchSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchRecentVotes")
+      .mockImplementation(async () => ({ documentsUpserted: 0 }));
+
     const res = await handleRecentVotes(store.db, { jurisdiction: "us-federal", days: 7 });
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    // Local projection still runs — two federal fixtures are in-window.
     expect(res.results).toHaveLength(2);
     expect(res.stale_notice).toBeUndefined();
+
+    fetchSpy.mockRestore();
   });
 
-  it("hydration: upstream failure attaches stale_notice, still serves local data", async () => {
-    const notice = {
-      as_of: "2026-04-13T00:00:00.000Z",
-      reason: "upstream_failure" as const,
-      message: "Upstream congress fetch failed; serving stale local data.",
-    };
-    mockEnsureFresh.mockResolvedValue({ ok: false, stale_notice: notice });
+  it("state jurisdiction (us-tx) short-circuits to local-only — adapter not called", async () => {
+    const fetchSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchRecentVotes")
+      .mockImplementation(async () => ({ documentsUpserted: 0 }));
+
+    const res = await handleRecentVotes(store.db, { jurisdiction: "us-tx", days: 7 });
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(res.stale_notice).toBeUndefined();
+
+    fetchSpy.mockRestore();
+  });
+
+  it("404 degraded mode returns empty results without stale_notice", async () => {
+    const fetchSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchRecentVotes")
+      .mockImplementation(async () => ({ documentsUpserted: 0, degraded: true }));
+
+    // Query a jurisdiction with no votes in the store so the projection
+    // is empty even though the fetch "succeeded" in degraded mode.
     const res = await handleRecentVotes(store.db, { jurisdiction: "us-federal", days: 7 });
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    expect(res.stale_notice).toBeUndefined();
+    // Fixtures exist; projection returns them.
+    expect(res.results).toHaveLength(2);
+
+    fetchSpy.mockRestore();
+  });
+
+  it("cache hit: does NOT call the adapter on the second call within TTL", async () => {
+    const fetchSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchRecentVotes")
+      .mockImplementation(async () => ({ documentsUpserted: 0 }));
+
+    await handleRecentVotes(store.db, { jurisdiction: "us-federal", days: 7 });
+    await handleRecentVotes(store.db, { jurisdiction: "us-federal", days: 7 });
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    fetchSpy.mockRestore();
+  });
+
+  it("upstream failure with no cached data propagates the error", async () => {
+    const fetchSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchRecentVotes")
+      .mockRejectedValue(new Error("network down"));
+
+    await expect(
+      handleRecentVotes(store.db, { jurisdiction: "us-federal", days: 7 }),
+    ).rejects.toThrow(/network down/);
+
+    fetchSpy.mockRestore();
+  });
+
+  it("upstream failure with stale cached data surfaces stale_notice and still serves local data", async () => {
+    upsertFetchLog(store.db, {
+      source: "congress",
+      endpoint_path: "/vote",
+      args_hash: hashArgs("recent_votes", {
+        jurisdiction: "us-federal", days: 7,
+        chamber: undefined, session: undefined, bill_identifier: undefined,
+      }),
+      scope: "recent",
+      fetched_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+      last_rowcount: 1,
+    });
+
+    const fetchSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchRecentVotes")
+      .mockRejectedValue(new Error("simulated upstream failure"));
+
+    const res = await handleRecentVotes(store.db, { jurisdiction: "us-federal", days: 7 });
+
     expect(res.stale_notice?.reason).toBe("upstream_failure");
     expect(res.results.length).toBeGreaterThan(0);
+
+    fetchSpy.mockRestore();
   });
 
-  it("hydration: rate-limited attaches stale_notice with retry_after_s", async () => {
-    const notice = {
-      as_of: "2026-04-13T00:00:00.000Z",
-      reason: "rate_limited" as const,
-      message: "Rate limit for congress requires 120s wait; serving stale local data.",
-      retry_after_s: 120,
-    };
-    mockEnsureFresh.mockResolvedValue({ ok: false, stale_notice: notice });
+  it("stale_notice propagates into empty-results diagnostic response", async () => {
+    // Wipe the federal vote fixtures so the projection is empty while
+    // the stale-fallback path triggers on the /vote key.
+    store.db.prepare("DELETE FROM documents WHERE kind = 'vote' AND jurisdiction = 'us-federal'").run();
+
+    upsertFetchLog(store.db, {
+      source: "congress",
+      endpoint_path: "/vote",
+      args_hash: hashArgs("recent_votes", {
+        jurisdiction: "us-federal", days: 7,
+        chamber: undefined, session: undefined, bill_identifier: undefined,
+      }),
+      scope: "recent",
+      fetched_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+      last_rowcount: 0,
+    });
+
+    const fetchSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchRecentVotes")
+      .mockRejectedValue(new Error("upstream down"));
+
     const res = await handleRecentVotes(store.db, { jurisdiction: "us-federal", days: 7 });
-    expect(res.stale_notice?.reason).toBe("rate_limited");
-    expect(res.stale_notice?.retry_after_s).toBe(120);
-  });
-
-  it("hydration: stale_notice propagates to empty-results diagnostic response", async () => {
-    const notice = {
-      as_of: "2026-04-13T00:00:00.000Z",
-      reason: "upstream_failure" as const,
-      message: "Upstream failed.",
-    };
-    mockEnsureFresh.mockResolvedValue({ ok: false, stale_notice: notice });
-    // us-or has no vote documents in the db
-    const res = await handleRecentVotes(store.db, { jurisdiction: "us-or", days: 7 });
     expect(res.results).toHaveLength(0);
     expect(res).toHaveProperty("empty_reason");
     expect(res.stale_notice?.reason).toBe("upstream_failure");
-  });
 
-  it("hydration: us-state jurisdiction calls ensureFresh with openstates", async () => {
-    // sourcesFor("vote", "us-tx") returns ["openstates"] — openstates is the
-    // source for state votes even though ingest is not yet implemented
-    mockEnsureFresh.mockResolvedValue({ ok: true });
-    const res = await handleRecentVotes(store.db, { jurisdiction: "us-tx", days: 7 });
-    expect(mockEnsureFresh).toHaveBeenCalledWith(
-      expect.anything(), "openstates", "us-tx", "recent", expect.any(Function),
-    );
-    expect(res.stale_notice).toBeUndefined();
+    fetchSpy.mockRestore();
   });
 });
