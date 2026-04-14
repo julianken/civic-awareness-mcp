@@ -182,4 +182,23 @@ describe("queryDocuments", () => {
     const docs = queryDocuments(store.db, { kind: "bill", jurisdiction: "us-federal", limit: 10 });
     expect(docs[0].title).toBe("HR2");
   });
+
+  it("queryDocuments returns cross-jurisdiction results when jurisdiction is '*'", () => {
+    upsertDocument(store.db, {
+      kind: "vote", jurisdiction: "us-tx", title: "Vote TX — A",
+      occurred_at: "2025-09-18T00:00:00Z",
+      source: { name: "openstates", id: "tx-a", url: "https://ex" },
+    });
+    upsertDocument(store.db, {
+      kind: "vote", jurisdiction: "us-ca", title: "Vote CA — B",
+      occurred_at: "2025-09-17T00:00:00Z",
+      source: { name: "openstates", id: "ca-b", url: "https://ex" },
+    });
+    const all = queryDocuments(store.db, {
+      kind: "vote",
+      jurisdiction: "*",
+      limit: 10,
+    });
+    expect(all.map((d) => d.jurisdiction).sort()).toEqual(["us-ca", "us-tx"]);
+  });
 });

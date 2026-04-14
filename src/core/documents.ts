@@ -139,7 +139,10 @@ export function queryDocuments(db: Database.Database, f: QueryDocsFilter): Docum
     clauses.push(`kind IN (${qs})`);
     params.push(...f.kinds);
   }
-  if (f.jurisdiction) { clauses.push("jurisdiction = ?"); params.push(f.jurisdiction); }
+  if (f.jurisdiction && f.jurisdiction !== "*") {
+    clauses.push("jurisdiction = ?");
+    params.push(f.jurisdiction);
+  }
   if (f.from) { clauses.push("occurred_at >= ?"); params.push(f.from); }
   if (f.to) { clauses.push("occurred_at <= ?"); params.push(f.to); }
   params.push(f.limit);

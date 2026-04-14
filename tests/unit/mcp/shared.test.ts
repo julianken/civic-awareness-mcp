@@ -30,13 +30,30 @@ describe("emptyFeedDiagnostic", () => {
     });
     const d = emptyFeedDiagnostic(store.db, { jurisdiction: "us-tx", kind: "bill" });
     expect(d.empty_reason).toBe("no_events_in_window");
-    expect(d.data_freshness.last_refreshed_at).toMatch(/^2024/);
+    // fetched_at is set by upsertDocument at write time → "today", not 2024.
+    expect(d.data_freshness.last_refreshed_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(d.data_freshness.source).toBe("openstates");
-    expect(d.hint).toMatch(/session|window/);
+    expect(d.hint).toMatch(/refresh|session|window/);
   });
 
   it("returns unknown_jurisdiction when the jurisdiction is not seeded", () => {
     const d = emptyFeedDiagnostic(store.db, { jurisdiction: "us-zz", kind: "bill" });
     expect(d.empty_reason).toBe("unknown_jurisdiction");
+  });
+
+  it("returns no_events_in_window for jurisdiction '*' when any jurisdiction has data", () => {
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "SB 1 — A",
+      occurred_at: "2025-09-18T00:00:00Z",
+      source: { name: "openstates", id: "tx-1", url: "https://ex" },
+    });
+    const d = emptyFeedDiagnostic(store.db, { jurisdiction: "*", kind: "bill" });
+    expect(d.empty_reason).toBe("no_events_in_window");
+    expect(d.data_freshness.source).toBe("openstates");
+  });
+
+  it("returns no_refresh for jurisdiction '*' when store is empty", () => {
+    const d = emptyFeedDiagnostic(store.db, { jurisdiction: "*", kind: "bill" });
+    expect(d.empty_reason).toBe("no_refresh");
   });
 });

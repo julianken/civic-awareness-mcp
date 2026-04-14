@@ -40,14 +40,14 @@ export function emptyFeedDiagnostic(
   // Any documents of this kind in this jurisdiction at all?
   const latest = db
     .prepare(
-      `SELECT occurred_at, source_name
+      `SELECT fetched_at, source_name
          FROM documents
          WHERE kind = ? AND (jurisdiction = ? OR ? = '*')
-         ORDER BY occurred_at DESC
+         ORDER BY fetched_at DESC
          LIMIT 1`,
     )
     .get(ctx.kind, ctx.jurisdiction, ctx.jurisdiction) as
-      | { occurred_at: string; source_name: string }
+      | { fetched_at: string; source_name: string }
       | undefined;
 
   if (!latest) {
@@ -64,9 +64,9 @@ export function emptyFeedDiagnostic(
   return {
     empty_reason: "no_events_in_window",
     data_freshness: {
-      last_refreshed_at: latest.occurred_at,
+      last_refreshed_at: latest.fetched_at,
       source: latest.source_name,
     },
-    hint: `Latest ${ctx.kind} in store is ${latest.occurred_at.slice(0, 10)}. Try a wider window (days=365) or pass session=<id> to bypass the window.`,
+    hint: `Last ${ctx.kind} refresh landed ${latest.fetched_at.slice(0, 10)}. Try a wider window (days=365) or pass session=<id> to bypass the window.`,
   };
 }
