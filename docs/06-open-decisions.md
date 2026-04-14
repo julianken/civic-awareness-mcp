@@ -311,3 +311,22 @@ session should:
 1. Commit this file with the decisions locked in.
 2. Begin executing `docs/plans/phase-1-foundation.md` via the
    `superpowers:subagent-driven-development` skill.
+
+## D11 — Detail-tool hydration scope (2026-04-13, LOCKED)
+
+**Decision:** Detail tools (`get_bill`, and future `get_vote`,
+`get_contribution`) use per-document freshness via
+`documents.fetched_at`, not the `hydrations` table. TTL is the
+same 1h recent window used by feed tools. Upstream fetches hit
+the per-resource endpoint (e.g. OpenStates
+`/bills/{jurisdiction}/{session}/{identifier}`).
+
+**Why:** See R14. Per-jurisdiction freshness cannot represent
+"I have this specific bill" — it only tracks "I have this
+jurisdiction's recent feed."
+
+**Alternatives rejected:**
+- Extend `hydrations` with a per-identifier scope → unbounded
+  table growth, complicates eviction.
+- Always refetch on every `get_bill` call → hammers upstream,
+  breaks rate-limit budget under concurrent MCP clients.

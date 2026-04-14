@@ -427,3 +427,25 @@ original rationale. Add a new section below:
 ```
 
 This preserves the project's institutional memory.
+
+## R14 — Per-document hydration for detail tools (2026-04-13)
+
+R13 establishes pass-through hydration keyed by
+`(source, jurisdiction, scope)`. That model fits feed tools
+(`recent_bills`, `recent_votes`) which paginate a jurisdiction's
+recent activity, but it does not fit detail tools that target a
+single resource by identifier. A bill from a prior session or
+one that fell off the "recently updated" window will never be
+present after a jurisdiction-level refresh.
+
+Phase 7 introduces `get_bill`, whose freshness is tracked
+per-document via `documents.fetched_at`. If the target row is
+missing or older than the 1h `recent` TTL, the handler fetches
+`GET /bills/{jurisdiction}/{session}/{identifier}` directly,
+upserts, then projects. The `hydrations` table is not extended;
+per-document freshness lives on the document row itself.
+
+This keeps `hydrations` bounded (one row per jurisdiction×scope
+pair) while still serving arbitrary bills on demand. Stale-on-
+failure semantics match R13: upstream errors serve the existing
+local row with a `stale_notice`.
