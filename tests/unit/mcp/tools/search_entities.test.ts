@@ -3,21 +3,23 @@ import { rmSync, existsSync } from "node:fs";
 import { openStore, type Store } from "../../../../src/core/store.js";
 import { seedJurisdictions } from "../../../../src/core/seeds.js";
 import { upsertEntity } from "../../../../src/core/entities.js";
+import { upsertFetchLog } from "../../../../src/core/fetch_log.js";
+import { hashArgs } from "../../../../src/core/args_hash.js";
+import { _resetToolCacheForTesting } from "../../../../src/core/tool_cache.js";
+import { _resetLimitersForTesting } from "../../../../src/core/limiters.js";
+import { CongressAdapter } from "../../../../src/adapters/congress.js";
+import { OpenFecAdapter } from "../../../../src/adapters/openfec.js";
+import { OpenStatesAdapter } from "../../../../src/adapters/openstates.js";
 import { handleSearchEntities } from "../../../../src/mcp/tools/search_entities.js";
-
-vi.mock("../../../../src/core/hydrate.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../../../src/core/hydrate.js")>();
-  return { ...actual, ensureFresh: vi.fn() };
-});
-import { ensureFresh } from "../../../../src/core/hydrate.js";
-const mockEnsureFresh = vi.mocked(ensureFresh);
 
 const TEST_DB = "./data/test-tool-search-entities.db";
 let store: Store;
 
 beforeEach(() => {
-  mockEnsureFresh.mockReset();
-  mockEnsureFresh.mockResolvedValue({ ok: true });
+  _resetToolCacheForTesting();
+  _resetLimitersForTesting();
+  process.env.OPENSTATES_API_KEY = "test-key";
+  process.env.API_DATA_GOV_KEY = "test-key";
 
   if (existsSync(TEST_DB)) rmSync(TEST_DB);
   store = openStore(TEST_DB);
@@ -35,59 +37,126 @@ beforeEach(() => {
     jurisdiction: "us-ca",
   });
 });
-afterEach(() => store.close());
+afterEach(() => {
+  store.close();
+  delete process.env.OPENSTATES_API_KEY;
+  delete process.env.API_DATA_GOV_KEY;
+});
 
-describe("search_entities tool", () => {
-  it("matches by substring", async () => {
+describe("search_entities tool — projection", () => {
+  it("matches by substring (no jurisdiction → local-only)", async () => {
     const res = await handleSearchEntities(store.db, { q: "doe" });
     expect(res.results).toHaveLength(2);
   });
+
   it("filters by kind", async () => {
     const res = await handleSearchEntities(store.db, { q: "doe", kind: "person" });
     expect(res.results).toHaveLength(1);
     expect(res.results[0].name).toBe("Jane Doe");
   });
+});
 
-  // ── hydration ─────────────────────────────────────────────────────────────
+describe("search_entities tool — R15 hydration path", () => {
+  it("no jurisdiction → no adapter calls", async () => {
+    const openstatesSpy = vi
+      .spyOn(OpenStatesAdapter.prototype, "searchPeople")
+      .mockImplementation(async () => ({ entitiesUpserted: 0 }));
+    const congressSpy = vi
+      .spyOn(CongressAdapter.prototype, "searchMembers")
+      .mockImplementation(async () => ({ entitiesUpserted: 0 }));
+    const fecSpy = vi
+      .spyOn(OpenFecAdapter.prototype, "searchCandidates")
+      .mockImplementation(async () => ({ entitiesUpserted: 0 }));
 
-  it("hydration: no jurisdiction → ensureFresh not called", async () => {
     await handleSearchEntities(store.db, { q: "doe" });
-    expect(mockEnsureFresh).not.toHaveBeenCalled();
+
+    expect(openstatesSpy).not.toHaveBeenCalled();
+    expect(congressSpy).not.toHaveBeenCalled();
+    expect(fecSpy).not.toHaveBeenCalled();
+
+    openstatesSpy.mockRestore();
+    congressSpy.mockRestore();
+    fecSpy.mockRestore();
   });
 
-  it("hydration: jurisdiction provided → ensureFresh called with scope=full", async () => {
-    await handleSearchEntities(store.db, { q: "doe", jurisdiction: "us-tx" });
-    expect(mockEnsureFresh).toHaveBeenCalledWith(
-      store.db,
-      "openstates",
-      "us-tx",
-      "full",
-      expect.any(Function),
-    );
-  });
+  it("state jurisdiction: invokes OpenStates searchPeople", async () => {
+    const spy = vi
+      .spyOn(OpenStatesAdapter.prototype, "searchPeople")
+      .mockImplementation(async () => ({ entitiesUpserted: 0 }));
 
-  it("hydration: ok=true → no stale_notice on response", async () => {
-    mockEnsureFresh.mockResolvedValue({ ok: true });
     const res = await handleSearchEntities(store.db, { q: "doe", jurisdiction: "us-tx" });
+
+    expect(spy).toHaveBeenCalledOnce();
+    expect(spy).toHaveBeenCalledWith(store.db, {
+      jurisdiction: "us-tx",
+      name: "doe",
+    });
     expect(res.stale_notice).toBeUndefined();
+    spy.mockRestore();
   });
 
-  it("hydration: upstream failure → stale_notice attached, results still returned", async () => {
-    const notice = {
-      as_of: "2026-04-13T00:00:00.000Z",
-      reason: "upstream_failure" as const,
-      message: "Upstream openstates fetch failed; serving stale local data.",
-    };
-    mockEnsureFresh.mockResolvedValue({ ok: false, stale_notice: notice });
+  it("us-federal: fans out to Congress searchMembers + OpenFEC searchCandidates", async () => {
+    const cgSpy = vi
+      .spyOn(CongressAdapter.prototype, "searchMembers")
+      .mockImplementation(async () => ({ entitiesUpserted: 0 }));
+    const fecSpy = vi
+      .spyOn(OpenFecAdapter.prototype, "searchCandidates")
+      .mockImplementation(async () => ({ entitiesUpserted: 0 }));
+
+    await handleSearchEntities(store.db, { q: "smith", jurisdiction: "us-federal" });
+
+    expect(cgSpy).toHaveBeenCalledOnce();
+    expect(fecSpy).toHaveBeenCalledOnce();
+    expect(fecSpy).toHaveBeenCalledWith(store.db, { q: "smith" });
+    cgSpy.mockRestore();
+    fecSpy.mockRestore();
+  });
+
+  it("cache hit: second call within TTL does NOT call the adapter", async () => {
+    const spy = vi
+      .spyOn(OpenStatesAdapter.prototype, "searchPeople")
+      .mockImplementation(async () => ({ entitiesUpserted: 0 }));
+
+    await handleSearchEntities(store.db, { q: "doe", jurisdiction: "us-tx" });
+    await handleSearchEntities(store.db, { q: "doe", jurisdiction: "us-tx" });
+
+    expect(spy).toHaveBeenCalledOnce();
+    spy.mockRestore();
+  });
+
+  it("upstream failure with stale cache surfaces stale_notice and still serves local data", async () => {
+    upsertFetchLog(store.db, {
+      source: "openstates",
+      endpoint_path: "/people",
+      args_hash: hashArgs("searchPeople", {
+        jurisdiction: "us-tx",
+        name: "doe",
+      }),
+      scope: "full",
+      fetched_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+      last_rowcount: 1,
+    });
+
+    const spy = vi
+      .spyOn(OpenStatesAdapter.prototype, "searchPeople")
+      .mockRejectedValue(new Error("simulated upstream failure"));
+
     const res = await handleSearchEntities(store.db, { q: "doe", jurisdiction: "us-tx" });
+
     expect(res.stale_notice?.reason).toBe("upstream_failure");
     expect(res.results.length).toBeGreaterThan(0);
+    spy.mockRestore();
   });
 
-  it("hydration: us-federal jurisdiction → ensureFresh called for congress and openfec", async () => {
-    await handleSearchEntities(store.db, { q: "doe", jurisdiction: "us-federal" });
-    const calls = mockEnsureFresh.mock.calls.map((c) => c[1]);
-    expect(calls).toContain("congress");
-    expect(calls).toContain("openfec");
+  it("upstream failure with no cache propagates", async () => {
+    const spy = vi
+      .spyOn(OpenStatesAdapter.prototype, "searchPeople")
+      .mockRejectedValue(new Error("network down"));
+
+    await expect(
+      handleSearchEntities(store.db, { q: "doe", jurisdiction: "us-tx" }),
+    ).rejects.toThrow(/network down/);
+
+    spy.mockRestore();
   });
 });
