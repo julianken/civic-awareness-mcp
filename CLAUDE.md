@@ -47,6 +47,19 @@ When a human opens this repo in Claude Code for the first time:
   new dated line AND add a new R entry to `docs/00-rationale.md`.
   Preserve history; don't rewrite it. R11 is the pattern to follow.
 
+> **⚠️ Phase-8 migration in flight (started 2026-04-14):** The
+> hydration model is moving from R13 (transparent pass-through
+> cache, jurisdiction-keyed) to R15 (shaped-query hydration,
+> endpoint-keyed). Existing tools still call `ensureFresh` via
+> `src/core/hydrate.ts`; new adapter methods and `withShapedFetch`
+> in `src/core/tool_cache.ts` are the target pattern for all tool
+> rewrites starting in phase 8b. See
+> `docs/superpowers/specs/2026-04-14-shaped-query-hydration-design.md`
+> and `docs/plans/phase-8a-shaped-fetch-infra.md` for the full
+> design and rollout. During the migration window, do not
+> introduce new `ensureFresh` calls — use `withShapedFetch` for
+> any new code paths.
+
 ## Key conventions (locked by decision records)
 
 - **Language:** TypeScript on Node.js 22+ (D1)
@@ -61,16 +74,17 @@ When a human opens this repo in Claude Code for the first time:
 - **Scraping posture (D4):** All V1 sources are Tier 1 (sanctioned
   API, free with key). `src/util/http.ts` enforces User-Agent,
   per-host token bucket, backoff, `Retry-After`.
-- **Refresh (D5 → R13):** Read tools pass through to upstream APIs
-  with a transparent TTL cache (1h `scope="recent"` / 24h
-  `scope="full"`, keyed per `(source, jurisdiction, scope)`). Cache
-  misses fetch upstream, write through to SQLite, return. Upstream
-  failures, rate-limit waits >2.5s, and daily-budget exhaustion
-  serve stale local with a `stale_notice` sibling field. Entity
-  tools auto-hydrate on cold jurisdictions (maxPages=5, 20s
-  wall-clock deadline, partial-result fallback). `pnpm refresh`
-  CLI remains for operator use only; `refresh_source` is NOT
-  exposed as an MCP tool.
+- **Refresh (D5 → R13 → R15):** Under the phase-8 migration
+  (in flight), tools call `withShapedFetch(db, key, ttl,
+  fetchAndWrite, readLocal)` from `src/core/tool_cache.ts`. The
+  cache key is `(source, endpoint_path, args_hash)`; freshness
+  rows live in the `fetch_log` table. Upstream fetch +
+  write-through happen in one transaction and `fetch_log` is
+  updated in the same transaction. `stale_notice` fires only
+  when an upstream fetch failed and cached data exists as
+  fallback. The `hydrations` table and `ensureFresh` still exist
+  for tools not yet rewritten; both are removed in phase 8.10.
+  `pnpm refresh` CLI remains for operator use.
 - **Storage (D6):** `./data/civic-awareness.db` default; env var
   `CIVIC_AWARENESS_DB_PATH` overrides for installed use.
 - **License (D7):** MIT
@@ -96,15 +110,14 @@ event stream:
   `get_contribution`) — identifier-first, full projection of one
   resource. Uses per-document TTL (R14 / D11) rather than the
   jurisdiction-level cache of R13.
-- **Pass-through hydration (R13):** Read tools check
-  `(source, jurisdiction, scope)` freshness in the `hydrations`
-  table before querying the local store. Stale or missing →
-  hydrate from upstream via `src/core/hydrate.ts` (which wraps
-  `refreshSource()`), write through, then serve. The write path
-  is invisible to the caller. Singleflight in `hydrate.ts`
-  coalesces concurrent hydrates on the same key. The
-  `refresh_source` MCP tool will be removed in Phase 6; `pnpm refresh`
-  CLI remains for ops use.
+- **Shaped-query hydration (R15, in flight):** Tools gate their
+  upstream fetches on a `fetch_log` row keyed by
+  `(source, endpoint_path, args_hash)`. On a miss they call
+  the adapter's narrow shaped method, write-through inside a
+  transaction, and serve from the local store. R13's
+  jurisdiction-wide singleflight and `partial_hydrate` stale
+  notice no longer apply. See
+  `src/core/tool_cache.ts::withShapedFetch`.
 
 Both share the same underlying store. Every adapter writes
 `Document`s with `Entity` references; every tool reads those same
