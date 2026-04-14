@@ -276,18 +276,24 @@ export class OpenStatesAdapter implements Adapter {
 
   /** Narrow per-tool fetch for R15 `recent_bills` — one page of
    *  recently-updated bills for a jurisdiction, with optional
-   *  `updated_since` filter and optional client-side chamber filter.
-   *  Writes through to `documents` via `upsertBill`. Returns telemetry
+   *  `updated_since` filter, optional chamber filter, and optional
+   *  row `limit` (1..20, mapped to OpenStates `per_page`). Writes
+   *  through to `documents` via `upsertBill`. Returns telemetry
    *  count for `withShapedFetch`'s primary_rows_written contract. */
   async fetchRecentBills(
     db: Database.Database,
-    opts: { jurisdiction: string; updated_since?: string; chamber?: "upper" | "lower" },
+    opts: {
+      jurisdiction: string;
+      updated_since?: string;
+      chamber?: "upper" | "lower";
+      limit?: number;
+    },
   ): Promise<{ documentsUpserted: number }> {
     const abbr = opts.jurisdiction.replace(/^us-/, "").toLowerCase();
     const url = new URL(`${BASE_URL}/bills`);
     url.searchParams.set("jurisdiction", abbr);
     url.searchParams.set("sort", "updated_desc");
-    url.searchParams.set("per_page", "20");
+    url.searchParams.set("per_page", String(opts.limit ?? 20));
     if (opts.updated_since) url.searchParams.set("updated_since", opts.updated_since);
     for (const inc of ["sponsorships", "abstracts", "actions"]) {
       url.searchParams.append("include", inc);

@@ -520,6 +520,33 @@ describe("OpenStatesAdapter.fetchRecentBills", () => {
       db.close();
     }
   });
+
+  it("passes per_page=limit when opts.limit is set", async () => {
+    let capturedUrl: string | undefined;
+    vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
+      capturedUrl = String(url);
+      return new Response(
+        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
+        { status: 200 },
+      );
+    });
+
+    const LIMIT_DB = "./data/test-openstates-frb-limit.db";
+    if (existsSync(LIMIT_DB)) rmSync(LIMIT_DB, { force: true });
+    const db = openStore(LIMIT_DB);
+    try {
+      const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+      await adapter.fetchRecentBills(db.db, { jurisdiction: "us-mt", limit: 5 });
+
+      expect(capturedUrl).toBeDefined();
+      const u = new URL(capturedUrl!);
+      expect(u.searchParams.get("per_page")).toBe("5");
+      expect(u.searchParams.get("sort")).toBe("updated_desc");
+    } finally {
+      db.close();
+      if (existsSync(LIMIT_DB)) rmSync(LIMIT_DB, { force: true });
+    }
+  });
 });
 
 describe("OpenStatesAdapter.searchPeople", () => {
