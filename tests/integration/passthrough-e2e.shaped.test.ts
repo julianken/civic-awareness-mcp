@@ -23,6 +23,7 @@ import { readFileSync } from "node:fs";
 import { openStore, type Store } from "../../src/core/store.js";
 import { seedJurisdictions } from "../../src/core/seeds.js";
 import { upsertEntity } from "../../src/core/entities.js";
+import { handleEntityConnections } from "../../src/mcp/tools/entity_connections.js";
 import { handleGetEntity } from "../../src/mcp/tools/get_entity.js";
 import { handleRecentBills } from "../../src/mcp/tools/recent_bills.js";
 import { handleRecentVotes } from "../../src/mcp/tools/recent_votes.js";
@@ -457,5 +458,72 @@ describe("passthrough shaped e2e — get_entity (R15)", () => {
     expect(upstream).toBe(0);
     expect(res.entity.name).toBe("Bare Entity");
     expect(res.stale_notice).toBeUndefined();
+  });
+});
+
+describe("passthrough shaped e2e — entity_connections (R15)", () => {
+  it("entity with bioguide triggers exactly 2 Congress.gov sponsored/cosponsored fetches", async () => {
+    let sponsoredHits = 0;
+    let cosponsoredHits = 0;
+    vi.spyOn(global, "fetch").mockImplementation(async (input) => {
+      const url = String(typeof input === "string" ? input : (input as URL | Request).toString());
+      if (url.includes("/member/S000148/sponsored-legislation")) {
+        sponsoredHits += 1;
+        return new Response(
+          JSON.stringify({ sponsoredLegislation: [] }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/member/S000148/cosponsored-legislation")) {
+        cosponsoredHits += 1;
+        return new Response(
+          JSON.stringify({ cosponsoredLegislation: [] }),
+          { status: 200 },
+        );
+      }
+      return new Response("", { status: 404 });
+    });
+
+    const { entity } = upsertEntity(store.db, {
+      kind: "person",
+      name: "Schumer, Charles E.",
+      external_ids: { bioguide: "S000148" },
+    });
+
+    const res = await handleEntityConnections(store.db, {
+      id: entity.id,
+      depth: 1,
+      min_co_occurrences: 1,
+    });
+    expect(sponsoredHits).toBe(1);
+    expect(cosponsoredHits).toBe(1);
+    expect(res.empty_reason).toBeUndefined();
+    expect(res.stale_notice).toBeUndefined();
+  });
+
+  it("entity with no external IDs short-circuits with empty_reason + zero upstream", async () => {
+    let upstream = 0;
+    vi.spyOn(global, "fetch").mockImplementation(async () => {
+      upstream += 1;
+      return new Response("", { status: 404 });
+    });
+
+    const { entity } = upsertEntity(store.db, {
+      kind: "person",
+      name: "Bare Connected Entity",
+      metadata: {
+        roles: [{ jurisdiction: "us-tx", role: "state_legislator" }],
+      },
+    });
+
+    const res = await handleEntityConnections(store.db, {
+      id: entity.id,
+      depth: 1,
+      min_co_occurrences: 1,
+    });
+    expect(upstream).toBe(0);
+    expect(res.empty_reason).toBe("no_external_ids");
+    expect(res.edges).toHaveLength(0);
+    expect(res.nodes).toHaveLength(0);
   });
 });
