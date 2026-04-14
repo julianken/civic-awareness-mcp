@@ -7,6 +7,17 @@ import type { Adapter, AdapterOptions, RefreshResult } from "./base.js";
 
 const BASE_URL = "https://v3.openstates.org";
 
+export class BillNotFoundError extends Error {
+  constructor(
+    public readonly jurisdiction: string,
+    public readonly session: string,
+    public readonly identifier: string,
+  ) {
+    super(`Bill ${identifier} not found in ${jurisdiction} ${session}`);
+    this.name = "BillNotFoundError";
+  }
+}
+
 /** "ocd-jurisdiction/country:us/state:tx/government" → "tx".
  *  OpenStates v3 `/bills?jurisdiction=tx` accepts the bare abbr, so
  *  we only need the OCD→abbr direction, not the inverse. */
@@ -143,6 +154,35 @@ export class OpenStatesAdapter implements Adapter {
       result.errors.push(msg);
     }
     return result;
+  }
+
+  /** Per-resource hydration for detail tools (R14): refresh() only
+   *  covers recently-updated bills, so a bill from an earlier session
+   *  must be fetched directly by (jurisdiction, session, identifier). */
+  async fetchBill(
+    db: Database.Database,
+    opts: { jurisdiction: string; session: string; identifier: string },
+  ): Promise<void> {
+    const abbr = opts.jurisdiction.replace(/^us-/, "").toLowerCase();
+    const path = `/bills/${abbr}/${encodeURIComponent(opts.session)}/${encodeURIComponent(opts.identifier)}`;
+    const url = new URL(`${BASE_URL}${path}`);
+    for (const inc of ["sponsorships", "abstracts", "actions", "versions",
+                       "documents", "sources", "related_bills"]) {
+      url.searchParams.append("include", inc);
+    }
+    const res = await rateLimitedFetch(url.toString(), {
+      userAgent: "civic-awareness-mcp/0.1.0 (+github)",
+      rateLimiter: this.rateLimiter,
+      headers: { "X-API-KEY": this.opts.apiKey },
+    });
+    if (res.status === 404) {
+      throw new BillNotFoundError(opts.jurisdiction, opts.session, opts.identifier);
+    }
+    if (!res.ok) {
+      throw new Error(`OpenStates ${path} returned ${res.status}`);
+    }
+    const body = (await res.json()) as OpenStatesBillDetail;
+    this.upsertBill(db, body);
   }
 
   private async fetchAllPages<T>(

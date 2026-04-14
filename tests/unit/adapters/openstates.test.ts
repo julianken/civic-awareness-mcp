@@ -3,7 +3,7 @@ import { rmSync, existsSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { openStore, type Store } from "../../../src/core/store.js";
 import { seedJurisdictions } from "../../../src/core/seeds.js";
-import { OpenStatesAdapter, type OpenStatesBillDetail } from "../../../src/adapters/openstates.js";
+import { OpenStatesAdapter, BillNotFoundError, type OpenStatesBillDetail } from "../../../src/adapters/openstates.js";
 
 const TEST_DB = "./data/test-openstates.db";
 let store: Store;
@@ -353,5 +353,85 @@ describe("upsertBill persists detail fields in raw", () => {
     expect(raw.sponsorships[0].classification).toBe("primary");
     expect(raw.abstracts[0].abstract).toMatch(/Existing law/);
     detailDb.close();
+  });
+});
+
+describe("fetchBill", () => {
+  const FETCHBILL_DB = "./data/test-openstates-fetchbill.db";
+  const FETCHBILL_404_DB = "./data/test-openstates-fetchbill-404.db";
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (existsSync(FETCHBILL_DB)) rmSync(FETCHBILL_DB, { force: true });
+    if (existsSync(FETCHBILL_404_DB)) rmSync(FETCHBILL_404_DB, { force: true });
+  });
+
+  it("fetches one bill by jurisdiction+session+identifier and upserts", async () => {
+    let capturedUrl: string | undefined;
+    vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
+      capturedUrl = String(url);
+      return new Response(JSON.stringify({
+        id: "ocd-bill/abc",
+        identifier: "SB 1338",
+        title: "Vehicles: repossession.",
+        session: "20252026",
+        updated_at: "2026-04-09T00:00:00Z",
+        openstates_url: "https://openstates.org/ca/bills/20252026/SB1338/",
+        jurisdiction: { id: "ocd-jurisdiction/country:us/state:ca/government" },
+        subject: ["Vehicles", "Repossession"],
+        abstracts: [{ abstract: "Existing law..." }],
+        sponsorships: [],
+        actions: [{ date: "2026-02-20", description: "Introduced." }],
+        versions: [],
+        documents: [],
+        related_bills: [],
+      }), { status: 200 });
+    });
+
+    if (existsSync(FETCHBILL_DB)) rmSync(FETCHBILL_DB, { force: true });
+    const db = openStore(FETCHBILL_DB);
+    seedJurisdictions(db.db);
+    try {
+      const adapter = new OpenStatesAdapter({ apiKey: "test" });
+      await adapter.fetchBill(db.db, {
+        jurisdiction: "us-ca",
+        session: "20252026",
+        identifier: "SB 1338",
+      });
+
+      expect(capturedUrl).toBeDefined();
+      expect(capturedUrl).toContain("/bills/ca/20252026/SB%201338");
+      for (const inc of ["sponsorships", "abstracts", "actions", "versions",
+                         "documents", "sources", "related_bills"]) {
+        expect(capturedUrl).toContain(`include=${inc}`);
+      }
+
+      const row = db.db
+        .prepare("SELECT title FROM documents WHERE source_id = ?")
+        .get("ocd-bill/abc") as { title: string } | undefined;
+      expect(row?.title).toBe("SB 1338 — Vehicles: repossession.");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("throws BillNotFoundError on 404", async () => {
+    vi.spyOn(global, "fetch").mockImplementation(async () =>
+      new Response(JSON.stringify({ detail: "not found" }), { status: 404 }),
+    );
+
+    if (existsSync(FETCHBILL_404_DB)) rmSync(FETCHBILL_404_DB, { force: true });
+    const db = openStore(FETCHBILL_404_DB);
+    seedJurisdictions(db.db);
+    try {
+      const adapter = new OpenStatesAdapter({ apiKey: "test" });
+      await expect(
+        adapter.fetchBill(db.db, {
+          jurisdiction: "us-ca", session: "20252026", identifier: "XX 9999",
+        })
+      ).rejects.toThrow(BillNotFoundError);
+    } finally {
+      db.close();
+    }
   });
 });
