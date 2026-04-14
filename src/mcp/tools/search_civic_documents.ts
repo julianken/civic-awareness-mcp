@@ -1,7 +1,4 @@
 import type Database from "better-sqlite3";
-import { ensureFresh, sourcesFor } from "../../core/hydrate.js";
-import { getLimiter } from "../../core/limiters.js";
-import type { DocumentKind } from "../../core/types.js";
 import { SearchDocumentsInput } from "../schemas.js";
 import { escapeLike } from "../../util/sql.js";
 import type { StaleNotice } from "../shared.js";
@@ -19,6 +16,8 @@ export interface SearchDocumentsResponse {
   results: DocumentMatch[];
   total: number;
   sources: Array<{ name: string; url: string }>;
+  empty_reason?: "store_not_warmed";
+  hint?: string;
   stale_notice?: StaleNotice;
 }
 
@@ -33,29 +32,6 @@ export async function handleSearchDocuments(
   rawInput: unknown,
 ): Promise<SearchDocumentsResponse> {
   const input = SearchDocumentsInput.parse(rawInput);
-
-  let stale_notice: StaleNotice | undefined;
-  if (input.jurisdiction) {
-    const kinds = (input.kinds ?? ["bill", "vote", "contribution"]) as DocumentKind[];
-    const seenSources = new Set<string>();
-    outer: for (const kind of kinds) {
-      for (const src of sourcesFor(kind, input.jurisdiction)) {
-        if (seenSources.has(src)) continue;
-        seenSources.add(src);
-        const r = await ensureFresh(
-          db,
-          src,
-          input.jurisdiction,
-          "recent",
-          () => getLimiter(src).peekWaitMs(),
-        );
-        if (r.stale_notice) {
-          stale_notice = r.stale_notice;
-          break outer;
-        }
-      }
-    }
-  }
 
   const clauses = ["title LIKE ? ESCAPE '\\'"];
   const params: unknown[] = [`%${escapeLike(input.q)}%`];
@@ -104,6 +80,18 @@ export async function handleSearchDocuments(
   });
 
   const response: SearchDocumentsResponse = { results, total: results.length, sources };
-  if (stale_notice) response.stale_notice = stale_notice;
+
+  if (results.length === 0) {
+    const anyRow = db.prepare(
+      `SELECT 1 FROM documents ${input.jurisdiction ? "WHERE jurisdiction = ?" : ""} LIMIT 1`,
+    ).get(...(input.jurisdiction ? [input.jurisdiction] : [])) as unknown;
+    if (!anyRow) {
+      response.empty_reason = "store_not_warmed";
+      response.hint = input.jurisdiction
+        ? `No documents for ${input.jurisdiction}. Try calling recent_bills/recent_votes/recent_contributions first to warm the cache.`
+        : "Local store is empty. Try calling a feed tool (recent_bills, recent_votes, recent_contributions) first to warm the cache.";
+    }
+  }
+
   return response;
 }
