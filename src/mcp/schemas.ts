@@ -81,3 +81,21 @@ export const GetBillInput = z.object({
   identifier: z.string().min(1),
 });
 export type GetBillInput = z.infer<typeof GetBillInput>;
+
+export const ListBillsInput = z.object({
+  jurisdiction: z.string().min(1),
+  session: z.string().optional(),
+  chamber: z.enum(["upper", "lower"]).optional(),
+  sponsor_entity_id: z.string().optional(),
+  classification: z.string().optional(),
+  subject: z.string().optional(),
+  introduced_since: z.string().optional(),
+  introduced_until: z.string().optional(),
+  updated_since: z.string().optional(),
+  updated_until: z.string().optional(),
+  sort: z
+    .enum(["updated_desc", "updated_asc", "introduced_desc", "introduced_asc"])
+    .default("updated_desc"),
+  limit: z.number().int().min(1).max(50).default(20),
+});
+export type ListBillsInput = z.infer<typeof ListBillsInput>;
