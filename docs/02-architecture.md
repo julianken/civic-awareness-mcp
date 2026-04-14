@@ -18,10 +18,8 @@ store in two projections — time-first (feeds) and identity-first
 │  ─ recent_votes              ─ get_entity                   │
 │  ─ recent_contributions      ─ entity_connections           │
 │  ─ search_civic_documents    ─ resolve_person               │
-│                                                             │
-│  Refresh tool (C) — writes      ─ refresh_source            │
 └──────────────────────┬──────────────────────────────────────┘
-                       │  reads (B + A)  writes (C, on consent)
+                       │  reads (via ensureFresh)
                        ▼
 ┌─────────────────────────────────────────────────────────────┐
 │               Normalized Store (SQLite)                     │
@@ -189,3 +187,13 @@ are faster than async ones for single-digit-millisecond work, have
 simpler error handling, and eliminate a class of race conditions.
 Network fetch in adapters is async; local DB access is sync. That's
 intentional.
+
+### Pass-through hydration (R13)
+
+Read tool handlers do not query the store directly. They call `src/core/hydrate.ts#ensureFresh(db, source, jurisdiction, scope)` first. That function:
+1. Checks `hydrations(source, jurisdiction, scope)` TTL.
+2. If fresh → returns immediately; handler queries local.
+3. If stale/missing → acquires singleflight lock; checks daily budget; checks rate-limit-wait threshold (2.5s); if all clear, calls a scoped `refreshSource()` (narrow window for `recent`, bounded pull for `full` with 20s deadline + partial fallback). Marks freshness. Releases lock.
+4. On any failure (upstream 5xx, rate-limit exceeded, budget exhausted, deadline fired) → returns a `StaleNotice`; handler attaches it to the response and serves whatever local data matches.
+
+Writes remain batch-normalized (same code path as the CLI) so entity resolution produces the same graph regardless of trigger.

@@ -1,5 +1,15 @@
 # Phase 5 — Onboarding Polish + Refresh-as-a-Tool Implementation Plan
 
+> **STATUS: PARTIALLY SUPERSEDED as of 2026-04-13 by
+> `docs/plans/phase-6-passthrough-cache.md`.** The auto-bootstrap
+> portion (Task 3 onward) shipped and is retained. The
+> refresh-as-a-tool portion (`refresh_source` MCP tool, R12, Task 1
+> amendment text) is superseded by R13 in `docs/00-rationale.md`:
+> refresh is removed from the MCP tool surface; read tools pass
+> through to upstream APIs with a transparent TTL cache. This plan
+> is kept as historical record of the intermediate design. Do not
+> execute new tasks from it.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > `superpowers:subagent-driven-development` to implement this plan
 > task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

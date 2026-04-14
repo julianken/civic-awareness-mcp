@@ -1,6 +1,6 @@
 # 05 — MCP Tool Surface
 
-The MCP exposes **9 tools**, split into two groups by query
+The MCP exposes **8 tools**, split into two groups by query
 projection. Feed tools (B) answer "what's happening?"; entity tools
 (A) answer "who is X and what have they done?". Both groups query
 the same underlying store with different SELECT projections — see
@@ -216,34 +216,30 @@ output:
   }>
 ```
 
-## Refresh tool (C) — 1 tool
+## Pass-through cache (R13)
 
-### `refresh_source` (Phase 5)
+Read tools transparently hydrate their jurisdiction from upstream on cache miss. The SQLite store is a TTL cache, not a user concern.
 
+- `scope="recent"` (feed pulls): TTL = 1h
+- `scope="full"` (entity hydration): TTL = 24h
+- Keyed per `(source, jurisdiction, scope)` in the `hydrations` table
+
+On upstream failure, rate-limit wait > 2.5s, or daily-budget exhaustion, tools serve stale local data with a `stale_notice` sibling field on the response:
+
+```jsonc
+{
+  "results": [...],
+  "stale_notice": {
+    "as_of": "2026-04-12T14:30:00Z",
+    "reason": "upstream_failure",  // or: rate_limited | partial_hydrate | daily_budget_exhausted
+    "message": "Human-readable one-line summary.",
+    "retry_after_s": 60,
+    "completeness": "active_session_only"
+  }
+}
 ```
-input:
-  source: "openstates" | "congress" | "openfec"    // REQUIRED
-  jurisdictions: string[] | undefined              // 2–4 char state codes, OpenStates only
-  max_pages: number (default 2, min 1, max 50)
 
-output:
-  source: string                                   // echoes input
-  entities_upserted: number
-  documents_upserted: number
-  errors: string[]                                 // per-page errors; batch continues on partial failure
-  jurisdictions_processed?: string[]               // OpenStates: which states were touched
-```
-
-`refresh_source` is the **only write tool** on the MCP. It invokes
-the same `refreshSource()` core function that powers the out-of-process
-`pnpm refresh` CLI — both write into the shared SQLite store.
-
-Design intent: lets an LLM populate missing data in-session without
-the operator dropping to a terminal. Claude Code users can keep the
-tool behind a consent prompt (see the README allowlist section) so
-it only runs when the user approves. `max_pages` caps daily upstream
-budget impact at 50 pages per call; the default of 2 is conservative
-for first-touch exploration.
+`refresh_source` is not an MCP tool. The `pnpm refresh` CLI is retained for operator use (cron, bulk seeding, historical backfill).
 
 ## Phase-to-tool mapping
 
@@ -253,12 +249,12 @@ for first-touch exploration.
 | **2 — OpenStates (50 states)** | ✅ done | `recent_bills`, `search_entities`, `get_entity`, `search_civic_documents` (OpenStates-only) |
 | **3 — Congress.gov** | ✅ done | + `recent_votes`; `recent_bills`, `search_entities`, `get_entity`, `search_civic_documents` expand to include federal |
 | **4 — OpenFEC** | ✅ done | + `recent_contributions`; cross-source entity merge (fec_candidate ↔ bioguide ↔ openstates_person) |
-| **5 — Connections** | ✅ done | + `entity_connections`, `resolve_person`, `refresh_source` |
+| **5 — Connections** | ✅ done | + `entity_connections`, `resolve_person` |
 
-As of Phase 5 (2026-04-13), the server exposes **9 tools total** at
+As of Phase 5 (2026-04-13), the server exposes **8 tools total** at
 `v0.0.5`: `recent_bills`, `recent_votes`, `recent_contributions`,
 `search_entities`, `get_entity`, `search_civic_documents`,
-`entity_connections`, `resolve_person`, `refresh_source`.
+`entity_connections`, `resolve_person`.
 
 The original spec mentioned `entity_activity` as a separate tool.
 That surface is effectively covered by `get_entity.recent_documents`
@@ -267,14 +263,13 @@ a dedicated `entity_activity` tool emerges as necessary, it can be
 added as a wrapper over the existing `queryDocuments` / `findDocumentsByEntity`
 core helpers without new infrastructure.
 
-## Why 9 tools and not 20
+## Why 8 tools and not 20
 
 LLM tool-selection accuracy drops noticeably beyond ~15 tools with
-similar-sounding names. We keep to 9 with clearly distinct verbs
+similar-sounding names. We keep to 8 with clearly distinct verbs
 (`recent_X` vs `search_X` vs `get_X` vs `resolve_X` vs
-`entity_connections` vs `refresh_source`). If a future sub-source
-needs a new surface, we prefer extending an existing tool's input
-over adding a new tool.
+`entity_connections`). If a future sub-source needs a new surface,
+we prefer extending an existing tool's input over adding a new tool.
 
 ## What we explicitly DON'T expose
 
@@ -282,12 +277,10 @@ over adding a new tool.
   see raw Congress.gov JSON or OpenFEC line items.
 - No write tools **into civic systems**. The MCP never posts back to
   OpenStates, Congress.gov, or OpenFEC — writing to civic systems is
-  a completely different trust/safety problem. The one write tool
-  (`refresh_source`) writes only to the operator's local SQLite
-  store, from sanctioned Tier-1 APIs.
+  a completely different trust/safety problem.
 - No streaming / long-poll tools. Each call is a single
   request/response.
-- No purge / admin tools beyond `refresh_source`. Cache eviction,
-  schema migrations, etc. remain operator scripts, not LLM surfaces.
+- No purge / admin tools. Cache eviction, schema migrations, etc.
+  remain operator scripts, not LLM surfaces.
 - **No contributor PII in responses.** OpenFEC contributor addresses
   and employers are stored but never returned through tools.

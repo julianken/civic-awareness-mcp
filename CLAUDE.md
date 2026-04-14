@@ -61,8 +61,16 @@ When a human opens this repo in Claude Code for the first time:
 - **Scraping posture (D4):** All V1 sources are Tier 1 (sanctioned
   API, free with key). `src/util/http.ts` enforces User-Agent,
   per-host token bucket, backoff, `Retry-After`.
-- **Refresh (D5):** Out-of-process `pnpm refresh --source=<name>`
-  (and `--all`, `--since=<date>`). MCP server is read-only.
+- **Refresh (D5 → R13):** Read tools pass through to upstream APIs
+  with a transparent TTL cache (1h `scope="recent"` / 24h
+  `scope="full"`, keyed per `(source, jurisdiction, scope)`). Cache
+  misses fetch upstream, write through to SQLite, return. Upstream
+  failures, rate-limit waits >2.5s, and daily-budget exhaustion
+  serve stale local with a `stale_notice` sibling field. Entity
+  tools auto-hydrate on cold jurisdictions (maxPages=5, 20s
+  wall-clock deadline, partial-result fallback). `pnpm refresh`
+  CLI remains for operator use only; `refresh_source` is NOT
+  exposed as an MCP tool.
 - **Storage (D6):** `./data/civic-awareness.db` default; env var
   `CIVIC_AWARENESS_DB_PATH` overrides for installed use.
 - **License (D7):** MIT
@@ -84,11 +92,15 @@ event stream:
 - **Entities (A):** `search_entities`, `get_entity`,
   `entity_connections`, `resolve_person` — identity-first,
   investigation-oriented.
-- **Refresh (C):** `refresh_source` — the one write tool, added
-  in Phase 5. Triggers a batch ingest for one upstream source
-  (openstates/congress/openfec) with explicit user consent. Shares
-  the same `refreshSource()` core function as the `pnpm refresh`
-  CLI. See R12 in `docs/00-rationale.md` and the D5 amendment.
+- **Pass-through hydration (R13):** Read tools check
+  `(source, jurisdiction, scope)` freshness in the `hydrations`
+  table before querying the local store. Stale or missing →
+  hydrate from upstream via `src/core/hydrate.ts` (which wraps
+  `refreshSource()`), write through, then serve. The write path
+  is invisible to the caller. Singleflight in `hydrate.ts`
+  coalesces concurrent hydrates on the same key. The
+  `refresh_source` MCP tool will be removed in Phase 6; `pnpm refresh`
+  CLI remains for ops use.
 
 Both share the same underlying store. Every adapter writes
 `Document`s with `Entity` references; every tool reads those same
@@ -112,8 +124,10 @@ middle-name match, or role-jurisdiction overlap). See
 - Don't over-engineer entity resolution. V1 is **external-IDs, exact
   name, and fuzzy Levenshtein with linking-signal merges**. No ML,
   no embeddings, no vector search. See `docs/04-entity-schema.md`.
-- Don't add caching until Phase 5+. The SQLite store IS the cache
-  for V1 and V2 — queries are already local.
+- The SQLite store IS the cache under R13 (1h `scope="recent"` /
+  24h `scope="full"`). Don't add a second cache layer in memory
+  or elsewhere. The `hydrations` table tracks freshness; TTL
+  values live in `src/core/freshness.ts`.
 - Don't bake jurisdiction into Person entity uniqueness constraints.
   Per D3b, `entities` must not have a UNIQUE on
   `(kind, jurisdiction, name_normalized)` that includes Person rows.

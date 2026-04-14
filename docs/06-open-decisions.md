@@ -177,6 +177,24 @@ write-capable tool and requires explicit per-call user consent
 (MCP default behavior). See R12 in `docs/00-rationale.md` and
 `docs/plans/phase-5-onboarding-and-refresh-tool.md`.
 
+**Amended 2026-04-13 (second amendment):** Refresh is removed from
+the MCP tool surface entirely. Read tools now pass through to
+upstream APIs transparently, using the local SQLite store as a TTL
+cache (1h for `scope="recent"` feed pulls, 24h for `scope="full"`
+entity hydration, keyed per `(source, jurisdiction, scope)`).
+Rate-limit waits over 2.5s, 5xx upstream errors, and daily-budget
+exhaustion all fall back to stale local data with a `stale_notice`
+sibling field on the response envelope. Entity tools auto-hydrate
+on cold jurisdictions, bounded by `maxPages=5` AND a 20s wall-clock
+deadline (partial-result fallback if deadline fires).
+`refresh_source` no longer appears in `tools/list`; the
+`pnpm refresh` CLI remains for operator use (cron, bulk seeding,
+historical backfill). The original D5 read-only invariant on the
+query path is preserved in a different form — callers never see or
+initiate writes; the server transparently writes through to SQLite
+on cache misses. See R13 in `docs/00-rationale.md` and
+`docs/plans/phase-6-passthrough-cache.md`.
+
 ---
 
 ## D6 — Storage location and lifecycle

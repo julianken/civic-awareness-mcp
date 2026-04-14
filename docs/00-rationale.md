@@ -310,6 +310,106 @@ single `refreshSource()` core function.
   deferred to "V2 polish" per D6; promoted because the new
   `refresh_source` flow assumes the DB exists.
 
+## R13 — Transparent pass-through cache: refresh as a cache miss, not a user concern
+
+**Originally decided:** R8 + D5 (as amended by R12) exposed
+`refresh_source` as an MCP tool alongside the CLI, making refresh an
+explicit, user-visible step. The 8 read tools remained pure reads from
+SQLite; an empty store on a fresh install returned empty results with
+a hint telling the LLM to call `refresh_source` (or the human to run
+the CLI).
+
+**Revisited on:** 2026-04-13
+
+**New decision:** The SQLite store becomes an invisible implementation
+detail. Read tools pass through to the upstream APIs transparently,
+using the local store as a TTL cache. From the caller's POV there is
+no "refresh" concept — they ask, they receive. Cache misses hit
+upstream, write through to SQLite, return. Cache hits return local.
+TTL-expired entries trigger a fresh upstream fetch on the next read.
+Upstream failures (including rate limits exceeded beyond a threshold)
+fall back to stale local data with a `stale_notice` sibling field on
+the response envelope. `refresh_source` is removed from the MCP tool
+surface. The `pnpm refresh` CLI remains for operator use (cron, bulk
+seeding, historical backfill) but is no longer part of the
+user-facing product.
+
+**Why:**
+
+1. **The DB layer is plumbing, not product.** The value of this MCP
+   is connecting LLMs to OpenStates + Congress.gov + OpenFEC with
+   entity resolution across all three. The SQLite cache is how we
+   make that fast and polite to upstream APIs — not a thing the
+   caller needs to reason about. Under R12, every fresh install hit
+   an empty-DB wall and required the LLM to make an explicit write
+   call before reads worked. That leaked implementation detail into
+   the UX.
+
+2. **MCP consent is per tool call, not per HTTP request.** A
+   `recent_bills({jurisdiction:"us-tx"})` call that transparently
+   triggers an upstream fetch is still one consent boundary. The
+   LLM approves "get me Texas bills"; the caller doesn't need to
+   know that the server fetched upstream to satisfy that request.
+   This matches how every production API cache on earth works
+   (read-through with TTL).
+
+3. **Failure modes degrade gracefully.** Under R12, an upstream
+   failure during `refresh_source` meant the LLM had to retry the
+   refresh tool explicitly. Under R13, upstream failures fall
+   through to local data with a `stale_notice` — the caller always
+   gets something back, and the staleness is honestly reported.
+   Matches the "ask and receive" product posture.
+
+4. **Entity tools can auto-hydrate.** Previously,
+   `entity_connections` on a cold jurisdiction returned an empty
+   graph. Now, a cold jurisdiction triggers an auto-hydrate bounded
+   by `maxPages=5` and a 20s wall-clock deadline, marking `partial`
+   if the deadline fires. The graph answers what it can; staleness
+   is surfaced via `stale_notice{reason: "partial_hydrate"}`.
+
+**Key parameters (confirmed in pre-plan analysis):**
+
+- **TTL:** `scope="recent"` (feed pulls) = 1h; `scope="full"`
+  (entity hydration) = 24h. Keyed per `(source, jurisdiction, scope)`
+  to respect OpenStates' 500/day free-tier budget — a global TTL
+  would either starve small states or hammer large ones.
+- **Rate-limit threshold:** 2.5s. If the per-host token bucket
+  would require waiting more than 2.5s to proceed, abort the
+  hydrate and serve stale + `stale_notice{reason:"rate_limited"}`.
+  Keeps p99 tool latency under the ~5s LLM-caller expectation.
+- **Entity hydration bound:** `maxPages=5` AND 20s wall-clock
+  deadline. If deadline fires, write what we have, mark
+  `partial`, return results + `stale_notice{reason:"partial_hydrate",
+  completeness:"active_session_only"}`.
+- **Daily budget guard:** `CIVIC_AWARENESS_DAILY_BUDGET` env var
+  caps in-session requests per source below upstream hard limits,
+  preserving headroom for the CLI and neighbors sharing a key.
+- **Singleflight:** concurrent hydrates on the same
+  `(source, jurisdiction, scope)` coalesce to one in-flight pull;
+  secondary callers await the first. Without this, two parallel
+  entity tool calls on `us-tx` would double the rate-limit cost.
+
+**What this does NOT change:**
+
+- The feed (B) + entity (A) dual projection (R3).
+- SQLite via `better-sqlite3` (R6) — still the store, with a TTL
+  layer on top.
+- TypeScript (R7).
+- `pnpm refresh` CLI (R8, as amended by R12) — retained for ops
+  use, demoted from primary user path.
+- No MCP-side LLM summarization (R9).
+- Three-tier scraping policy and per-host token bucket (D4) —
+  in fact, now load-bearing for pass-through behavior.
+- Entity resolution algorithm (D3 / D3b) — unchanged; still runs
+  post-ingest as part of the hydrator.
+- The 8 read tools' response shapes (backward compatible; the
+  optional `stale_notice` field is additive).
+
+**Supersedes:** R12's refresh-as-a-tool conclusion, and the
+refresh-as-a-tool portion of
+`docs/plans/phase-5-onboarding-and-refresh-tool.md`. The
+auto-bootstrap portion of that plan already shipped and is retained.
+
 ---
 
 ## How to add to this doc
