@@ -241,3 +241,53 @@ describe("withShapedFetch — stale fallback", () => {
     ).rejects.toThrow(/network down/);
   });
 });
+
+describe("withShapedFetch — rate-limit peek", () => {
+  it("throws when peek wait exceeds 2.5s threshold and no cached data", async () => {
+    const fetchAndWrite = vi.fn(async () => ({ primary_rows_written: 1 }));
+    const readLocal = vi.fn(() => [] as string[]);
+
+    await expect(
+      withShapedFetch(
+        db,
+        { source: "openstates", endpoint_path: "/people", args: { name: "rl" }, tool: "__test__" },
+        { scope: "full", ms: 24 * 60 * 60 * 1000 },
+        fetchAndWrite,
+        readLocal,
+        () => 5000, // 5s wait — above threshold
+      ),
+    ).rejects.toThrow(/rate.?limit/i);
+
+    expect(fetchAndWrite).not.toHaveBeenCalled();
+  });
+
+  it("returns stale cached value when peek wait exceeds threshold", async () => {
+    const args = { name: "rl-with-cache" };
+    const hash = hashArgs("__test__", args);
+    upsertFetchLog(db, {
+      source: "openstates",
+      endpoint_path: "/people",
+      args_hash: hash,
+      scope: "full",
+      fetched_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+      last_rowcount: 2,
+    });
+
+    const fetchAndWrite = vi.fn(async () => ({ primary_rows_written: 1 }));
+    const readLocal = vi.fn(() => ["stale-ok"]);
+
+    const result = await withShapedFetch(
+      db,
+      { source: "openstates", endpoint_path: "/people", args, tool: "__test__" },
+      { scope: "full", ms: 24 * 60 * 60 * 1000 },
+      fetchAndWrite,
+      readLocal,
+      () => 5000,
+    );
+
+    expect(fetchAndWrite).not.toHaveBeenCalled();
+    expect(result.value).toEqual(["stale-ok"]);
+    expect(result.stale_notice?.reason).toBe("upstream_failure");
+    expect(result.stale_notice?.message).toMatch(/rate.?limit/i);
+  });
+});

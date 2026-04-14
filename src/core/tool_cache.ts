@@ -6,6 +6,7 @@ import type { FetchLogScope } from "./fetch_log.js";
 import type { HydrationSource } from "./freshness.js";
 import { Singleflight } from "./singleflight.js";
 import type { StaleNotice } from "../mcp/shared.js";
+import { RATE_LIMIT_WAIT_THRESHOLD_MS } from "../util/http.js";
 
 export interface ShapedFetchKey {
   source: HydrationSource;
@@ -65,7 +66,6 @@ export async function withShapedFetch<T>(
   readLocal: () => T,
   peekWaitMs: () => number,
 ): Promise<ShapedFetchResult<T>> {
-  void peekWaitMs;
   const args_hash = hashArgs(key.tool, key.args);
 
   if (isFetchLogFresh(db, key.source, key.endpoint_path, args_hash, ttl.ms)) {
@@ -81,6 +81,12 @@ export async function withShapedFetch<T>(
       const b = budget.check(key.source);
       if (!b.allowed) {
         throw new Error(`Daily budget for ${key.source} exhausted`);
+      }
+      const waitMs = peekWaitMs();
+      if (waitMs > RATE_LIMIT_WAIT_THRESHOLD_MS) {
+        throw new Error(
+          `Rate limit for ${key.source} requires ${Math.ceil(waitMs / 1000)}s wait`,
+        );
       }
       await runInTransaction(db, async () => {
         const result = await fetchAndWrite();
