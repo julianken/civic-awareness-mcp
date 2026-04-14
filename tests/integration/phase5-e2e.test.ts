@@ -11,13 +11,13 @@ import { openStore, type Store } from "../../src/core/store.js";
 import { seedJurisdictions } from "../../src/core/seeds.js";
 import { upsertEntity } from "../../src/core/entities.js";
 import { upsertDocument } from "../../src/core/documents.js";
+import { _resetToolCacheForTesting } from "../../src/core/tool_cache.js";
+import { _resetLimitersForTesting } from "../../src/core/limiters.js";
+import { OpenStatesAdapter } from "../../src/adapters/openstates.js";
+import { CongressAdapter } from "../../src/adapters/congress.js";
+import { OpenFecAdapter } from "../../src/adapters/openfec.js";
 import { handleEntityConnections } from "../../src/mcp/tools/entity_connections.js";
 import { handleResolvePerson } from "../../src/mcp/tools/resolve_person.js";
-
-vi.mock("../../src/core/hydrate.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../src/core/hydrate.js")>();
-  return { ...actual, ensureFresh: vi.fn().mockResolvedValue({ ok: true }) };
-});
 
 const TEST_DB = "./data/test-phase5-e2e.db";
 let store: Store;
@@ -31,6 +31,21 @@ let donorId: string;
 let pacId: string;
 
 beforeEach(() => {
+  _resetToolCacheForTesting();
+  _resetLimitersForTesting();
+  process.env.OPENSTATES_API_KEY = "test-key";
+  process.env.API_DATA_GOV_KEY = "test-key";
+
+  // R15: resolve_person no longer calls ensureFresh. Tests that pass a
+  // `jurisdiction_hint` would otherwise trigger a live fetch via the
+  // withShapedFetch fanout, so we stub the narrow adapter methods here.
+  vi.spyOn(OpenStatesAdapter.prototype, "searchPeople")
+    .mockImplementation(async () => ({ entitiesUpserted: 0 }));
+  vi.spyOn(CongressAdapter.prototype, "searchMembers")
+    .mockImplementation(async () => ({ entitiesUpserted: 0 }));
+  vi.spyOn(OpenFecAdapter.prototype, "searchCandidates")
+    .mockImplementation(async () => ({ entitiesUpserted: 0 }));
+
   if (existsSync(TEST_DB)) rmSync(TEST_DB);
   store = openStore(TEST_DB);
   seedJurisdictions(store.db);
@@ -220,6 +235,9 @@ beforeEach(() => {
 
 afterEach(() => {
   store.close();
+  vi.restoreAllMocks();
+  delete process.env.OPENSTATES_API_KEY;
+  delete process.env.API_DATA_GOV_KEY;
   if (existsSync(TEST_DB)) rmSync(TEST_DB);
 });
 

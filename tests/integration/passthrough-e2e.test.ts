@@ -1,21 +1,19 @@
 /**
  * Pass-through cache integration test (R13 path).
  *
- * Exercises the real hydrate → singleflight → TTL → stale_notice
- * pipeline for tools still on R13 (resolve_person and other
- * non-migrated tools). The `recent_bills` tool has been migrated
- * to the R15 `withShapedFetch` path — its integration scenarios
- * live in `passthrough-e2e.shaped.test.ts`. The two `recent_bills`
- * scenarios preserved here (warm hit, singleflight) pass under
- * R15 incidentally and act as regression tests for the shared
- * cache-write contract.
+ * The R13 code path (`ensureFresh` + `hydrations` table) is being
+ * retired as tools migrate to R15's `withShapedFetch`. The two
+ * `recent_bills` scenarios preserved here (warm hit, singleflight)
+ * pass under R15 incidentally and act as regression tests for the
+ * shared cache-write contract. Phase 8f-migrated tools
+ * (`search_entities`, `resolve_person`) have their R15 scenarios
+ * in `passthrough-e2e.shaped.test.ts`.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { openStore, type Store } from "../../src/core/store.js";
 import { seedJurisdictions } from "../../src/core/seeds.js";
 import { handleRecentBills } from "../../src/mcp/tools/recent_bills.js";
-import { handleResolvePerson } from "../../src/mcp/tools/resolve_person.js";
 import { _resetLimitersForTesting } from "../../src/core/limiters.js";
 import { _resetForTesting as resetHydrateBudget } from "../../src/core/hydrate.js";
 import { _resetToolCacheForTesting } from "../../src/core/tool_cache.js";
@@ -80,28 +78,6 @@ describe("pass-through cache — full orchestrator (no ensureFresh mock)", () =>
     expect(result.stale_notice).toBeUndefined();
     // fetch was not called again.
     expect(fetchHits).toBe(hitsAfterFirst);
-  });
-
-  // ── Scenario: Entity full hydrate — success path ──────────────────────
-  it("full hydrate: resolve_person with jurisdiction_hint populates hydrations scope=full", async () => {
-    const result = await handleResolvePerson(store.db, {
-      name: "Alice Johnson",
-      jurisdiction_hint: "us-tx",
-    });
-
-    // Full-scope hydration row must exist after the call.
-    const row = store.db
-      .prepare(
-        "SELECT status FROM hydrations WHERE source='openstates' AND jurisdiction='us-tx' AND scope='full'",
-      )
-      .get() as { status: string } | undefined;
-    expect(row).toBeDefined();
-    expect(row!.status).toBe("complete");
-
-    // Alice Johnson is in the fixture and should be found.
-    expect(result.matches.length).toBeGreaterThan(0);
-    expect(result.matches[0].name).toBe("Alice Johnson");
-    expect(result.stale_notice).toBeUndefined();
   });
 
   // ── Scenario: Singleflight coalesce ───────────────────────────────────

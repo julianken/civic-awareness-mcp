@@ -22,9 +22,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { openStore, type Store } from "../../src/core/store.js";
 import { seedJurisdictions } from "../../src/core/seeds.js";
+import { upsertEntity } from "../../src/core/entities.js";
 import { handleRecentBills } from "../../src/mcp/tools/recent_bills.js";
 import { handleRecentVotes } from "../../src/mcp/tools/recent_votes.js";
 import { handleRecentContributions } from "../../src/mcp/tools/recent_contributions.js";
+import { handleResolvePerson } from "../../src/mcp/tools/resolve_person.js";
+import { handleSearchEntities } from "../../src/mcp/tools/search_entities.js";
 import { _resetToolCacheForTesting } from "../../src/core/tool_cache.js";
 import { _resetLimitersForTesting } from "../../src/core/limiters.js";
 import { seedStaleCache } from "../helpers/seed_stale_cache.js";
@@ -277,5 +280,87 @@ describe("passthrough shaped e2e — recent_contributions", () => {
     const result = await handleRecentContributions(store.db, { window });
     expect(result.stale_notice?.reason).toBe("upstream_failure");
     fetchSpy.mockRestore();
+  });
+});
+
+describe("passthrough shaped e2e — search_entities (R15)", () => {
+  it("federal: fans out to Congress.gov /member AND OpenFEC /candidates/search", async () => {
+    let upstreamHits = 0;
+    vi.spyOn(global, "fetch").mockImplementation(async (input) => {
+      const url = String(typeof input === "string" ? input : (input as URL | Request).toString());
+      if (url.includes("api.congress.gov/v3/member")) {
+        upstreamHits += 1;
+        return new Response(
+          JSON.stringify({ members: [], pagination: { count: 0 } }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("api.open.fec.gov/v1/candidates/search")) {
+        upstreamHits += 1;
+        return new Response(
+          JSON.stringify({ results: [], pagination: { per_page: 20 } }),
+          { status: 200 },
+        );
+      }
+      return new Response("", { status: 404 });
+    });
+
+    await handleSearchEntities(store.db, {
+      q: "Smith",
+      jurisdiction: "us-federal",
+    });
+
+    expect(upstreamHits).toBe(2);
+  });
+});
+
+describe("passthrough shaped e2e — resolve_person / search_entities shared cache", () => {
+  it("search_entities us-tx + resolve_person us-tx + same name: second call is a cache hit", async () => {
+    let peopleHits = 0;
+    vi.spyOn(global, "fetch").mockImplementation(async (input) => {
+      const url = String(typeof input === "string" ? input : (input as URL | Request).toString());
+      if (!url.includes("openstates.org/people")) return new Response("", { status: 404 });
+      peopleHits += 1;
+      return new Response(
+        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
+        { status: 200 },
+      );
+    });
+
+    await handleSearchEntities(store.db, {
+      q: "Jane Doe",
+      jurisdiction: "us-tx",
+    });
+    await handleResolvePerson(store.db, {
+      name: "Jane Doe",
+      jurisdiction_hint: "us-tx",
+    });
+
+    // Shared endpoint-keyed cache: second call hits the TTL-fresh row
+    // written by the first, so no additional upstream /people request.
+    expect(peopleHits).toBe(1);
+  });
+
+  it("resolve_person upstream failure with no cache propagates", async () => {
+    vi.spyOn(global, "fetch").mockImplementation(async (input) => {
+      const url = String(typeof input === "string" ? input : (input as URL | Request).toString());
+      if (!url.includes("openstates.org/people")) return new Response("", { status: 404 });
+      return new Response(JSON.stringify({ detail: "server error" }), { status: 500 });
+    });
+
+    // Seed a local person so the projection would otherwise return results —
+    // proves the error propagates at the hydrate layer, not the projection.
+    upsertEntity(store.db, {
+      kind: "person",
+      name: "Jane Doe",
+      metadata: { roles: [{ jurisdiction: "us-tx", role: "state_legislator" }] },
+    });
+
+    await expect(
+      handleResolvePerson(store.db, {
+        name: "Jane Doe",
+        jurisdiction_hint: "us-tx",
+      }),
+    ).rejects.toThrow();
   });
 });
