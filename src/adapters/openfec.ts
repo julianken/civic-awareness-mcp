@@ -285,6 +285,42 @@ export class OpenFecAdapter implements Adapter {
   }
 
   /**
+   * Narrow per-tool fetch for R15 `entity_connections` — contributions
+   * to a specific candidate. OpenFEC `schedule_a` doesn't support
+   * `candidate_id` directly; it filters by `committee_id`. Two-step:
+   * (1) fetch the candidate and read `principal_committees[].committee_id`,
+   * (2) delegate to `fetchRecentContributions` with those IDs. Uses a
+   * wide default date window (01/01/2023) since the handler is
+   * "show me who's given to this candidate ever" rather than "recent".
+   */
+  async fetchContributionsToCandidate(
+    db: Database.Database,
+    opts: { candidateId: string; min_date?: string; limit?: number },
+  ): Promise<{ documentsUpserted: number }> {
+    const candUrl = new URL(`${BASE_URL}/candidate/${opts.candidateId}/`);
+    candUrl.searchParams.set("api_key", this.opts.apiKey);
+    const candRes = await rateLimitedFetch(candUrl.toString(), {
+      userAgent: "civic-awareness-mcp/0.1.0 (+github)",
+      rateLimiter: this.rateLimiter,
+    });
+    if (candRes.status === 404) return { documentsUpserted: 0 };
+    if (!candRes.ok) {
+      throw new Error(`OpenFEC /candidate/${opts.candidateId} returned ${candRes.status}`);
+    }
+    const candBody = (await candRes.json()) as { results?: FecCandidate[] };
+    const candidate = candBody.results?.[0];
+    const committeeIds =
+      candidate?.principal_committees?.map((c) => c.committee_id) ?? [];
+    if (committeeIds.length === 0) return { documentsUpserted: 0 };
+
+    return this.fetchRecentContributions(db, {
+      min_date: opts.min_date ?? "01/01/2023",
+      committee_ids: committeeIds,
+      limit: opts.limit,
+    });
+  }
+
+  /**
    * Narrow per-tool fetch for R15 `recent_contributions` — one page of
    * Schedule A using OpenFEC's native `min_date`/`max_date` filters
    * (MM/DD/YYYY format) with optional repeated `committee_id` query

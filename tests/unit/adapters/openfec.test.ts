@@ -648,6 +648,93 @@ describe("OpenFecAdapter.searchCandidates", () => {
   });
 });
 
+describe("OpenFecAdapter.fetchContributionsToCandidate", () => {
+  it("fetches candidate then schedule_a filtered by principal committee IDs", async () => {
+    const scheduleACalls: string[] = [];
+    vi.spyOn(global, "fetch").mockImplementation(async (input: any) => {
+      const u = String(input);
+      if (u.includes("/candidate/H0AZ01234/")) {
+        return new Response(
+          JSON.stringify({
+            results: [SAMPLE_CANDIDATE],
+            pagination: { per_page: 20, page: 1, pages: 1 },
+          }),
+          { status: 200 },
+        );
+      }
+      if (u.includes("/schedules/schedule_a")) {
+        scheduleACalls.push(u);
+        return new Response(
+          JSON.stringify({
+            results: [SAMPLE_SCHEDULE_A],
+            pagination: { per_page: 100, page: 1, pages: 1 },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    const adapter = new OpenFecAdapter({ apiKey: "test-key" });
+    const result = await adapter.fetchContributionsToCandidate(store.db, {
+      candidateId: "H0AZ01234",
+    });
+
+    expect(result.documentsUpserted).toBe(1);
+    expect(scheduleACalls).toHaveLength(1);
+    // Principal committee filter must be present in schedule_a call.
+    expect(scheduleACalls[0]).toMatch(/committee_id=C00123456/);
+    const docs = store.db.prepare(
+      "SELECT kind FROM documents WHERE source_name='openfec' AND kind='contribution'",
+    ).all();
+    expect(docs).toHaveLength(1);
+  });
+
+  it("returns 0 when candidate lookup 404s", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ error: "not found" }), { status: 404 }),
+    );
+
+    const adapter = new OpenFecAdapter({ apiKey: "test-key" });
+    const result = await adapter.fetchContributionsToCandidate(store.db, {
+      candidateId: "H9ZZ99999",
+    });
+    expect(result.documentsUpserted).toBe(0);
+  });
+
+  it("returns 0 when candidate has no principal committees", async () => {
+    const scheduleACalls: string[] = [];
+    vi.spyOn(global, "fetch").mockImplementation(async (input: any) => {
+      const u = String(input);
+      if (u.includes("/candidate/H0AZ01234/")) {
+        return new Response(
+          JSON.stringify({
+            results: [{ ...SAMPLE_CANDIDATE, principal_committees: [] }],
+            pagination: { per_page: 20, page: 1, pages: 1 },
+          }),
+          { status: 200 },
+        );
+      }
+      if (u.includes("/schedules/schedule_a")) {
+        scheduleACalls.push(u);
+        return new Response(
+          JSON.stringify({ results: [], pagination: { per_page: 100 } }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    const adapter = new OpenFecAdapter({ apiKey: "test-key" });
+    const result = await adapter.fetchContributionsToCandidate(store.db, {
+      candidateId: "H0AZ01234",
+    });
+    expect(result.documentsUpserted).toBe(0);
+    // Must NOT have called schedule_a — no committees to filter by.
+    expect(scheduleACalls).toHaveLength(0);
+  });
+});
+
 describe("OpenFecAdapter.fetchCandidate", () => {
   it("fetches /candidate/{id}/ and upserts the returned candidate", async () => {
     const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
