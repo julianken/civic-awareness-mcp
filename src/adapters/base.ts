@@ -18,6 +18,13 @@ export interface AdapterOptions {
    * `us-federal`; OpenFEC is always federal campaign finance).
    */
   jurisdiction?: string;
+  /**
+   * Wall-clock deadline in epoch ms. When Date.now() >= deadline, the
+   * adapter stops paginating before the next fetch and returns what
+   * it has accumulated so far. Used by hydrateFull to cap per-entity
+   * hydration time.
+   */
+  deadline?: number;
 }
 
 export interface Adapter {

@@ -171,6 +171,7 @@ export class OpenFecAdapter implements Adapter {
         const candidates = await this.fetchPages<FecCandidate>(
           `/candidates/search?election_year=${cycle}&candidate_status=C&per_page=100`,
           options.maxPages,
+          options.deadline,
         );
         for (const c of candidates) {
           this.upsertCandidate(options.db, c, cycle);
@@ -181,6 +182,7 @@ export class OpenFecAdapter implements Adapter {
         const committees = await this.fetchPages<FecCommittee>(
           `/committees?cycle=${cycle}&per_page=100`,
           options.maxPages,
+          options.deadline,
         );
         for (const c of committees) {
           this.upsertCommittee(options.db, c);
@@ -192,6 +194,7 @@ export class OpenFecAdapter implements Adapter {
           `/schedules/schedule_a?two_year_transaction_period=${cycle}&per_page=100`,
           "last_contribution_receipt_date",
           options.maxPages,
+          options.deadline,
         );
         for (const item of contribs) {
           this.upsertContribution(options.db, item);
@@ -203,6 +206,7 @@ export class OpenFecAdapter implements Adapter {
           `/schedules/schedule_b?two_year_transaction_period=${cycle}&per_page=100`,
           "last_disbursement_date",
           options.maxPages,
+          options.deadline,
         );
         for (const item of disb) {
           this.upsertExpenditure(options.db, item);
@@ -227,11 +231,13 @@ export class OpenFecAdapter implements Adapter {
   private async fetchPages<T>(
     firstPath: string,
     maxPages: number | undefined,
+    deadline: number | undefined,
   ): Promise<T[]> {
     const all: T[] = [];
     let page = 1;
 
     while (true) {
+      if (deadline !== undefined && Date.now() >= deadline) break;
       const sep = firstPath.includes("?") ? "&" : "?";
       const url = new URL(`${BASE_URL}${firstPath}${sep}page=${page}&api_key=${this.opts.apiKey}`);
 
@@ -263,12 +269,14 @@ export class OpenFecAdapter implements Adapter {
     firstPath: string,
     cursorDateKey: "last_contribution_receipt_date" | "last_disbursement_date",
     maxPages: number | undefined,
+    deadline: number | undefined,
   ): Promise<T[]> {
     const all: T[] = [];
     let path = firstPath;
     let pageCount = 0;
 
     while (true) {
+      if (deadline !== undefined && Date.now() >= deadline) break;
       const sep = path.includes("?") ? "&" : "?";
       const url = new URL(`${BASE_URL}${path}${sep}api_key=${this.opts.apiKey}`);
 

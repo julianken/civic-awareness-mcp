@@ -273,6 +273,16 @@ describe("CongressAdapter", () => {
     expect(doc.occurred_at).toBe("2025-04-04T00:00:00.000Z");
   });
 
+  // ── Deadline test ─────────────────────────────────────────────────
+  it("stops paginating when deadline has already passed", async () => {
+    vi.spyOn(global, "fetch").mockImplementation(makeMockFetch());
+    const adapter = new CongressAdapter({ apiKey: "test-key" });
+    const past = Date.now() - 1;
+    const r = await adapter.refresh({ db: store.db, deadline: past });
+    expect(r.documentsUpserted).toBe(0);
+    expect(r.entitiesUpserted).toBe(0);
+  });
+
   // ── Test 6: /vote 404 is graceful degradation, not an error ──────
   it("does not count /vote 404 as an error (graceful degradation)", async () => {
     // Members + bills succeed (empty results); /vote returns 404 as

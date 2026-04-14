@@ -278,6 +278,14 @@ describe("OpenStatesAdapter", () => {
     });
   });
 
+  it("stops paginating when deadline has already passed", async () => {
+    const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+    const past = Date.now() - 1;
+    const r = await adapter.refresh({ db: store.db, jurisdiction: "tx", deadline: past });
+    expect(r.documentsUpserted).toBe(0);
+    expect(r.entitiesUpserted).toBe(0);
+  });
+
   // Regression test: OpenStates v3 rejects comma-separated `include`
   // with HTTP 422. The API expects `include` as a repeated query
   // parameter (include=sponsorships&include=abstracts&include=actions),

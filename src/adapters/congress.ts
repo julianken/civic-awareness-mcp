@@ -156,6 +156,7 @@ export class CongressAdapter implements Adapter {
           (body) => body.members ?? [],
           (body) => body.pagination?.next,
           options.maxPages,
+          options.deadline,
         );
         for (const m of members) {
           this.upsertMember(options.db, m);
@@ -176,6 +177,7 @@ export class CongressAdapter implements Adapter {
           (body) => body.bills ?? [],
           (body) => body.pagination?.next,
           options.maxPages,
+          options.deadline,
         );
         for (const b of bills) {
           this.upsertBill(options.db, b);
@@ -201,6 +203,7 @@ export class CongressAdapter implements Adapter {
           (body) => body.votes ?? [],
           (body) => body.pagination?.next,
           options.maxPages,
+          options.deadline,
         );
         for (const v of votes) {
           this.upsertVote(options.db, v);
@@ -232,12 +235,14 @@ export class CongressAdapter implements Adapter {
     extract: (body: B) => T[],
     nextUrl: (body: B) => string | undefined,
     maxPages: number | undefined,
+    deadline: number | undefined,
   ): Promise<T[]> {
     const all: T[] = [];
     let url: string | undefined = `${BASE_URL}${firstPath}`;
     let page = 0;
 
     while (url) {
+      if (deadline !== undefined && Date.now() >= deadline) break;
       // Append the API key as a query parameter (Congress.gov convention).
       const reqUrl = new URL(url);
       reqUrl.searchParams.set("api_key", this.opts.apiKey);

@@ -362,6 +362,16 @@ describe("OpenFecAdapter", () => {
     expect(doc.occurred_at).toBe("2026-01-20T00:00:00.000Z");
   });
 
+  // ── Deadline test ─────────────────────────────────────────────────
+  it("stops paginating when deadline has already passed", async () => {
+    vi.spyOn(global, "fetch").mockImplementation(makeMockFetch());
+    const adapter = new OpenFecAdapter({ apiKey: "test-key" });
+    const past = Date.now() - 1;
+    const r = await adapter.refresh({ db: store.db, deadline: past });
+    expect(r.documentsUpserted).toBe(0);
+    expect(r.entitiesUpserted).toBe(0);
+  });
+
   // ── Test 7: Rate-limit resilience ────────────────────────────────
   it("surfaces errors cleanly when OpenFEC returns 429", async () => {
     vi.spyOn(global, "fetch").mockResolvedValue(

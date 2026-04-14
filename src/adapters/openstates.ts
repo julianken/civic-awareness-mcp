@@ -88,6 +88,7 @@ export class OpenStatesAdapter implements Adapter {
         "/people",
         { jurisdiction: stateAbbr },
         options.maxPages,
+        options.deadline,
       );
       for (const p of legislators) {
         this.upsertPerson(options.db, p);
@@ -104,6 +105,7 @@ export class OpenStatesAdapter implements Adapter {
           include: ["sponsorships", "abstracts", "actions"],
         },
         options.maxPages,
+        options.deadline,
       );
       for (const b of bills) {
         this.upsertBill(options.db, b);
@@ -121,10 +123,12 @@ export class OpenStatesAdapter implements Adapter {
     path: string,
     params: Record<string, string | string[]>,
     maxPages: number | undefined,
+    deadline: number | undefined,
   ): Promise<T[]> {
     const all: T[] = [];
     let page = 1;
     while (true) {
+      if (deadline !== undefined && Date.now() >= deadline) break;
       const url = new URL(`${BASE_URL}${path}`);
       for (const [k, v] of Object.entries(params)) {
         if (Array.isArray(v)) {
