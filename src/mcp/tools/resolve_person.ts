@@ -3,6 +3,8 @@ import { ResolvePersonInput } from "../schemas.js";
 import { normalizeName, levenshtein } from "../../resolution/fuzzy.js";
 import { escapeLike } from "../../util/sql.js";
 import type { StaleNotice } from "../shared.js";
+import { ensureFresh, sourcesForFullHydrate } from "../../core/hydrate.js";
+import { getLimiter } from "../../core/limiters.js";
 
 interface PersonRow {
   id: string;
@@ -85,6 +87,15 @@ export async function handleResolvePerson(
   rawInput: unknown,
 ): Promise<ResolvePersonResponse> {
   const input = ResolvePersonInput.parse(rawInput);
+
+  let stale_notice: StaleNotice | undefined;
+  if (input.jurisdiction_hint) {
+    outer: for (const src of sourcesForFullHydrate(input.jurisdiction_hint)) {
+      const r = await ensureFresh(db, src, input.jurisdiction_hint, "full", () => getLimiter(src).peekWaitMs());
+      if (r.stale_notice) { stale_notice = r.stale_notice; break outer; }
+    }
+  }
+
   const queryNorm = normalizeName(input.name);
 
   // Map entity_id → best confidence so far.
@@ -200,5 +211,7 @@ export async function handleResolvePerson(
       disambiguators: buildDisambiguators(row),
     }));
 
-  return { matches };
+  const response: ResolvePersonResponse = { matches };
+  if (stale_notice) response.stale_notice = stale_notice;
+  return response;
 }

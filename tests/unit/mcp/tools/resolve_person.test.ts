@@ -1,14 +1,24 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { rmSync, existsSync } from "node:fs";
 import { openStore, type Store } from "../../../../src/core/store.js";
 import { seedJurisdictions } from "../../../../src/core/seeds.js";
 import { upsertEntity } from "../../../../src/core/entities.js";
 import { handleResolvePerson } from "../../../../src/mcp/tools/resolve_person.js";
 
+vi.mock("../../../../src/core/hydrate.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/core/hydrate.js")>();
+  return { ...actual, ensureFresh: vi.fn() };
+});
+import { ensureFresh } from "../../../../src/core/hydrate.js";
+const mockEnsureFresh = vi.mocked(ensureFresh);
+
 const TEST_DB = "./data/test-resolve-person.db";
 let store: Store;
 
 beforeEach(() => {
+  mockEnsureFresh.mockReset();
+  mockEnsureFresh.mockResolvedValue({ ok: true });
+
   if (existsSync(TEST_DB)) rmSync(TEST_DB);
   store = openStore(TEST_DB);
   seedJurisdictions(store.db);
@@ -150,5 +160,47 @@ describe("handleResolvePerson", () => {
     const result = await handleResolvePerson(store.db, { name: "Texas Energy Committee" });
     // Non-Person entity — should NOT appear in resolve_person results.
     expect(result.matches).toHaveLength(0);
+  });
+
+  // ── hydration ─────────────────────────────────────────────────────────────
+
+  it("hydration: no jurisdiction_hint → ensureFresh not called", async () => {
+    upsertEntity(store.db, { kind: "person", name: "Jane Smith" });
+    await handleResolvePerson(store.db, { name: "Jane Smith" });
+    expect(mockEnsureFresh).not.toHaveBeenCalled();
+  });
+
+  it("hydration: jurisdiction_hint provided → ensureFresh called with scope=full", async () => {
+    await handleResolvePerson(store.db, { name: "Jane Smith", jurisdiction_hint: "us-tx" });
+    expect(mockEnsureFresh).toHaveBeenCalledWith(
+      store.db,
+      "openstates",
+      "us-tx",
+      "full",
+      expect.any(Function),
+    );
+  });
+
+  it("hydration: ok=true → no stale_notice", async () => {
+    mockEnsureFresh.mockResolvedValue({ ok: true });
+    const res = await handleResolvePerson(store.db, { name: "Jane Smith", jurisdiction_hint: "us-tx" });
+    expect(res.stale_notice).toBeUndefined();
+  });
+
+  it("hydration: upstream failure → stale_notice attached, matches still returned", async () => {
+    const notice = {
+      as_of: "2026-04-13T00:00:00.000Z",
+      reason: "upstream_failure" as const,
+      message: "Upstream openstates fetch failed; serving stale local data.",
+    };
+    mockEnsureFresh.mockResolvedValue({ ok: false, stale_notice: notice });
+    upsertEntity(store.db, {
+      kind: "person",
+      name: "Jane Smith",
+      metadata: { roles: [{ jurisdiction: "us-tx", role: "state_legislator" }] },
+    });
+    const res = await handleResolvePerson(store.db, { name: "Jane Smith", jurisdiction_hint: "us-tx" });
+    expect(res.stale_notice?.reason).toBe("upstream_failure");
+    expect(res.matches.length).toBeGreaterThan(0);
   });
 });

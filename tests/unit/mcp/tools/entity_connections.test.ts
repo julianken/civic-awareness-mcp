@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { rmSync, existsSync } from "node:fs";
 import { openStore, type Store } from "../../../../src/core/store.js";
 import { seedJurisdictions } from "../../../../src/core/seeds.js";
@@ -6,10 +6,20 @@ import { upsertEntity } from "../../../../src/core/entities.js";
 import { upsertDocument } from "../../../../src/core/documents.js";
 import { handleEntityConnections } from "../../../../src/mcp/tools/entity_connections.js";
 
+vi.mock("../../../../src/core/hydrate.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/core/hydrate.js")>();
+  return { ...actual, ensureFresh: vi.fn() };
+});
+import { ensureFresh } from "../../../../src/core/hydrate.js";
+const mockEnsureFresh = vi.mocked(ensureFresh);
+
 const TEST_DB = "./data/test-entity-connections-tool.db";
 let store: Store;
 
 beforeEach(() => {
+  mockEnsureFresh.mockReset();
+  mockEnsureFresh.mockResolvedValue({ ok: true });
+
   if (existsSync(TEST_DB)) rmSync(TEST_DB);
   store = openStore(TEST_DB);
   seedJurisdictions(store.db);
@@ -195,5 +205,67 @@ describe("handleEntityConnections", () => {
     expect(urls).toContain("https://openstates.org/ca/");
     // And NO hardcoded "us-federal" fallback for state documents.
     expect(urls).not.toContain("https://openstates.org/us-federal/");
+  });
+
+  // ── hydration ─────────────────────────────────────────────────────────────
+
+  it("hydration: entity not found → ensureFresh not called (throws before hydrate)", async () => {
+    await expect(
+      handleEntityConnections(store.db, {
+        id: "00000000-0000-0000-0000-000000000001",
+        depth: 1,
+        min_co_occurrences: 1,
+      }),
+    ).rejects.toThrow();
+    expect(mockEnsureFresh).not.toHaveBeenCalled();
+  });
+
+  it("hydration: entity with no roles → ensureFresh not called", async () => {
+    const a = makeEntity("No Roles Entity");
+    await handleEntityConnections(store.db, { id: a.id, depth: 1, min_co_occurrences: 1 });
+    expect(mockEnsureFresh).not.toHaveBeenCalled();
+  });
+
+  it("hydration: entity with roles → ensureFresh called with scope=full per jurisdiction", async () => {
+    const { entity } = upsertEntity(store.db, {
+      kind: "person",
+      name: "Hydrate Conn Person",
+      metadata: { roles: [{ jurisdiction: "us-tx", role: "state_legislator" }] },
+    });
+    await handleEntityConnections(store.db, { id: entity.id, depth: 1, min_co_occurrences: 1 });
+    expect(mockEnsureFresh).toHaveBeenCalledWith(
+      store.db,
+      "openstates",
+      "us-tx",
+      "full",
+      expect.any(Function),
+    );
+  });
+
+  it("hydration: ok=true → no stale_notice", async () => {
+    const { entity } = upsertEntity(store.db, {
+      kind: "person",
+      name: "Fresh Conn Entity",
+      metadata: { roles: [{ jurisdiction: "us-tx", role: "state_legislator" }] },
+    });
+    const res = await handleEntityConnections(store.db, { id: entity.id, depth: 1, min_co_occurrences: 1 });
+    expect(res.stale_notice).toBeUndefined();
+  });
+
+  it("hydration: upstream failure → stale_notice attached, connections still computed", async () => {
+    const notice = {
+      as_of: "2026-04-13T00:00:00.000Z",
+      reason: "upstream_failure" as const,
+      message: "Upstream openstates fetch failed; serving stale local data.",
+    };
+    mockEnsureFresh.mockResolvedValue({ ok: false, stale_notice: notice });
+    const { entity } = upsertEntity(store.db, {
+      kind: "person",
+      name: "Stale Conn Entity",
+      metadata: { roles: [{ jurisdiction: "us-tx", role: "state_legislator" }] },
+    });
+    const res = await handleEntityConnections(store.db, { id: entity.id, depth: 1, min_co_occurrences: 1 });
+    expect(res.stale_notice?.reason).toBe("upstream_failure");
+    expect(res.root.id).toBe(entity.id);
   });
 });

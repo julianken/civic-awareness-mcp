@@ -3,6 +3,8 @@ import { SearchEntitiesInput } from "../schemas.js";
 import { normalizeName } from "../../resolution/fuzzy.js";
 import { escapeLike } from "../../util/sql.js";
 import type { StaleNotice } from "../shared.js";
+import { ensureFresh, sourcesForFullHydrate } from "../../core/hydrate.js";
+import { getLimiter } from "../../core/limiters.js";
 
 export interface EntityMatch {
   id: string;
@@ -34,6 +36,15 @@ export async function handleSearchEntities(
   rawInput: unknown,
 ): Promise<SearchEntitiesResponse> {
   const input = SearchEntitiesInput.parse(rawInput);
+
+  let stale_notice: StaleNotice | undefined;
+  if (input.jurisdiction) {
+    outer: for (const src of sourcesForFullHydrate(input.jurisdiction)) {
+      const r = await ensureFresh(db, src, input.jurisdiction, "full", () => getLimiter(src).peekWaitMs());
+      if (r.stale_notice) { stale_notice = r.stale_notice; break outer; }
+    }
+  }
+
   const needle = `%${escapeLike(normalizeName(input.q))}%`;
 
   const clauses = ["e.name_normalized LIKE ? ESCAPE '\\'"];
@@ -70,5 +81,7 @@ export async function handleSearchEntities(
     last_seen_at: r.last_seen_at,
   }));
 
-  return { results, total: results.length, sources: [] };
+  const response: SearchEntitiesResponse = { results, total: results.length, sources: [] };
+  if (stale_notice) response.stale_notice = stale_notice;
+  return response;
 }

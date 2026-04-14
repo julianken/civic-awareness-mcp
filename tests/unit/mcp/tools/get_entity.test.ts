@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { rmSync, existsSync } from "node:fs";
 import { openStore, type Store } from "../../../../src/core/store.js";
 import { seedJurisdictions } from "../../../../src/core/seeds.js";
@@ -6,10 +6,20 @@ import { upsertEntity } from "../../../../src/core/entities.js";
 import { upsertDocument } from "../../../../src/core/documents.js";
 import { handleGetEntity } from "../../../../src/mcp/tools/get_entity.js";
 
+vi.mock("../../../../src/core/hydrate.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/core/hydrate.js")>();
+  return { ...actual, ensureFresh: vi.fn() };
+});
+import { ensureFresh } from "../../../../src/core/hydrate.js";
+const mockEnsureFresh = vi.mocked(ensureFresh);
+
 const TEST_DB = "./data/test-tool-get-entity.db";
 let store: Store;
 
 beforeEach(() => {
+  mockEnsureFresh.mockReset();
+  mockEnsureFresh.mockResolvedValue({ ok: true });
+
   if (existsSync(TEST_DB)) rmSync(TEST_DB);
   store = openStore(TEST_DB);
   seedJurisdictions(store.db);
@@ -129,5 +139,65 @@ describe("get_entity", () => {
     const fecSource = res.sources.find((s) => s.url.includes("fec.gov/data/committee"));
     expect(fecSource).toBeDefined();
     expect(fecSource!.url).toBe("https://www.fec.gov/data/committee/C00123456/");
+  });
+
+  // ── hydration ─────────────────────────────────────────────────────────────
+
+  it("hydration: entity not found → ensureFresh not called (throws before hydrate)", async () => {
+    await expect(handleGetEntity(store.db, { id: "missing" })).rejects.toThrow();
+    expect(mockEnsureFresh).not.toHaveBeenCalled();
+  });
+
+  it("hydration: entity with no roles → ensureFresh not called", async () => {
+    const { entity } = upsertEntity(store.db, { kind: "person", name: "No Roles" });
+    await handleGetEntity(store.db, { id: entity.id });
+    expect(mockEnsureFresh).not.toHaveBeenCalled();
+  });
+
+  it("hydration: entity with roles → ensureFresh called with scope=full per jurisdiction", async () => {
+    const { entity } = upsertEntity(store.db, {
+      kind: "person",
+      name: "Multi Role Person",
+      metadata: {
+        roles: [
+          { jurisdiction: "us-tx", role: "state_legislator" },
+        ],
+      },
+    });
+    await handleGetEntity(store.db, { id: entity.id });
+    expect(mockEnsureFresh).toHaveBeenCalledWith(
+      store.db,
+      "openstates",
+      "us-tx",
+      "full",
+      expect.any(Function),
+    );
+  });
+
+  it("hydration: ok=true → no stale_notice", async () => {
+    const { entity } = upsertEntity(store.db, {
+      kind: "person",
+      name: "Healthy Entity",
+      metadata: { roles: [{ jurisdiction: "us-tx", role: "state_legislator" }] },
+    });
+    const res = await handleGetEntity(store.db, { id: entity.id });
+    expect(res.stale_notice).toBeUndefined();
+  });
+
+  it("hydration: upstream failure → stale_notice attached, entity still returned", async () => {
+    const notice = {
+      as_of: "2026-04-13T00:00:00.000Z",
+      reason: "upstream_failure" as const,
+      message: "Upstream openstates fetch failed; serving stale local data.",
+    };
+    mockEnsureFresh.mockResolvedValue({ ok: false, stale_notice: notice });
+    const { entity } = upsertEntity(store.db, {
+      kind: "person",
+      name: "Stale Entity",
+      metadata: { roles: [{ jurisdiction: "us-tx", role: "state_legislator" }] },
+    });
+    const res = await handleGetEntity(store.db, { id: entity.id });
+    expect(res.stale_notice?.reason).toBe("upstream_failure");
+    expect(res.entity.name).toBe("Stale Entity");
   });
 });

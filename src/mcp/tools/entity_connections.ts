@@ -3,6 +3,8 @@ import { EntityConnectionsInput } from "../schemas.js";
 import { findConnections } from "../../core/connections.js";
 import { findEntityById } from "../../core/entities.js";
 import type { StaleNotice } from "../shared.js";
+import { ensureFresh, sourcesForFullHydrate } from "../../core/hydrate.js";
+import { getLimiter } from "../../core/limiters.js";
 
 interface EntityMatch {
   id: string;
@@ -114,6 +116,16 @@ export async function handleEntityConnections(
   const rootEntity = findEntityById(db, input.id);
   if (!rootEntity) throw new Error(`Entity not found: ${input.id}`);
 
+  let stale_notice: StaleNotice | undefined;
+  const roles = (rootEntity.metadata?.roles as Array<{ jurisdiction?: string }> | undefined) ?? [];
+  const jurisdictions = [...new Set(roles.map((r) => r.jurisdiction).filter(Boolean))] as string[];
+  outer: for (const juris of jurisdictions) {
+    for (const src of sourcesForFullHydrate(juris)) {
+      const r = await ensureFresh(db, src, juris, "full", () => getLimiter(src).peekWaitMs());
+      if (r.stale_notice) { stale_notice = r.stale_notice; break outer; }
+    }
+  }
+
   const { edges: rawEdges, truncated } = findConnections(
     db,
     rootEntity.id,
@@ -198,5 +210,7 @@ export async function handleEntityConnections(
   }
   const sources = Array.from(sourcesSeen.values());
 
-  return { root, edges, nodes, sources, truncated };
+  const response: EntityConnectionsResponse = { root, edges, nodes, sources, truncated };
+  if (stale_notice) response.stale_notice = stale_notice;
+  return response;
 }

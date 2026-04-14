@@ -4,6 +4,8 @@ import { findEntityById } from "../../core/entities.js";
 import { findDocumentsByEntity } from "../../core/documents.js";
 import type { Entity, Document } from "../../core/types.js";
 import type { StaleNotice } from "../shared.js";
+import { ensureFresh, sourcesForFullHydrate } from "../../core/hydrate.js";
+import { getLimiter } from "../../core/limiters.js";
 
 export interface GetEntityResponse {
   entity: Entity;
@@ -26,6 +28,16 @@ export async function handleGetEntity(
   const input = GetEntityInput.parse(rawInput);
   const entity = findEntityById(db, input.id);
   if (!entity) throw new Error(`Entity not found: ${input.id}`);
+
+  let stale_notice: StaleNotice | undefined;
+  const roles = (entity.metadata?.roles as Array<{ jurisdiction?: string }> | undefined) ?? [];
+  const jurisdictions = [...new Set(roles.map((r) => r.jurisdiction).filter(Boolean))] as string[];
+  outer: for (const juris of jurisdictions) {
+    for (const src of sourcesForFullHydrate(juris)) {
+      const r = await ensureFresh(db, src, juris, "full", () => getLimiter(src).peekWaitMs());
+      if (r.stale_notice) { stale_notice = r.stale_notice; break outer; }
+    }
+  }
 
   const docs = findDocumentsByEntity(db, entity.id, 10);
   const sourceKeys = new Map<string, { name: string; jurisdiction: string }>();
@@ -76,9 +88,11 @@ export async function handleGetEntity(
     });
   }
 
-  return {
+  const response: GetEntityResponse = {
     entity,
     recent_documents: simplified,
     sources,
   };
+  if (stale_notice) response.stale_notice = stale_notice;
+  return response;
 }

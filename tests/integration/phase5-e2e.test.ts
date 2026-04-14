@@ -5,7 +5,7 @@
  * (OpenStates, Congress.gov, OpenFEC) and verifies both Phase 5 tools
  * produce correct output over that graph.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { rmSync, existsSync } from "node:fs";
 import { openStore, type Store } from "../../src/core/store.js";
 import { seedJurisdictions } from "../../src/core/seeds.js";
@@ -13,6 +13,11 @@ import { upsertEntity } from "../../src/core/entities.js";
 import { upsertDocument } from "../../src/core/documents.js";
 import { handleEntityConnections } from "../../src/mcp/tools/entity_connections.js";
 import { handleResolvePerson } from "../../src/mcp/tools/resolve_person.js";
+
+vi.mock("../../src/core/hydrate.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/core/hydrate.js")>();
+  return { ...actual, ensureFresh: vi.fn().mockResolvedValue({ ok: true }) };
+});
 
 const TEST_DB = "./data/test-phase5-e2e.db";
 let store: Store;
