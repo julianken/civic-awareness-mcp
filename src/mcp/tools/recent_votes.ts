@@ -1,5 +1,7 @@
 import type Database from "better-sqlite3";
 import { queryDocuments } from "../../core/documents.js";
+import { ensureFresh, sourcesFor } from "../../core/hydrate.js";
+import { getLimiter } from "../../core/limiters.js";
 import { RecentVotesInput } from "../schemas.js";
 import { emptyFeedDiagnostic, type EmptyFeedDiagnostic, type StaleNotice } from "../shared.js";
 
@@ -41,6 +43,23 @@ export async function handleRecentVotes(
   rawInput: unknown,
 ): Promise<RecentVotesResponse> {
   const input = RecentVotesInput.parse(rawInput);
+
+  let stale_notice: StaleNotice | undefined;
+  const sources = sourcesFor("vote", input.jurisdiction);
+  for (const src of sources) {
+    const r = await ensureFresh(
+      db,
+      src,
+      input.jurisdiction,
+      "recent",
+      () => getLimiter(src).peekWaitMs(),
+    );
+    if (r.stale_notice) {
+      stale_notice = r.stale_notice;
+      break;
+    }
+  }
+
   const to = new Date();
   const from = new Date(to.getTime() - input.days * 86400 * 1000);
 
@@ -136,7 +155,8 @@ export async function handleRecentVotes(
   };
   if (results.length === 0) {
     const diag = emptyFeedDiagnostic(db, { jurisdiction: input.jurisdiction, kind: "vote" });
-    return { ...base, ...diag };
+    return { ...base, ...diag, ...(stale_notice ? { stale_notice } : {}) };
   }
+  if (stale_notice) base.stale_notice = stale_notice;
   return base;
 }
