@@ -1,10 +1,14 @@
 import type Database from "better-sqlite3";
-import { ResolvePersonInput } from "../schemas.js";
-import { normalizeName, levenshtein } from "../../resolution/fuzzy.js";
-import { escapeLike } from "../../util/sql.js";
-import type { StaleNotice } from "../shared.js";
-import { ensureFresh, sourcesForFullHydrate } from "../../core/hydrate.js";
+import { CongressAdapter } from "../../adapters/congress.js";
+import { OpenFecAdapter } from "../../adapters/openfec.js";
+import { OpenStatesAdapter } from "../../adapters/openstates.js";
 import { getLimiter } from "../../core/limiters.js";
+import { withShapedFetch } from "../../core/tool_cache.js";
+import { normalizeName, levenshtein } from "../../resolution/fuzzy.js";
+import { requireEnv } from "../../util/env.js";
+import { escapeLike } from "../../util/sql.js";
+import { ResolvePersonInput } from "../schemas.js";
+import type { StaleNotice } from "../shared.js";
 
 interface PersonRow {
   id: string;
@@ -88,11 +92,90 @@ export async function handleResolvePerson(
 ): Promise<ResolvePersonResponse> {
   const input = ResolvePersonInput.parse(rawInput);
 
+  // Hydrate via R15 fanout only when the caller supplied a jurisdiction
+  // hint. Without a hint we go local-only (historical behaviour — we
+  // don't know which source to target). Uses the same canonical tool
+  // names as search_entities so cache rows coalesce across the pair.
   let stale_notice: StaleNotice | undefined;
   if (input.jurisdiction_hint) {
-    outer: for (const src of sourcesForFullHydrate(input.jurisdiction_hint)) {
-      const r = await ensureFresh(db, src, input.jurisdiction_hint, "full", () => getLimiter(src).peekWaitMs());
-      if (r.stale_notice) { stale_notice = r.stale_notice; break outer; }
+    const ttl = { scope: "full" as const, ms: 24 * 60 * 60 * 1000 };
+    const noop = (): void => {};
+    const calls: Promise<{ stale_notice?: StaleNotice }>[] = [];
+
+    if (input.jurisdiction_hint === "us-federal") {
+      calls.push(
+        withShapedFetch(
+          db,
+          {
+            source: "congress",
+            endpoint_path: "/member",
+            args: {},
+            tool: "searchMembers",
+          },
+          ttl,
+          async () => {
+            const adapter = new CongressAdapter({
+              apiKey: requireEnv("API_DATA_GOV_KEY"),
+              rateLimiter: getLimiter("congress"),
+            });
+            const r = await adapter.searchMembers(db);
+            return { primary_rows_written: r.entitiesUpserted };
+          },
+          noop,
+          () => getLimiter("congress").peekWaitMs(),
+        ),
+        withShapedFetch(
+          db,
+          {
+            source: "openfec",
+            endpoint_path: "/candidates/search",
+            args: { q: input.name },
+            tool: "searchCandidates",
+          },
+          ttl,
+          async () => {
+            const adapter = new OpenFecAdapter({
+              apiKey: requireEnv("API_DATA_GOV_KEY"),
+              rateLimiter: getLimiter("openfec"),
+            });
+            const r = await adapter.searchCandidates(db, { q: input.name });
+            return { primary_rows_written: r.entitiesUpserted };
+          },
+          noop,
+          () => getLimiter("openfec").peekWaitMs(),
+        ),
+      );
+    } else {
+      const juris = input.jurisdiction_hint;
+      calls.push(
+        withShapedFetch(
+          db,
+          {
+            source: "openstates",
+            endpoint_path: "/people",
+            args: { jurisdiction: juris, name: input.name },
+            tool: "searchPeople",
+          },
+          ttl,
+          async () => {
+            const adapter = new OpenStatesAdapter({
+              apiKey: requireEnv("OPENSTATES_API_KEY"),
+              rateLimiter: getLimiter("openstates"),
+            });
+            const r = await adapter.searchPeople(db, {
+              jurisdiction: juris,
+              name: input.name,
+            });
+            return { primary_rows_written: r.entitiesUpserted };
+          },
+          noop,
+          () => getLimiter("openstates").peekWaitMs(),
+        ),
+      );
+    }
+
+    for (const r of await Promise.all(calls)) {
+      if (r.stale_notice && !stale_notice) stale_notice = r.stale_notice;
     }
   }
 
