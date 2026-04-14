@@ -43,17 +43,27 @@ export async function handleRecentVotes(
   const to = new Date();
   const from = new Date(to.getTime() - input.days * 86400 * 1000);
 
-  const docs = queryDocuments(db, {
-    kind: "vote",
-    jurisdiction: input.jurisdiction,
-    from: from.toISOString(),
-    to: to.toISOString(),
-    limit: 200,
-  });
+  const docs = input.session
+    ? queryDocuments(db, {
+        kind: "vote",
+        jurisdiction: input.jurisdiction,
+        limit: 200,
+      })
+    : queryDocuments(db, {
+        kind: "vote",
+        jurisdiction: input.jurisdiction,
+        from: from.toISOString(),
+        to: to.toISOString(),
+        limit: 200,
+      });
+
+  const sessionFiltered = input.session
+    ? docs.filter((d) => (d.raw as { session?: string }).session === input.session)
+    : docs;
 
   const chamberFilter = input.chamber ? CHAMBER_MAP[input.chamber] : undefined;
 
-  const filtered = docs.filter((d) => {
+  const filtered = sessionFiltered.filter((d) => {
     const raw = d.raw as {
       chamber?: string;
       bill?: { type?: string; number?: string };

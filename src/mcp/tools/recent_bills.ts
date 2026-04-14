@@ -97,22 +97,32 @@ export async function handleRecentBills(
   const to = new Date();
   const from = new Date(to.getTime() - input.days * 86400 * 1000);
 
-  const docs = queryDocuments(db, {
-    kind: "bill",
-    jurisdiction: input.jurisdiction,
-    from: from.toISOString(),
-    to: to.toISOString(),
-    limit: 50,
-  });
+  const docs = input.session
+    ? queryDocuments(db, {
+        kind: "bill",
+        jurisdiction: input.jurisdiction,
+        limit: 100,
+      })
+    : queryDocuments(db, {
+        kind: "bill",
+        jurisdiction: input.jurisdiction,
+        from: from.toISOString(),
+        to: to.toISOString(),
+        limit: 50,
+      });
+
+  const sessionFiltered = input.session
+    ? docs.filter((d) => (d.raw as { session?: string }).session === input.session)
+    : docs;
 
   const filtered = input.chamber
-    ? docs.filter((d) => {
+    ? sessionFiltered.filter((d) => {
         const sponsor = d.references.find((r) => r.role === "sponsor");
         if (!sponsor) return false;
         const ent = findEntityById(db, sponsor.entity_id);
         return ent?.metadata.chamber === input.chamber;
       })
-    : docs;
+    : sessionFiltered;
 
   const results: BillSummary[] = filtered.map((d) => {
     const [identifier, ...titleParts] = d.title.split(" — ");

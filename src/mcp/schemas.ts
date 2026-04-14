@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const RecentBillsInput = z.object({
-  days: z.number().int().min(1).max(90).default(7),
+  days: z.number().int().min(1).max(365).default(7),
   // REQUIRED. "us-federal", "us-<state>" (e.g. "us-tx"), or "*" to
   // query across all. No default — the caller must state which
   // jurisdiction they want. See docs/05-tool-surface.md.
@@ -36,9 +36,10 @@ export type SearchDocumentsInput = z.infer<typeof SearchDocumentsInput>;
 
 export const RecentVotesInput = z.object({
   jurisdiction: z.string().min(1),
-  days: z.number().int().min(1).max(90).default(7),
+  days: z.number().int().min(1).max(365).default(7),
   chamber: z.enum(["upper", "lower"]).optional(),
   bill_identifier: z.string().optional(),
+  session: z.string().optional(),
 });
 export type RecentVotesInput = z.infer<typeof RecentVotesInput>;
 

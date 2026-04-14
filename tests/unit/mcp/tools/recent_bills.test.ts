@@ -139,6 +139,40 @@ describe("recent_bills tool", () => {
     });
   });
 
+  it("accepts days up to 365", async () => {
+    const res = await handleRecentBills(store.db, { jurisdiction: "us-or", days: 365 });
+    expect(res.window.from).toBeDefined();
+  });
+
+  it("rejects days above 365", async () => {
+    await expect(
+      handleRecentBills(store.db, { jurisdiction: "us-or", days: 366 }),
+    ).rejects.toThrow();
+  });
+
+  it("filters by session when session parameter is provided", async () => {
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "SB 1 — Eight-Ninety-Two",
+      occurred_at: "2025-09-18T00:00:00Z",
+      source: { name: "openstates", id: "892-1", url: "https://ex" },
+      references: [], raw: { session: "892", actions: [] },
+    });
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "SB 99 — Eight-Ninety-One",
+      occurred_at: "2024-06-01T00:00:00Z",
+      source: { name: "openstates", id: "891-99", url: "https://ex" },
+      references: [], raw: { session: "891", actions: [] },
+    });
+
+    const res = await handleRecentBills(store.db, {
+      jurisdiction: "us-tx",
+      days: 7,        // window excludes both bills
+      session: "892", // bypass window; filter to session 892
+    });
+    expect(res.results).toHaveLength(1);
+    expect(res.results[0].title).toBe("Eight-Ninety-Two");
+  });
+
   it("attaches empty_reason diagnostic when results are empty", async () => {
     const res = await handleRecentBills(store.db, { jurisdiction: "us-or", days: 7 });
     expect(res.results).toHaveLength(0);

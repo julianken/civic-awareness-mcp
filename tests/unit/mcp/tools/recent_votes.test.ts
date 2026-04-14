@@ -108,6 +108,39 @@ describe("recent_votes tool", () => {
     ).rejects.toThrow();
   });
 
+  it("accepts days up to 365", async () => {
+    const res = await handleRecentVotes(store.db, { jurisdiction: "us-or", days: 365 });
+    expect(res.window.from).toBeDefined();
+  });
+
+  it("rejects days above 365", async () => {
+    await expect(
+      handleRecentVotes(store.db, { jurisdiction: "us-or", days: 366 }),
+    ).rejects.toThrow();
+  });
+
+  it("filters votes by session", async () => {
+    upsertDocument(store.db, {
+      kind: "vote", jurisdiction: "us-tx", title: "Vote 892-1",
+      occurred_at: "2025-09-18T00:00:00Z",
+      source: { name: "openstates", id: "892v", url: "https://ex" },
+      references: [], raw: { session: "892" },
+    });
+    upsertDocument(store.db, {
+      kind: "vote", jurisdiction: "us-tx", title: "Vote 891-1",
+      occurred_at: "2024-06-01T00:00:00Z",
+      source: { name: "openstates", id: "891v", url: "https://ex" },
+      references: [], raw: { session: "891" },
+    });
+
+    const res = await handleRecentVotes(store.db, {
+      jurisdiction: "us-tx",
+      days: 7,
+      session: "892",
+    });
+    expect(res.results).toHaveLength(1);
+  });
+
   it("attaches empty_reason diagnostic when results are empty", async () => {
     const res = await handleRecentVotes(store.db, { jurisdiction: "us-or", days: 7 });
     expect(res.results).toHaveLength(0);
