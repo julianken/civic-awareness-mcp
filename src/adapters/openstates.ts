@@ -34,7 +34,25 @@ interface OpenStatesSponsorship {
   person?: OpenStatesPerson;
 }
 
-interface OpenStatesBill {
+export interface OpenStatesBillVersion {
+  note?: string;
+  date?: string;
+  links?: Array<{ url: string; media_type?: string }>;
+}
+
+export interface OpenStatesBillDocument {
+  note?: string;
+  date?: string;
+  links?: Array<{ url: string; media_type?: string }>;
+}
+
+export interface OpenStatesRelatedBill {
+  identifier?: string;
+  legislative_session?: string;
+  relation_type?: string;
+}
+
+export interface OpenStatesBillDetail {
   id: string;
   identifier: string;
   title: string;
@@ -43,9 +61,17 @@ interface OpenStatesBill {
   openstates_url: string;
   jurisdiction?: { id?: string };
   sponsorships?: OpenStatesSponsorship[];
-  actions?: Array<{ date: string; description: string }>;
-  abstracts?: Array<{ abstract: string }>;
+  actions?: Array<{ date: string; description: string; classification?: string[] }>;
+  abstracts?: Array<{ abstract: string; note?: string }>;
+  subject?: string[];
+  versions?: OpenStatesBillVersion[];
+  documents?: OpenStatesBillDocument[];
+  related_bills?: OpenStatesRelatedBill[];
 }
+
+// Alias kept for backwards compat with the existing fetchAllPages
+// code path; the feed endpoint returns a subset of OpenStatesBillDetail.
+type OpenStatesBill = OpenStatesBillDetail;
 
 interface Page<T> {
   results: T[];
@@ -183,9 +209,9 @@ export class OpenStatesAdapter implements Adapter {
     return entity.id;
   }
 
-  private upsertBill(db: Database.Database, b: OpenStatesBill): void {
+  private upsertBill(db: Database.Database, b: OpenStatesBillDetail): void {
     const billStateAbbr =
-      extractStateAbbr((b as { jurisdiction?: { id?: string } }).jurisdiction?.id)
+      extractStateAbbr(b.jurisdiction?.id)
       ?? extractStateAbbr(b.sponsorships?.[0]?.person?.jurisdiction?.id);
     if (!billStateAbbr) {
       throw new Error(`Cannot determine state for bill ${b.id}`);
@@ -212,7 +238,16 @@ export class OpenStatesAdapter implements Adapter {
       occurred_at: b.actions?.at(-1)?.date ?? b.updated_at,
       source: { name: "openstates", id: b.id, url: b.openstates_url },
       references: refs,
-      raw: { session: b.session, actions: b.actions ?? [] },
+      raw: {
+        session: b.session,
+        actions: b.actions ?? [],
+        abstracts: b.abstracts ?? [],
+        subjects: b.subject ?? [],
+        versions: b.versions ?? [],
+        documents: b.documents ?? [],
+        related_bills: b.related_bills ?? [],
+        sponsorships: b.sponsorships ?? [],
+      },
     });
   }
 }

@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { rmSync, existsSync } from "node:fs";
+import type Database from "better-sqlite3";
 import { openStore, type Store } from "../../../src/core/store.js";
 import { seedJurisdictions } from "../../../src/core/seeds.js";
-import { OpenStatesAdapter } from "../../../src/adapters/openstates.js";
+import { OpenStatesAdapter, type OpenStatesBillDetail } from "../../../src/adapters/openstates.js";
 
 const TEST_DB = "./data/test-openstates.db";
 let store: Store;
@@ -304,5 +305,53 @@ describe("OpenStatesAdapter", () => {
     expect(billsUrl).toContain("include=abstracts");
     expect(billsUrl).toContain("include=actions");
     expect(billsUrl).not.toMatch(/include=[^&]*,/);
+  });
+});
+
+describe("upsertBill persists detail fields in raw", () => {
+  it("stores subjects, versions, documents, related_bills, sponsorships", () => {
+    const detailDb = openStore("./data/test-openstates-detail.db");
+    seedJurisdictions(detailDb.db);
+    const adapter = new OpenStatesAdapter({ apiKey: "test" });
+    (adapter as unknown as {
+      upsertBill: (db: Database.Database, b: OpenStatesBillDetail) => void
+    }).upsertBill(detailDb.db, {
+      id: "ocd-bill/abc",
+      identifier: "SB 1338",
+      title: "Vehicles: repossession.",
+      session: "20252026",
+      updated_at: "2026-04-09T00:00:00Z",
+      openstates_url: "https://openstates.org/ca/bills/20252026/SB1338/",
+      jurisdiction: { id: "ocd-jurisdiction/country:us/state:ca/government" },
+      subject: ["Vehicles", "Repossession"],
+      abstracts: [{ abstract: "Existing law prohibits..." }],
+      sponsorships: [{
+        name: "Brian Jones",
+        classification: "primary",
+        person: {
+          id: "ocd-person/xyz", name: "Brian Jones", party: "Republican",
+          jurisdiction: { id: "ocd-jurisdiction/country:us/state:ca/government" },
+        },
+      }],
+      actions: [{ date: "2026-02-20", description: "Introduced." }],
+      versions: [{
+        note: "Introduced", date: "2026-02-20",
+        links: [{ url: "https://leginfo.legislature.ca.gov/faces/billPdfClient.xhtml?bill_id=202520260SB1338&version=20250SB133899INT", media_type: "application/pdf" }],
+      }],
+      documents: [],
+      related_bills: [],
+    });
+    const row = detailDb.db
+      .prepare("SELECT raw FROM documents WHERE source_id = ?")
+      .get("ocd-bill/abc") as { raw: string };
+    const raw = JSON.parse(row.raw);
+    expect(raw.session).toBe("20252026");
+    expect(raw.subjects).toEqual(["Vehicles", "Repossession"]);
+    expect(raw.versions).toHaveLength(1);
+    expect(raw.versions[0].links[0].url).toMatch(/leginfo\.legislature\.ca\.gov/);
+    expect(raw.sponsorships).toHaveLength(1);
+    expect(raw.sponsorships[0].classification).toBe("primary");
+    expect(raw.abstracts[0].abstract).toMatch(/Existing law/);
+    detailDb.close();
   });
 });
