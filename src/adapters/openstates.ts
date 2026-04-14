@@ -71,6 +71,10 @@ export interface OpenStatesBillDetail {
   updated_at: string;
   openstates_url: string;
   jurisdiction?: { id?: string };
+  /** The originating chamber of the bill. OpenStates v3 `/bills`
+   *  surfaces this as `from_organization.classification` with values
+   *  "lower" | "upper". Used by `fetchRecentBills` for chamber filter. */
+  from_organization?: { classification?: string };
   sponsorships?: OpenStatesSponsorship[];
   actions?: Array<{ date: string; description: string; classification?: string[] }>;
   abstracts?: Array<{ abstract: string; note?: string }>;
@@ -183,6 +187,45 @@ export class OpenStatesAdapter implements Adapter {
     }
     const body = (await res.json()) as OpenStatesBillDetail;
     this.upsertBill(db, body);
+  }
+
+  /** Narrow per-tool fetch for R15 `recent_bills` — one page of
+   *  recently-updated bills for a jurisdiction, with optional
+   *  `updated_since` filter and optional client-side chamber filter.
+   *  Writes through to `documents` via `upsertBill`. Returns telemetry
+   *  count for `withShapedFetch`'s primary_rows_written contract. */
+  async fetchRecentBills(
+    db: Database.Database,
+    opts: { jurisdiction: string; updated_since?: string; chamber?: "upper" | "lower" },
+  ): Promise<{ documentsUpserted: number }> {
+    const abbr = opts.jurisdiction.replace(/^us-/, "").toLowerCase();
+    const url = new URL(`${BASE_URL}/bills`);
+    url.searchParams.set("jurisdiction", abbr);
+    url.searchParams.set("sort", "updated_desc");
+    url.searchParams.set("per_page", "20");
+    if (opts.updated_since) url.searchParams.set("updated_since", opts.updated_since);
+    for (const inc of ["sponsorships", "abstracts", "actions"]) {
+      url.searchParams.append("include", inc);
+    }
+
+    const res = await rateLimitedFetch(url.toString(), {
+      userAgent: "civic-awareness-mcp/0.1.0 (+github)",
+      rateLimiter: this.rateLimiter,
+      headers: { "X-API-KEY": this.opts.apiKey },
+    });
+    if (!res.ok) throw new Error(`OpenStates /bills returned ${res.status}`);
+    const body = (await res.json()) as { results: OpenStatesBill[] };
+
+    let documentsUpserted = 0;
+    for (const b of body.results) {
+      if (opts.chamber) {
+        const classification = b.from_organization?.classification;
+        if (classification && classification !== opts.chamber) continue;
+      }
+      this.upsertBill(db, b);
+      documentsUpserted += 1;
+    }
+    return { documentsUpserted };
   }
 
   private async fetchAllPages<T>(

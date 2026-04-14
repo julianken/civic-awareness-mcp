@@ -435,3 +435,89 @@ describe("fetchBill", () => {
     }
   });
 });
+
+describe("OpenStatesAdapter.fetchRecentBills", () => {
+  const FRB_DB = "./data/test-openstates-frb.db";
+  const FRB_SINCE_DB = "./data/test-openstates-frb-since.db";
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (existsSync(FRB_DB)) rmSync(FRB_DB, { force: true });
+    if (existsSync(FRB_SINCE_DB)) rmSync(FRB_SINCE_DB, { force: true });
+  });
+
+  it("fetches one page of recently-updated bills for a jurisdiction and writes them", async () => {
+    let capturedUrl: string | undefined;
+    vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
+      capturedUrl = String(url);
+      return new Response(JSON.stringify({
+        results: [
+          {
+            id: "ocd-bill/abc",
+            identifier: "HB1",
+            title: "Test",
+            session: "89R",
+            updated_at: "2026-04-10T00:00:00Z",
+            openstates_url: "https://openstates.org/tx/bills/89R/HB1",
+            jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
+            sponsorships: [],
+            actions: [{ date: "2026-04-10", description: "Introduced" }],
+          },
+        ],
+        pagination: { max_page: 5, page: 1 },
+      }), { status: 200 });
+    });
+
+    if (existsSync(FRB_DB)) rmSync(FRB_DB, { force: true });
+    const db = openStore(FRB_DB);
+    seedJurisdictions(db.db);
+    try {
+      const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+      const result = await adapter.fetchRecentBills(db.db, { jurisdiction: "us-tx" });
+
+      expect(capturedUrl).toBeDefined();
+      const u = new URL(capturedUrl!);
+      expect(u.searchParams.get("jurisdiction")).toBe("tx");
+      expect(u.searchParams.get("sort")).toBe("updated_desc");
+      expect(u.searchParams.get("per_page")).toBe("20");
+      expect(u.searchParams.get("updated_since")).toBeNull();
+
+      expect(result.documentsUpserted).toBe(1);
+      const bills = db.db.prepare(
+        "SELECT id, title FROM documents WHERE source_name='openstates' AND kind='bill'",
+      ).all() as Array<{ id: string; title: string }>;
+      expect(bills).toHaveLength(1);
+      expect(bills[0].title).toMatch(/^HB1 — /);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("passes updated_since when provided", async () => {
+    let capturedUrl: string | undefined;
+    vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
+      capturedUrl = String(url);
+      return new Response(
+        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
+        { status: 200 },
+      );
+    });
+
+    if (existsSync(FRB_SINCE_DB)) rmSync(FRB_SINCE_DB, { force: true });
+    const db = openStore(FRB_SINCE_DB);
+    seedJurisdictions(db.db);
+    try {
+      const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+      await adapter.fetchRecentBills(db.db, {
+        jurisdiction: "us-tx",
+        updated_since: "2026-04-01",
+      });
+
+      expect(capturedUrl).toBeDefined();
+      const u = new URL(capturedUrl!);
+      expect(u.searchParams.get("updated_since")).toBe("2026-04-01");
+    } finally {
+      db.close();
+    }
+  });
+});
