@@ -41,7 +41,7 @@ type ToolResponse<T> = {
 input:
   jurisdiction: string              // REQUIRED. "us-federal" or "us-<state>" (e.g. "us-tx")
                                     // or "*" to query across all
-  days: number (default 7, max 90)
+  days: number (default 7, max 365)
   chamber: "upper" | "lower" | undefined
   session: string | undefined       // e.g. "119" for 119th Congress, or OpenStates session id
 
@@ -82,9 +82,10 @@ ContributionSummary = {
 ```
 input:
   jurisdiction: string              // REQUIRED — "us-federal" or "us-<state>"
-  days: number (default 7, max 90)
+  days: number (default 7, max 365)
   chamber: "upper" | "lower" | undefined
   bill_identifier: string | undefined    // e.g. "HR1234" to filter to one bill
+  session: string | undefined       // e.g. OpenStates session id; bypasses window. Requires OpenStates vote ingestion (pending).
 
 output: ToolResponse<VoteSummary>
 

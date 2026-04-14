@@ -137,7 +137,7 @@ export class OpenStatesAdapter implements Adapter {
       url.searchParams.set("per_page", "20");
 
       const res = await rateLimitedFetch(url.toString(), {
-        userAgent: "civic-awareness-mcp/0.0.6 (+github)",
+        userAgent: "civic-awareness-mcp/0.1.0 (+github)",
         rateLimiter: this.rateLimiter,
         headers: { "X-API-KEY": this.opts.apiKey },
       });
