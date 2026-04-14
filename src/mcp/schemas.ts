@@ -68,3 +68,10 @@ export const ResolvePersonInput = z.object({
   context: z.string().optional(),
 });
 export type ResolvePersonInput = z.infer<typeof ResolvePersonInput>;
+
+export const GetBillInput = z.object({
+  jurisdiction: z.string().min(1),
+  session: z.string().min(1),
+  identifier: z.string().min(1),
+});
+export type GetBillInput = z.infer<typeof GetBillInput>;
