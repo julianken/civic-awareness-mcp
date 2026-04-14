@@ -410,6 +410,8 @@ refresh-as-a-tool portion of
 `docs/plans/phase-5-onboarding-and-refresh-tool.md`. The
 auto-bootstrap portion of that plan already shipped and is retained.
 
+**Superseded by R15 (2026-04-14).**
+
 ---
 
 ## How to add to this doc
@@ -494,6 +496,6 @@ complementary: R14 for single-resource tools where freshness is
 inherent to the row; R15 for listing/search endpoints where
 per-endpoint tracking in `fetch_log` is needed.
 
-Rolls out in 11 sub-phases (phase-8a through phase-8.11); see
+Shipped across phase-8a through phase-8j (2026-04-14); see
 `docs/superpowers/specs/2026-04-14-shaped-query-hydration-design.md`
 for the full design.
