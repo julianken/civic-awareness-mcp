@@ -1478,3 +1478,38 @@ After all 11 tasks commit, verify the whole phase-8a artifact:
 Phase 8a is complete when all five hold. Phase 8.2's docs shipped
 as Tasks 1+2; phase 8b's first vertical (`recent_bills`) follows
 in a new plan doc after 8a merges.
+
+---
+
+## Implementation notes (added 2026-04-14 post-execution)
+
+Three scope expansions surfaced during implementation and were
+folded into the relevant tasks:
+
+1. **Task 3 — migration registry.** The plan assumed migrations
+   apply via lexical directory scan; in reality `src/core/store.ts`
+   uses an explicit `MIGRATIONS` array. Task 3 extended to include
+   the version-5 registration and a bump to the count assertion in
+   `tests/unit/core/store.test.ts`.
+
+2. **Task 4 — cascade-drop for empty nested objects.** The plan's
+   reference canonicalizer left `{a: {b: ""}}` as `{a: {}}`, which
+   would fragment the cache against the semantically-equivalent
+   `{}`. A follow-up commit (`27dc936`) moved the empty-string drop
+   from the string branch to the object walker and added cascade
+   logic so empty objects also drop. Arrays retain position
+   semantics (empty strings preserved in arrays).
+
+3. **Task 8 — transaction mutex.** better-sqlite3 permits at most
+   one active transaction per connection. Singleflight coalesces
+   concurrent identical calls, but concurrent calls with DIFFERENT
+   keys both enter `runInTransaction` and the second's
+   `BEGIN IMMEDIATE` throws. Task 8's `runInTransaction` now
+   serializes transactions through a module-level `txMutex`
+   (`Promise<void>` chain). The mutex is reset by
+   `_resetToolCacheForTesting` alongside `sf` and `budget`.
+
+All three additions shipped inside their nominal tasks (not as
+separate commits) and are exercised by the unit tests. Recorded
+here for future subagents who compare the plan against the final
+artifact.

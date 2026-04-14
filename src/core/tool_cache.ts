@@ -58,6 +58,30 @@ async function runInTransaction<R>(
   }
 }
 
+/**
+ * R15 cache-gated upstream fetch. See
+ * `docs/superpowers/specs/2026-04-14-shaped-query-hydration-design.md`.
+ *
+ * Flow: TTL fast-path → singleflight-gated miss path (double-check
+ * TTL, daily budget, rate-limit peek, atomic write-through inside
+ * a transaction, budget record). Upstream failures with a prior
+ * `fetch_log` row fall back to stale cached data plus a
+ * `stale_notice`; cold failures propagate the error.
+ *
+ * @param fetchAndWrite Async thunk that (1) issues the narrow
+ *   upstream request and (2) upserts results into `documents` /
+ *   `entities`. Runs inside a transaction — the caller must NOT
+ *   commit/rollback itself. Returns `{ primary_rows_written }`
+ *   telemetry stored in `fetch_log.last_rowcount`.
+ * @param readLocal Sync thunk that SELECTs the tool's projection
+ *   from the local store. Invoked after a successful fetch AND in
+ *   the stale-fallback path — must tolerate empty-store state
+ *   (return `[]` or similar) without throwing.
+ * @param peekWaitMs Returns the source's current rate-limiter
+ *   queue depth in ms (e.g. `getLimiter("openstates").peekWaitMs()`).
+ *   If > `RATE_LIMIT_WAIT_THRESHOLD_MS` (2.5s), the fetch is
+ *   skipped and the stale-fallback path runs.
+ */
 export async function withShapedFetch<T>(
   db: Database.Database,
   key: ShapedFetchKey,
