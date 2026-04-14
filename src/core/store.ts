@@ -16,6 +16,7 @@ const MIGRATIONS = [
   { version: 3, file: "003-occurred-at-from-actions.sql" },
   { version: 4, file: "004-hydrations-table.sql" },
   { version: 5, file: "005-fetch-log-table.sql" },
+  { version: 6, file: "006-drop-hydrations.sql" },
 ] as const;
 
 export function openStore(path: string): Store {
