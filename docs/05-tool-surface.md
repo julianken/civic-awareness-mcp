@@ -1,6 +1,6 @@
 # 05 — MCP Tool Surface
 
-The MCP exposes **9 tools**, split into three groups by query
+The MCP exposes **10 tools**, split into three groups by query
 projection. Feed tools (B) answer "what's happening?"; entity tools
 (A) answer "who is X and what have they done?"; detail tools (C)
 answer "give me the full record of this one resource by ID". All
@@ -66,6 +66,40 @@ BillSummary = {
 ```
 
 Results are sorted by **last-updated**, not introduced date — a re-touched older bill with recent committee activity can rank above a freshly introduced one.
+
+### `list_bills`
+
+```
+input:
+  jurisdiction: string              // REQUIRED. "us-<state>". us-federal returns not_yet_supported in 9b.
+  session: string | undefined       // OpenStates session id, e.g. "20252026"
+  chamber: "upper" | "lower" | undefined
+  sponsor_entity_id: string | undefined     // filters bills with this entity as sponsor or cosponsor
+  classification: string | undefined        // "bill", "resolution", "joint resolution", ...
+  subject: string | undefined               // OpenStates subject tag, exact match
+  introduced_since: string | undefined      // ISO date; inclusive
+  introduced_until: string | undefined      // ISO date; inclusive
+  updated_since: string | undefined         // ISO date; inclusive
+  updated_until: string | undefined         // ISO date; inclusive
+  sort: "updated_desc" | "updated_asc" | "introduced_desc" | "introduced_asc"  (default updated_desc)
+  limit: number (default 20, max 50)
+
+output: ToolResponse<BillSummary>
+```
+
+`list_bills` is a structured-predicate listing projection, distinct
+from `recent_bills` (which is a time-windowed feed). The two share
+the `BillSummary` shape so consumers can treat results
+interchangeably. Cache rows use `endpoint_path="/bills/list"` and
+never collide with `recent_bills`'s `endpoint_path="/bills"` rows —
+see D13.
+
+Federal (us-federal) is not yet supported; Congress.gov's `/bill`
+endpoint does not accept the same predicate surface (no native
+sponsor, subject, or classification filters), and the audit
+found these queries are better served today by `entity_connections`
+on the member entity. A later phase can add federal support without
+changing the tool surface.
 
 ### `recent_contributions` (Phase 4)
 
@@ -330,9 +364,10 @@ for operator use (cron, bulk seeding, historical backfill).
 | **6 — Pass-through cache (R13)** | ✅ done | No new tools; `refresh_source` removed from MCP surface |
 | **7 — Detail projection** | ✅ done | + `get_bill` (OpenStates state bills only; federal deferred to 7b) |
 | **8 — Shaped-query hydration (R15)** | ✅ done | No new tools; all 9 tools migrated from R13 jurisdiction-wide cache to R15 per-endpoint `fetch_log`; R13 infrastructure deleted |
+| **9b — list_bills** | ✅ done | + `list_bills` (OpenStates state bills; federal deferred) |
 
-As of Phase 8 (2026-04-14), the server exposes **9 tools total**:
-`recent_bills`, `recent_votes`, `recent_contributions`,
+As of Phase 9b (2026-04-14), the server exposes **10 tools total**:
+`recent_bills`, `list_bills`, `recent_votes`, `recent_contributions`,
 `search_entities`, `get_entity`, `search_civic_documents`,
 `entity_connections`, `resolve_person`, `get_bill`.
 

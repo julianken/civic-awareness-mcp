@@ -354,3 +354,32 @@ jurisdiction's recent feed."
 - Make `limit` a general-purpose cap but keep `updated_since` → defeats the purpose; the upstream still filters to an empty window.
 - Auto-widen `days` when results are empty → silent semantic drift; the cache key would no longer reflect what the caller asked for.
 - Add a separate tool for listing → see D13; a distinct tool is only warranted when predicate richness grows past a single optional parameter.
+
+## D13 — `list_bills` is a distinct tool from `search_civic_documents` (2026-04-14, LOCKED)
+
+**Decision:** `list_bills` ships as MCP tool #10 rather than
+extending `search_civic_documents` with more predicates. Structured
+bill-listing queries (by sponsor, subject, classification, session,
+date ranges) go through `list_bills`; free-text cross-kind search
+stays on `search_civic_documents`.
+
+**Why:** LLM tool-selection accuracy benefits more from verb
+clarity ("list bills by predicates" vs "search documents by text")
+than it loses from the +1 tool slot. Conflating the two would
+require the LLM to know which subset of `search_civic_documents`
+inputs produce which kind of projection — a worse affordance than
+two tools with distinct names and distinct return shapes.
+
+The audit of 48 realistic civic queries found that bill-listing
+queries fall naturally under a single tool name; collapsing them
+into `search_civic_documents` degraded model tool-selection in
+manual spot-checks more than keeping a clean separation.
+
+**Alternatives rejected:**
+- Extend `search_civic_documents` with `sponsor_entity_id`,
+  `subject`, `classification`, `session` → overloaded tool surface;
+  return shape would have to become a union; text `q` becomes
+  optional, which changes the tool's existing contract.
+- Add a `bills_listing` flag to `recent_bills` → polymorphic tool;
+  same LLM-selection cost, with the added problem of masking the
+  time-windowed vs predicate-listing distinction.

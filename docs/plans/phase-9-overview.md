@@ -33,7 +33,7 @@ are required.
 | Plan | Scope | Adds | Size |
 |---|---|---|---|
 | [`phase-9a-recent-bills-limit.md`](./phase-9a-recent-bills-limit.md) | Optional `limit` on `recent_bills`; when set, the handler drops `updated_since` and returns top-N by OpenStates' native `sort=updated_desc`. Unblocks the reported biennial-legislature case (last 20 MT bills with no recent activity). | — | ~1 commit |
-| [`phase-9b-list-bills.md`](./phase-9b-list-bills.md) | New `list_bills` tool. Inputs: `jurisdiction`, `session?`, `chamber?`, `sponsor_entity_id?`, `subject?`, `classification?`, `introduced_since?`/`until?`, `updated_since?`/`until?`, `sort`, `limit`. Proper bill-listing projection distinct from time-windowed feed. | Tool #10 | ~4 commits |
+| [`phase-9b-list-bills.md`](./phase-9b-list-bills.md) ✅ | New `list_bills` tool. Inputs: `jurisdiction`, `session?`, `chamber?`, `sponsor_entity_id?`, `subject?`, `classification?`, `introduced_since?`/`until?`, `updated_since?`/`until?`, `sort`, `limit`. Proper bill-listing projection distinct from time-windowed feed. | Tool #10 | ~4 commits |
 | [`phase-9c-get-vote.md`](./phase-9c-get-vote.md) | New `get_vote` detail tool. Inputs: `vote_id` (or `(jurisdiction, session, identifier)` composite). Returns per-legislator `positions[]` so "how did X vote" / "party-line breakdown" / "against-their-party" queries become answerable. Mirrors `get_bill`'s C-projection shape. | Tool #11 | ~3 commits |
 | [`phase-9d-tool-polish.md`](./phase-9d-tool-polish.md) | Three small parameter additions: `via_roles[]` on `entity_connections` edges; `had_role?`/`had_jurisdiction?` on `search_entities`; `contributor_entity_id?`/`side?` on `recent_contributions` for donor-side queries. | — | ~3 commits |
 
