@@ -68,15 +68,3 @@ export const ResolvePersonInput = z.object({
   context: z.string().optional(),
 });
 export type ResolvePersonInput = z.infer<typeof ResolvePersonInput>;
-
-export const RefreshSourceInput = z.object({
-  source: z.enum(["openstates", "congress", "openfec"]),
-  // OpenStates only. If omitted for openstates, refreshes all seeded state
-  // jurisdictions — heavy against the 500/day free tier; default to an
-  // explicit single state in practice.
-  jurisdictions: z.array(z.string().min(2).max(4)).optional(),
-  // Cap: 50 pages is well above V1 daily budgets and catches accidental
-  // unbounded invocations. Default 2 (conservative first-touch).
-  max_pages: z.number().int().min(1).max(50).default(2),
-});
-export type RefreshSourceInput = z.infer<typeof RefreshSourceInput>;
