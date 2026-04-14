@@ -23,7 +23,9 @@ export type StaleReason =
   | "upstream_failure"
   | "rate_limited"
   | "partial_hydrate"
-  | "daily_budget_exhausted";
+  | "daily_budget_exhausted"
+  | "not_yet_supported"
+  | "not_found";
 
 export interface StaleNotice {
   as_of: string;
