@@ -600,3 +600,64 @@ describe("OpenStatesAdapter.searchPeople", () => {
     }
   });
 });
+
+describe("OpenStatesAdapter.fetchPerson", () => {
+  const FP_DB = "./data/test-openstates-fp.db";
+  const FP_404_DB = "./data/test-openstates-fp-404.db";
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (existsSync(FP_DB)) rmSync(FP_DB, { force: true });
+    if (existsSync(FP_404_DB)) rmSync(FP_404_DB, { force: true });
+  });
+
+  it("fetches /people/{ocdId} and upserts the returned Person", async () => {
+    let capturedUrl: string | undefined;
+    vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
+      capturedUrl = String(url);
+      return new Response(JSON.stringify({
+        id: "ocd-person/tx-1",
+        name: "Jane Doe",
+        party: "Democratic",
+        current_role: { title: "Representative", district: "15", org_classification: "lower" },
+        jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
+      }), { status: 200 });
+    });
+
+    if (existsSync(FP_DB)) rmSync(FP_DB, { force: true });
+    const db = openStore(FP_DB);
+    seedJurisdictions(db.db);
+    try {
+      const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+      const result = await adapter.fetchPerson(db.db, "ocd-person/tx-1");
+
+      expect(capturedUrl).toBeDefined();
+      expect(capturedUrl).toContain("/people/ocd-person%2Ftx-1");
+      expect(result.entitiesUpserted).toBe(1);
+      const rows = db.db
+        .prepare("SELECT name FROM entities WHERE json_extract(external_ids, '$.openstates_person') = ?")
+        .all("ocd-person/tx-1") as Array<{ name: string }>;
+      expect(rows).toHaveLength(1);
+      expect(rows[0].name).toBe("Jane Doe");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("returns entitiesUpserted=0 on 404 without throwing", async () => {
+    vi.spyOn(global, "fetch").mockImplementation(async () =>
+      new Response(JSON.stringify({ detail: "not found" }), { status: 404 }),
+    );
+
+    if (existsSync(FP_404_DB)) rmSync(FP_404_DB, { force: true });
+    const db = openStore(FP_404_DB);
+    seedJurisdictions(db.db);
+    try {
+      const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+      const result = await adapter.fetchPerson(db.db, "ocd-person/does-not-exist");
+      expect(result.entitiesUpserted).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+});

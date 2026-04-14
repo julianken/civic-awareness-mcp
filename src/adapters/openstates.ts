@@ -189,6 +189,27 @@ export class OpenStatesAdapter implements Adapter {
     this.upsertBill(db, body);
   }
 
+  /** Direct-lookup narrow fetch for R15 `get_entity` — resolves one
+   *  Person by its OpenStates OCD ID via `/people/{ocd-id}`. Returns
+   *  `entitiesUpserted: 0` on 404 so the handler can fan out across
+   *  sources without worrying about which ones carry this entity. */
+  async fetchPerson(
+    db: Database.Database,
+    ocdId: string,
+  ): Promise<{ entitiesUpserted: number }> {
+    const url = `${BASE_URL}/people/${encodeURIComponent(ocdId)}`;
+    const res = await rateLimitedFetch(url, {
+      userAgent: "civic-awareness-mcp/0.1.0 (+github)",
+      rateLimiter: this.rateLimiter,
+      headers: { "X-API-KEY": this.opts.apiKey },
+    });
+    if (res.status === 404) return { entitiesUpserted: 0 };
+    if (!res.ok) throw new Error(`OpenStates /people/${ocdId} returned ${res.status}`);
+    const body = (await res.json()) as OpenStatesPerson;
+    this.upsertPerson(db, body);
+    return { entitiesUpserted: 1 };
+  }
+
   /** Narrow per-tool fetch for R15 people search — one page of
    *  `/people` filtered by jurisdiction and/or name. Writes through to
    *  `entities` via `upsertPerson`. Shared endpoint with
