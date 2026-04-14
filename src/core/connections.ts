@@ -4,6 +4,7 @@ export interface RawEdge {
   from_id: string;
   to_id: string;
   via_kinds: string[];
+  via_roles: string[];
   co_occurrence_count: number;
   sample_document_ids: string[];
 }
@@ -25,6 +26,7 @@ const EDGE_KIND_SQL = `
     r1.entity_id    AS from_id,
     r2.entity_id    AS to_id,
     d.kind          AS via_kind,
+    r2.role         AS via_role,
     COUNT(DISTINCT d.id) AS co_count
   FROM document_references r1
   JOIN document_references r2
@@ -32,7 +34,7 @@ const EDGE_KIND_SQL = `
     AND r1.entity_id != r2.entity_id
   JOIN documents d ON r1.document_id = d.id
   WHERE r1.entity_id = ?
-  GROUP BY r1.entity_id, r2.entity_id, d.kind
+  GROUP BY r1.entity_id, r2.entity_id, d.kind, r2.role
   ORDER BY co_count DESC
 `;
 
@@ -61,6 +63,7 @@ interface KindRow {
   from_id: string;
   to_id: string;
   via_kind: string;
+  via_role: string;
   co_count: number;
 }
 
@@ -89,13 +92,24 @@ function expandOne(
   const kindRows = kindStmt.all(rootId);
 
   // Group rows by (from_id, to_id) pair.
-  const pairMap = new Map<string, { from_id: string; to_id: string; kinds: Set<string> }>();
+  const pairMap = new Map<string, {
+    from_id: string;
+    to_id: string;
+    kinds: Set<string>;
+    roles: Set<string>;
+  }>();
   for (const row of kindRows) {
     const key = `${row.from_id}|${row.to_id}`;
     if (!pairMap.has(key)) {
-      pairMap.set(key, { from_id: row.from_id, to_id: row.to_id, kinds: new Set() });
+      pairMap.set(key, {
+        from_id: row.from_id,
+        to_id: row.to_id,
+        kinds: new Set(),
+        roles: new Set(),
+      });
     }
     pairMap.get(key)!.kinds.add(row.via_kind);
+    pairMap.get(key)!.roles.add(row.via_role);
   }
 
   const edges: RawEdge[] = [];
@@ -116,6 +130,7 @@ function expandOne(
       from_id: pair.from_id,
       to_id: pair.to_id,
       via_kinds: Array.from(pair.kinds),
+      via_roles: Array.from(pair.roles),
       co_occurrence_count: totalCount,
       sample_document_ids: sampleRows.map((r) => r.id),
     });

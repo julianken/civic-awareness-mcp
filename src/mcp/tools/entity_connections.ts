@@ -30,6 +30,7 @@ interface ConnectionEdge {
   from: string;
   to: string;
   via_kinds: string[];
+  via_roles: string[];
   co_occurrence_count: number;
   sample_documents: DocumentMatch[];
 }
@@ -303,6 +304,7 @@ export async function handleEntityConnections(
     from: e.from_id,
     to: e.to_id,
     via_kinds: e.via_kinds,
+    via_roles: e.via_roles,
     co_occurrence_count: e.co_occurrence_count,
     sample_documents: e.sample_document_ids.map(toDocMatch).filter((d): d is DocumentMatch => d !== null),
   }));

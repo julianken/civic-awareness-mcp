@@ -436,3 +436,84 @@ describe("handleEntityConnections — R15 fanout", () => {
     expect(sponsoredSpy).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("handleEntityConnections via_roles", () => {
+  it("distinguishes sponsor vs cosponsor on separate bills between the same two people", async () => {
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
+      .mockResolvedValue({ documentsUpserted: 0 });
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
+      .mockResolvedValue({ documentsUpserted: 0 });
+
+    const a = makeProjectionRoot("Alice VR");
+    const b = makeEntity("Bob VR");
+
+    // Bill 1: A sponsors, B cosponsors.
+    upsertDocument(store.db, {
+      kind: "bill",
+      jurisdiction: "us-federal",
+      title: "VR Bill 1",
+      occurred_at: "2024-03-01T00:00:00.000Z",
+      source: { name: "congress", id: "vr-bill-1", url: "https://congress.gov/vr-bill-1" },
+      references: [
+        { entity_id: a.id, role: "sponsor" },
+        { entity_id: b.id, role: "cosponsor" },
+      ],
+    });
+
+    // Bill 2: A cosponsors, B sponsors.
+    upsertDocument(store.db, {
+      kind: "bill",
+      jurisdiction: "us-federal",
+      title: "VR Bill 2",
+      occurred_at: "2024-03-02T00:00:00.000Z",
+      source: { name: "congress", id: "vr-bill-2", url: "https://congress.gov/vr-bill-2" },
+      references: [
+        { entity_id: a.id, role: "cosponsor" },
+        { entity_id: b.id, role: "sponsor" },
+      ],
+    });
+
+    const result = await handleEntityConnections(store.db, {
+      id: a.id,
+      depth: 1,
+      min_co_occurrences: 1,
+    });
+
+    const edgeToB = result.edges.find((e) => e.to === b.id);
+    expect(edgeToB).toBeDefined();
+    expect(edgeToB!.via_kinds).toEqual(["bill"]);
+    expect(new Set(edgeToB!.via_roles)).toEqual(new Set(["sponsor", "cosponsor"]));
+  });
+
+  it("exposes voter role on vote documents", async () => {
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
+      .mockResolvedValue({ documentsUpserted: 0 });
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
+      .mockResolvedValue({ documentsUpserted: 0 });
+
+    const x = makeProjectionRoot("Person VR X");
+    const y = makeEntity("Person VR Y");
+
+    upsertDocument(store.db, {
+      kind: "vote",
+      jurisdiction: "us-federal",
+      title: "VR Vote 1",
+      occurred_at: "2024-03-03T00:00:00.000Z",
+      source: { name: "congress", id: "vr-vote-1", url: "https://congress.gov/vr-vote-1" },
+      references: [
+        { entity_id: x.id, role: "voter" },
+        { entity_id: y.id, role: "voter" },
+      ],
+    });
+
+    const result = await handleEntityConnections(store.db, {
+      id: x.id,
+      depth: 1,
+      min_co_occurrences: 1,
+    });
+
+    const edge = result.edges.find((e) => e.to === y.id);
+    expect(edge).toBeDefined();
+    expect(edge!.via_roles).toEqual(["voter"]);
+  });
+});
