@@ -409,6 +409,27 @@ describe("CongressAdapter.fetchRecentBills", () => {
     expect(titles).toHaveLength(1);
     expect(titles[0].title).toMatch(/Senate Bill/);
   });
+
+  it("passes opts.limit through as the upstream `limit` query param", async () => {
+    let capturedUrl: string | null = null;
+    vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
+      capturedUrl = String(url);
+      return new Response(
+        JSON.stringify({ bills: [], pagination: { count: 0 } }),
+        { status: 200 },
+      );
+    });
+
+    const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
+    await adapter.fetchRecentBills(store.db, {
+      fromDateTime: "2026-04-01T00:00:00Z",
+      limit: 5,
+    });
+
+    expect(capturedUrl).toBeTruthy();
+    const u = new URL(capturedUrl!);
+    expect(u.searchParams.get("limit")).toBe("5");
+  });
 });
 
 describe("CongressAdapter.fetchRecentVotes", () => {
