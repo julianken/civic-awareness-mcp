@@ -1,6 +1,6 @@
 # Civic Awareness MCP
 
-An [MCP](https://modelcontextprotocol.io) server that gives an LLM first-class access to **US federal and state-legislature civic data** — bills, votes, committees, Members of Congress, state legislators, and federal campaign finance — across **51 jurisdictions** (Congress + 50 states), with both time-ordered **feeds** and identity-resolved **entity** tools over one normalized store.
+An [MCP](https://modelcontextprotocol.io) server that gives an LLM first-class access to **US federal and state-legislature civic data** — bills, votes, committees, Members of Congress, state legislators, and federal campaign finance — across **51 jurisdictions** (Congress + 50 states), with both time-ordered **feeds** and identity-resolved **entity** tools.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 ![Node 22+](https://img.shields.io/badge/node-%E2%89%A522-brightgreen)
@@ -20,51 +20,7 @@ An [MCP](https://modelcontextprotocol.io) server that gives an LLM first-class a
 | [`resolve_person`](./docs/05-tool-surface.md#resolve_person-phase-5) | entity | Disambiguate a name into one or more Person entity IDs using role / jurisdiction / context hints |
 | [`get_bill`](./docs/05-tool-surface.md#get_bill-phase-7) | detail | Full projection of a single bill by `(jurisdiction, identifier)` with per-document TTL |
 
-Every response includes a `sources: { name, url }[]` array so the LLM can cite provenance. No tool synthesizes summaries — that's the LLM's job (per [D3c](./docs/06-open-decisions.md)).
-
-## Architecture
-
-One normalized event store, two projections:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     MCP Tool Layer                          │
-│                                                             │
-│  Feed tools                  Entity tools                   │
-│  ─ recent_bills              ─ search_entities              │
-│  ─ recent_votes              ─ get_entity                   │
-│  ─ recent_contributions      ─ entity_connections           │
-│  ─ search_civic_documents    ─ resolve_person               │
-└──────────────────────┬──────────────────────────────────────┘
-                       │  reads
-                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│               Normalized Store (SQLite)                     │
-│                                                             │
-│  entities ──<has_role>── documents ──<mentions>── entities  │
-└──────────────────────▲──────────────────────────────────────┘
-                       │  writes
-┌──────────────────────┴──────────────────────────────────────┐
-│  OpenStatesAdapter   CongressGovAdapter   OpenFECAdapter    │
-│  Each: fetch() → Document[] with Entity references          │
-└─────────────────────────────────────────────────────────────┘
-```
-
-The feed and entity tools read the same two tables (`entities`, `documents`) with different WHERE clauses — a ~20-line SQL difference, not a parallel pipeline. Adapters normalize upstream JSON into `Document`s with `EntityReference`s, so tools never case-split by source and adding a new adapter requires zero tool changes. See [`docs/02-architecture.md`](./docs/02-architecture.md) for the full rationale.
-
-The SQLite store is a transparent TTL cache: when a tool request arrives for data that is absent or stale (1h for feeds, 24h for entities), the server fetches upstream automatically before returning results. Upstream failures serve the last-known data with a `stale_notice` field. No manual refresh step required.
-
-## Entity resolution
-
-The moat. Same human can appear in three APIs under three IDs; V1 resolution is three tiers, **external-ID first, fuzzy last**:
-
-1. **External ID match always wins.** `bioguide`, `openstates_person`, `fec_candidate` IDs collapse records across sources immediately.
-2. **Exact normalized-name match** (lowercased, punctuation-stripped, cross-jurisdiction for Persons). Tiebreakers: middle-name match or same external-ID source family.
-3. **Levenshtein ≤ 1** only with a **positive linking signal** — shared external-ID source family, alias match, or role-jurisdiction overlap. If uncertain, don't merge.
-
-The algorithm deliberately under-matches. Two rows for the same person is a bug we can live with; merging two distinct "Michael Brown"s from different states would poison every downstream tool response. See [`docs/04-entity-schema.md`](./docs/04-entity-schema.md) for the full spec, including why `entities.jurisdiction` is `NULL` for Persons (the [D3b invariant](./docs/06-open-decisions.md)).
-
-**No ML, no embeddings, no vector search.** External IDs are high-confidence structured data; use them.
+Every response includes a `sources: { name, url }[]` array so the LLM can cite provenance. No tool synthesizes summaries — that's the LLM's job.
 
 ## Example invocations
 
@@ -192,12 +148,13 @@ pnpm dev           # run via tsx with no build step
 The server fetches data automatically. Ask Claude about Texas bills,
 federal campaign contributions, or any other supported source — if
 the local cache is empty or stale, the server fetches from upstream
-before returning the result. API keys must be set (see Environment
-variables below); the server hard-fails on startup if they are
-missing.
+before returning the result. If an upstream source is unreachable
+or rate-limited, the server returns the last-known local data with
+a `stale_notice` field explaining why. API keys must be set (see
+Environment variables below); the server hard-fails on startup if
+they are missing.
 
-For bulk pre-population or forced re-ingestion, the CLI is still
-available:
+For bulk pre-population or forced re-ingestion, use the CLI:
 
 ```bash
 # API keys in .env.local: OPENSTATES_API_KEY, API_DATA_GOV_KEY
@@ -281,7 +238,7 @@ Desktop users will see the per-call prompt every session.
 
 One workflow, [`.github/workflows/nightly-drift.yml`](./.github/workflows/nightly-drift.yml), runs daily at 09:00 UTC (or via `workflow_dispatch`). It makes ~7 real requests against OpenStates / Congress.gov / OpenFEC and asserts that the response shapes the adapters depend on are still present. If a field name changes upstream, the job goes red and the regression is visible before end users see broken tool output.
 
-There is **no CI on push or pull-request.** The mocked unit + integration suite (157 tests) runs locally via `pnpm test`; upstream drift is the only regression the repo is exposed to.
+There is **no CI on push or pull-request.** The mocked unit + integration suite runs locally via `pnpm test`; CI focuses on upstream drift.
 
 To run the nightly workflow, set two repo secrets (`OPENSTATES_API_KEY` and `API_DATA_GOV_KEY`) under `Settings → Secrets and variables → Actions`. The api.data.gov key is federated across Congress.gov and OpenFEC — one signup at <https://api.data.gov/signup/> covers both. Each is *your* maintainer key; end users still bring their own keys via `.env.local`.
 
@@ -304,11 +261,11 @@ Full design rationale lives in [`docs/`](./docs). The starting points:
 | | |
 |---|---|
 | [`docs/README.md`](./docs/README.md) | Doc-tree index |
-| [`docs/00-rationale.md`](./docs/00-rationale.md) | Decisions considered and rejected. **R11** is the early scope pivot (Arizona → US-legislative). |
-| [`docs/02-architecture.md`](./docs/02-architecture.md) | Dual feeds+entities projection |
+| [`docs/00-rationale.md`](./docs/00-rationale.md) | Decisions considered and rejected |
+| [`docs/02-architecture.md`](./docs/02-architecture.md) | Feeds + entities projection over one normalized store |
 | [`docs/04-entity-schema.md`](./docs/04-entity-schema.md) | Entity schema + resolution algorithm |
 | [`docs/05-tool-surface.md`](./docs/05-tool-surface.md) | Full tool specs |
-| [`docs/06-open-decisions.md`](./docs/06-open-decisions.md) | 10 design decisions (all finalized 2026-04-12) |
+| [`docs/06-open-decisions.md`](./docs/06-open-decisions.md) | Design decisions |
 | [`docs/plans/`](./docs/plans) | Per-phase TDD implementation plans |
 
 ## License
@@ -317,6 +274,6 @@ MIT — see [`LICENSE`](./LICENSE).
 
 ---
 
-## For contributors / Claude Code sessions
+## For contributors
 
-[`CLAUDE.md`](./CLAUDE.md) documents the in-repo conventions and first-session protocol for any Claude Code session operating here. The key invariants: Person entities are cross-jurisdiction ([D3b](./docs/06-open-decisions.md)); `jurisdiction` is a runtime parameter, never hardcoded; don't bake two pipelines for feeds + entities when the plan is one.
+See [`CLAUDE.md`](./CLAUDE.md) for in-repo conventions and Claude Code session protocol.
