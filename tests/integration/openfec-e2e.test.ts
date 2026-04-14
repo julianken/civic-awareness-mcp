@@ -4,12 +4,6 @@ import { openStore, type Store } from "../../src/core/store.js";
 import { seedJurisdictions } from "../../src/core/seeds.js";
 import { upsertEntity } from "../../src/core/entities.js";
 import { OpenFecAdapter } from "../../src/adapters/openfec.js";
-import { handleRecentContributions } from "../../src/mcp/tools/recent_contributions.js";
-
-vi.mock("../../src/core/hydrate.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../src/core/hydrate.js")>();
-  return { ...actual, ensureFresh: vi.fn().mockResolvedValue({ ok: true }) };
-});
 
 const TEST_DB = "./data/test-openfec-e2e.db";
 let store: Store;
@@ -52,30 +46,6 @@ afterEach(() => {
 });
 
 describe("OpenFEC end-to-end", () => {
-  it("refreshes and exposes contributions via recent_contributions", async () => {
-    const adapter = new OpenFecAdapter({ apiKey: "fake", cycles: [2026] });
-    const result = await adapter.refresh({ db: store.db, maxPages: 1 });
-    expect(result.errors).toEqual([]);
-    expect(result.documentsUpserted).toBeGreaterThan(0);
-
-    // recent_contributions with a wide window to capture the fixture date.
-    const contribs = await handleRecentContributions(store.db, {
-      window: { from: "2025-01-01T00:00:00.000Z", to: "2027-01-01T00:00:00.000Z" },
-    });
-    expect(contribs.results.length).toBeGreaterThan(0);
-    expect(contribs.sources[0].name).toBe("openfec");
-
-    const contrib = contribs.results[0];
-    expect(contrib.amount).toBe(2800.0);
-    expect(contrib.recipient.name).toBeTruthy();
-
-    // Address fields must not be in the response.
-    const serialized = JSON.stringify(contrib);
-    expect(serialized).not.toContain("PHOENIX");
-    expect(serialized).not.toContain("85001");
-    expect(serialized).not.toContain("Self-Employed");
-  });
-
   it("candidate from fixtures appears in entity store with federal_candidate role", async () => {
     const adapter = new OpenFecAdapter({ apiKey: "fake", cycles: [2026] });
     await adapter.refresh({ db: store.db, maxPages: 1 });

@@ -24,6 +24,7 @@ import { openStore, type Store } from "../../src/core/store.js";
 import { seedJurisdictions } from "../../src/core/seeds.js";
 import { handleRecentBills } from "../../src/mcp/tools/recent_bills.js";
 import { handleRecentVotes } from "../../src/mcp/tools/recent_votes.js";
+import { handleRecentContributions } from "../../src/mcp/tools/recent_contributions.js";
 import { _resetToolCacheForTesting } from "../../src/core/tool_cache.js";
 import { _resetLimitersForTesting } from "../../src/core/limiters.js";
 import { seedStaleCache } from "../helpers/seed_stale_cache.js";
@@ -224,6 +225,57 @@ describe("passthrough shaped e2e — recent_votes (federal)", () => {
     });
     expect(result.stale_notice?.reason).toBe("upstream_failure");
     expect(result.results.length).toBeGreaterThan(0);
+    fetchSpy.mockRestore();
+  });
+});
+
+describe("passthrough shaped e2e — recent_contributions", () => {
+  it("cold fetch → warm hit", async () => {
+    let upstreamHits = 0;
+    const fetchSpy = vi.spyOn(global, "fetch").mockImplementation(async () => {
+      upstreamHits += 1;
+      return new Response(JSON.stringify({ results: [], pagination: {} }), { status: 200 });
+    });
+
+    const window = {
+      from: "2026-04-01T00:00:00.000Z",
+      to: "2026-04-14T00:00:00.000Z",
+    };
+    await handleRecentContributions(store.db, { window });
+    await handleRecentContributions(store.db, { window });
+
+    expect(upstreamHits).toBe(1);
+    fetchSpy.mockRestore();
+  });
+
+  it("upstream failure with stale cache returns stale + notice", async () => {
+    const window = { from: "2026-04-01T00:00:00.000Z", to: "2026-04-14T00:00:00.000Z" };
+    seedStaleCache({
+      db: store.db,
+      source: "openfec",
+      endpoint_path: "/schedules/schedule_a",
+      scope: "recent",
+      tool: "recent_contributions",
+      args: { window, candidate_or_committee: undefined, min_amount: undefined },
+      documents: [{
+        kind: "contribution",
+        jurisdiction: "us-federal",
+        title: "Contribution from Jane Smith",
+        occurred_at: "2026-04-05T00:00:00Z",
+        source: {
+          name: "openfec",
+          id: "sa-T1",
+          url: "https://docquery.fec.gov/cgi-bin/fecimg/?T1",
+        },
+        references: [],
+        raw: { amount: 2500, date: "2026-04-05", contributor_name: "SMITH, JANE" },
+      }],
+    });
+
+    const fetchSpy = vi.spyOn(global, "fetch").mockRejectedValue(new Error("network down"));
+
+    const result = await handleRecentContributions(store.db, { window });
+    expect(result.stale_notice?.reason).toBe("upstream_failure");
     fetchSpy.mockRestore();
   });
 });
