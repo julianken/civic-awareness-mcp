@@ -4,21 +4,23 @@ import { openStore, type Store } from "../../../../src/core/store.js";
 import { seedJurisdictions } from "../../../../src/core/seeds.js";
 import { upsertEntity } from "../../../../src/core/entities.js";
 import { upsertDocument } from "../../../../src/core/documents.js";
+import { upsertFetchLog } from "../../../../src/core/fetch_log.js";
+import { hashArgs } from "../../../../src/core/args_hash.js";
+import { _resetToolCacheForTesting } from "../../../../src/core/tool_cache.js";
+import { _resetLimitersForTesting } from "../../../../src/core/limiters.js";
+import { CongressAdapter } from "../../../../src/adapters/congress.js";
+import { OpenFecAdapter } from "../../../../src/adapters/openfec.js";
+import { OpenStatesAdapter } from "../../../../src/adapters/openstates.js";
 import { handleEntityConnections } from "../../../../src/mcp/tools/entity_connections.js";
-
-vi.mock("../../../../src/core/hydrate.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../../../src/core/hydrate.js")>();
-  return { ...actual, ensureFresh: vi.fn() };
-});
-import { ensureFresh } from "../../../../src/core/hydrate.js";
-const mockEnsureFresh = vi.mocked(ensureFresh);
 
 const TEST_DB = "./data/test-entity-connections-tool.db";
 let store: Store;
 
 beforeEach(() => {
-  mockEnsureFresh.mockReset();
-  mockEnsureFresh.mockResolvedValue({ ok: true });
+  _resetToolCacheForTesting();
+  _resetLimitersForTesting();
+  process.env.OPENSTATES_API_KEY = "test-key";
+  process.env.API_DATA_GOV_KEY = "test-key";
 
   if (existsSync(TEST_DB)) rmSync(TEST_DB);
   store = openStore(TEST_DB);
@@ -27,11 +29,44 @@ beforeEach(() => {
 
 afterEach(() => {
   store.close();
+  vi.restoreAllMocks();
+  delete process.env.OPENSTATES_API_KEY;
+  delete process.env.API_DATA_GOV_KEY;
   if (existsSync(TEST_DB)) rmSync(TEST_DB);
 });
 
-function makeEntity(name: string) {
-  return upsertEntity(store.db, { kind: "person", name }).entity;
+function makeEntity(name: string, external_ids?: Record<string, string>) {
+  return upsertEntity(store.db, { kind: "person", name, external_ids }).entity;
+}
+
+/**
+ * Builds a projection-test root entity that carries a bioguide. Used by
+ * the `— projection` describe-block below so the R15 short-circuit
+ * doesn't fire before `findConnections` runs. Seeds a `fetch_log` row
+ * too so `withShapedFetch` serves the TTL fast path instead of
+ * attempting the adapter call (which would 404 without live creds).
+ */
+function makeProjectionRoot(name: string): ReturnType<typeof makeEntity> {
+  const bioguide = `P${Math.random().toString(36).slice(2, 9).toUpperCase()}`;
+  const e = makeEntity(name, { bioguide });
+  const now = new Date().toISOString();
+  for (const endpoint of [
+    `/member/${bioguide}/sponsored-legislation`,
+    `/member/${bioguide}/cosponsored-legislation`,
+  ]) {
+    const tool = endpoint.endsWith("sponsored-legislation") && !endpoint.includes("cosponsored")
+      ? "fetchMemberSponsored"
+      : "fetchMemberCosponsored";
+    upsertFetchLog(store.db, {
+      source: "congress",
+      endpoint_path: endpoint,
+      args_hash: hashArgs(tool, { bioguide }),
+      scope: "full",
+      fetched_at: now,
+      last_rowcount: 0,
+    });
+  }
+  return e;
 }
 
 function makeDoc(sourceId: string, kind: "bill" | "vote", refs: string[]) {
@@ -45,7 +80,7 @@ function makeDoc(sourceId: string, kind: "bill" | "vote", refs: string[]) {
   }).document;
 }
 
-describe("handleEntityConnections", () => {
+describe("handleEntityConnections — projection", () => {
   it("throws when entity is not found", async () => {
     await expect(
       handleEntityConnections(store.db, {
@@ -57,7 +92,7 @@ describe("handleEntityConnections", () => {
   });
 
   it("returns root with empty edges when entity has no documents", async () => {
-    const a = makeEntity("Alice Empty");
+    const a = makeProjectionRoot("Alice Empty");
     const result = await handleEntityConnections(store.db, {
       id: a.id,
       depth: 1,
@@ -70,7 +105,7 @@ describe("handleEntityConnections", () => {
   });
 
   it("returns one edge with sample_documents and populated nodes", async () => {
-    const a = makeEntity("Alice Conn");
+    const a = makeProjectionRoot("Alice Conn");
     const b = makeEntity("Bob Conn");
     const doc = makeDoc("conn-doc-1", "bill", [a.id, b.id]);
     const result = await handleEntityConnections(store.db, {
@@ -85,18 +120,15 @@ describe("handleEntityConnections", () => {
     expect(edge.via_kinds).toContain("bill");
     expect(edge.sample_documents).toHaveLength(1);
     expect(edge.sample_documents[0].id).toBe(doc.id);
-    // b should appear in nodes
     const nodeIds = result.nodes.map((n) => n.id);
     expect(nodeIds).toContain(b.id);
-    // root should NOT appear in nodes
     expect(nodeIds).not.toContain(a.id);
   });
 
   it("respects min_co_occurrences", async () => {
-    const a = makeEntity("Alice Min");
+    const a = makeProjectionRoot("Alice Min");
     const b = makeEntity("Bob Min");
     const c = makeEntity("Carol Min");
-    // a↔b: 2 shared docs, a↔c: 1 shared doc
     makeDoc("min-ab-1", "bill", [a.id, b.id]);
     makeDoc("min-ab-2", "bill", [a.id, b.id]);
     makeDoc("min-ac-1", "bill", [a.id, c.id]);
@@ -110,7 +142,7 @@ describe("handleEntityConnections", () => {
   });
 
   it("includes sources from sample documents", async () => {
-    const a = makeEntity("Alice Src");
+    const a = makeProjectionRoot("Alice Src");
     const b = makeEntity("Bob Src");
     makeDoc("src-doc-1", "bill", [a.id, b.id]);
     const result = await handleEntityConnections(store.db, {
@@ -123,14 +155,14 @@ describe("handleEntityConnections", () => {
   });
 
   it("validates input via zod — rejects invalid depth", async () => {
-    const a = makeEntity("Alice ValidZ");
+    const a = makeProjectionRoot("Alice ValidZ");
     await expect(
       handleEntityConnections(store.db, { id: a.id, depth: 3, min_co_occurrences: 1 }),
     ).rejects.toThrow();
   });
 
   it("depth=2 surfaces second-hop neighbors in nodes", async () => {
-    const a = makeEntity("Alice D2 Tool");
+    const a = makeProjectionRoot("Alice D2 Tool");
     const b = makeEntity("Bob D2 Tool");
     const c = makeEntity("Carol D2 Tool");
     makeDoc("d2t-ab-1", "bill", [a.id, b.id]);
@@ -147,9 +179,7 @@ describe("handleEntityConnections", () => {
   });
 
   it("returns truncated=true and exactly 100 edges at the hard cap", async () => {
-    // Seed 102 peers, each sharing 2 documents with root (to exceed
-    // min_co_occurrences=2) — verifies cap and truncated flag.
-    const root = makeEntity("Alice Cap Tool");
+    const root = makeProjectionRoot("Alice Cap Tool");
     for (let i = 0; i < 102; i++) {
       const peer = makeEntity(`Peer Cap Tool ${i}`);
       makeDoc(`cap-tool-${i}-a`, "bill", [root.id, peer.id]);
@@ -165,11 +195,7 @@ describe("handleEntityConnections", () => {
   });
 
   it("emits per-jurisdiction OpenStates URLs for state-specific documents", async () => {
-    // When a Person's edges span multiple states, the sources array must
-    // include one entry per (source_name, jurisdiction) pair with the
-    // correct state-specific URL — not a single collapsed entry that
-    // falsely claims us-federal.
-    const a = makeEntity("Alice Multi");
+    const a = makeProjectionRoot("Alice Multi");
     const bTx = makeEntity("Bob TX");
     const cCa = makeEntity("Carol CA");
     upsertDocument(store.db, {
@@ -199,73 +225,214 @@ describe("handleEntityConnections", () => {
       depth: 1,
       min_co_occurrences: 1,
     });
-    // Both a Texas and a California openstates URL must appear.
     const urls = result.sources.map((s) => s.url);
     expect(urls).toContain("https://openstates.org/tx/");
     expect(urls).toContain("https://openstates.org/ca/");
-    // And NO hardcoded "us-federal" fallback for state documents.
     expect(urls).not.toContain("https://openstates.org/us-federal/");
   });
+});
 
-  // ── hydration ─────────────────────────────────────────────────────────────
+describe("handleEntityConnections — R15 fanout", () => {
+  it("entity with no external IDs → short-circuits with empty_reason=no_external_ids", async () => {
+    const sponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
+      .mockResolvedValue({ documentsUpserted: 0 });
+    const cosponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
+      .mockResolvedValue({ documentsUpserted: 0 });
+    const openstatesSpy = vi.spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor")
+      .mockResolvedValue({ documentsUpserted: 0 });
+    const fecSpy = vi.spyOn(OpenFecAdapter.prototype, "fetchContributionsToCandidate")
+      .mockResolvedValue({ documentsUpserted: 0 });
 
-  it("hydration: entity not found → ensureFresh not called (throws before hydrate)", async () => {
-    await expect(
-      handleEntityConnections(store.db, {
-        id: "00000000-0000-0000-0000-000000000001",
-        depth: 1,
-        min_co_occurrences: 1,
-      }),
-    ).rejects.toThrow();
-    expect(mockEnsureFresh).not.toHaveBeenCalled();
-  });
+    const a = makeEntity("Bare Entity");
+    // Even give them a co-occurring document — the short-circuit must
+    // skip both the fanout AND the findConnections projection.
+    const b = makeEntity("Co-occurrence B");
+    makeDoc("bare-doc-1", "bill", [a.id, b.id]);
 
-  it("hydration: entity with no roles → ensureFresh not called", async () => {
-    const a = makeEntity("No Roles Entity");
-    await handleEntityConnections(store.db, { id: a.id, depth: 1, min_co_occurrences: 1 });
-    expect(mockEnsureFresh).not.toHaveBeenCalled();
-  });
-
-  it("hydration: entity with roles → ensureFresh called with scope=full per jurisdiction", async () => {
-    const { entity } = upsertEntity(store.db, {
-      kind: "person",
-      name: "Hydrate Conn Person",
-      metadata: { roles: [{ jurisdiction: "us-tx", role: "state_legislator" }] },
+    const res = await handleEntityConnections(store.db, {
+      id: a.id,
+      depth: 1,
+      min_co_occurrences: 1,
     });
-    await handleEntityConnections(store.db, { id: entity.id, depth: 1, min_co_occurrences: 1 });
-    expect(mockEnsureFresh).toHaveBeenCalledWith(
-      store.db,
-      "openstates",
-      "us-tx",
-      "full",
-      expect.any(Function),
-    );
+
+    expect(res.empty_reason).toBe("no_external_ids");
+    expect(res.edges).toHaveLength(0);
+    expect(res.nodes).toHaveLength(0);
+    expect(res.sources).toHaveLength(0);
+    expect(res.truncated).toBe(false);
+    expect(res.root.id).toBe(a.id);
+    expect(sponsoredSpy).not.toHaveBeenCalled();
+    expect(cosponsoredSpy).not.toHaveBeenCalled();
+    expect(openstatesSpy).not.toHaveBeenCalled();
+    expect(fecSpy).not.toHaveBeenCalled();
   });
 
-  it("hydration: ok=true → no stale_notice", async () => {
-    const { entity } = upsertEntity(store.db, {
-      kind: "person",
-      name: "Fresh Conn Entity",
-      metadata: { roles: [{ jurisdiction: "us-tx", role: "state_legislator" }] },
-    });
-    const res = await handleEntityConnections(store.db, { id: entity.id, depth: 1, min_co_occurrences: 1 });
-    expect(res.stale_notice).toBeUndefined();
+  it("bioguide only → sponsored + cosponsored Congress.gov methods invoked", async () => {
+    const sponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
+      .mockResolvedValue({ documentsUpserted: 0 });
+    const cosponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
+      .mockResolvedValue({ documentsUpserted: 0 });
+    const openstatesSpy = vi.spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor")
+      .mockResolvedValue({ documentsUpserted: 0 });
+    const fecSpy = vi.spyOn(OpenFecAdapter.prototype, "fetchContributionsToCandidate")
+      .mockResolvedValue({ documentsUpserted: 0 });
+
+    const e = makeEntity("Sen. Bioguide", { bioguide: "S000148" });
+    await handleEntityConnections(store.db, { id: e.id, depth: 1, min_co_occurrences: 1 });
+
+    expect(sponsoredSpy).toHaveBeenCalledOnce();
+    expect(sponsoredSpy).toHaveBeenCalledWith(store.db, "S000148");
+    expect(cosponsoredSpy).toHaveBeenCalledOnce();
+    expect(cosponsoredSpy).toHaveBeenCalledWith(store.db, "S000148");
+    expect(openstatesSpy).not.toHaveBeenCalled();
+    expect(fecSpy).not.toHaveBeenCalled();
   });
 
-  it("hydration: upstream failure → stale_notice attached, connections still computed", async () => {
-    const notice = {
-      as_of: "2026-04-13T00:00:00.000Z",
-      reason: "upstream_failure" as const,
-      message: "Upstream openstates fetch failed; serving stale local data.",
-    };
-    mockEnsureFresh.mockResolvedValue({ ok: false, stale_notice: notice });
-    const { entity } = upsertEntity(store.db, {
-      kind: "person",
-      name: "Stale Conn Entity",
-      metadata: { roles: [{ jurisdiction: "us-tx", role: "state_legislator" }] },
+  it("openstates_person only → fetchBillsBySponsor invoked", async () => {
+    const sponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
+      .mockResolvedValue({ documentsUpserted: 0 });
+    const cosponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
+      .mockResolvedValue({ documentsUpserted: 0 });
+    const openstatesSpy = vi.spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor")
+      .mockResolvedValue({ documentsUpserted: 0 });
+    const fecSpy = vi.spyOn(OpenFecAdapter.prototype, "fetchContributionsToCandidate")
+      .mockResolvedValue({ documentsUpserted: 0 });
+
+    const e = makeEntity("State Legislator", { openstates_person: "ocd-person/tx-1" });
+    await handleEntityConnections(store.db, { id: e.id, depth: 1, min_co_occurrences: 1 });
+
+    expect(openstatesSpy).toHaveBeenCalledOnce();
+    expect(openstatesSpy).toHaveBeenCalledWith(store.db, { sponsor: "ocd-person/tx-1" });
+    expect(sponsoredSpy).not.toHaveBeenCalled();
+    expect(cosponsoredSpy).not.toHaveBeenCalled();
+    expect(fecSpy).not.toHaveBeenCalled();
+  });
+
+  it("fec_candidate only → fetchContributionsToCandidate invoked", async () => {
+    const sponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
+      .mockResolvedValue({ documentsUpserted: 0 });
+    const cosponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
+      .mockResolvedValue({ documentsUpserted: 0 });
+    const openstatesSpy = vi.spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor")
+      .mockResolvedValue({ documentsUpserted: 0 });
+    const fecSpy = vi.spyOn(OpenFecAdapter.prototype, "fetchContributionsToCandidate")
+      .mockResolvedValue({ documentsUpserted: 0 });
+
+    const e = makeEntity("FEC Candidate", { fec_candidate: "H0AZ01234" });
+    await handleEntityConnections(store.db, { id: e.id, depth: 1, min_co_occurrences: 1 });
+
+    expect(fecSpy).toHaveBeenCalledOnce();
+    expect(fecSpy).toHaveBeenCalledWith(store.db, { candidateId: "H0AZ01234" });
+    expect(sponsoredSpy).not.toHaveBeenCalled();
+    expect(cosponsoredSpy).not.toHaveBeenCalled();
+    expect(openstatesSpy).not.toHaveBeenCalled();
+  });
+
+  it("all three external IDs → 4 adapter methods invoked exactly once each", async () => {
+    const sponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
+      .mockResolvedValue({ documentsUpserted: 0 });
+    const cosponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
+      .mockResolvedValue({ documentsUpserted: 0 });
+    const openstatesSpy = vi.spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor")
+      .mockResolvedValue({ documentsUpserted: 0 });
+    const fecSpy = vi.spyOn(OpenFecAdapter.prototype, "fetchContributionsToCandidate")
+      .mockResolvedValue({ documentsUpserted: 0 });
+
+    const e = makeEntity("Multi-ID Person", {
+      bioguide: "S000148",
+      openstates_person: "ocd-person/ny-schumer",
+      fec_candidate: "S2NY00123",
     });
-    const res = await handleEntityConnections(store.db, { id: entity.id, depth: 1, min_co_occurrences: 1 });
+    await handleEntityConnections(store.db, { id: e.id, depth: 1, min_co_occurrences: 1 });
+
+    expect(sponsoredSpy).toHaveBeenCalledOnce();
+    expect(cosponsoredSpy).toHaveBeenCalledOnce();
+    expect(openstatesSpy).toHaveBeenCalledOnce();
+    expect(fecSpy).toHaveBeenCalledOnce();
+  });
+
+  it("cache hit: second call within TTL skips the adapter calls", async () => {
+    const sponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
+      .mockResolvedValue({ documentsUpserted: 0 });
+    const cosponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
+      .mockResolvedValue({ documentsUpserted: 0 });
+
+    const e = makeEntity("Cached Person", { bioguide: "S000148" });
+    await handleEntityConnections(store.db, { id: e.id, depth: 1, min_co_occurrences: 1 });
+    await handleEntityConnections(store.db, { id: e.id, depth: 1, min_co_occurrences: 1 });
+
+    expect(sponsoredSpy).toHaveBeenCalledOnce();
+    expect(cosponsoredSpy).toHaveBeenCalledOnce();
+  });
+
+  it("upstream failure with stale cache → stale_notice attached, connections still computed", async () => {
+    const e = makeEntity("Stale Person", { bioguide: "S000148" });
+    // Seed a co-occurrence so the projection has something to return.
+    const colleague = makeEntity("Colleague");
+    makeDoc("stale-1", "bill", [e.id, colleague.id]);
+
+    // Seed stale fetch_log rows for both sponsored + cosponsored so the
+    // fallback path runs after the thrown fetch.
+    const ageMs = 48 * 60 * 60 * 1000;
+    for (const endpoint of [
+      "/member/S000148/sponsored-legislation",
+      "/member/S000148/cosponsored-legislation",
+    ]) {
+      const tool = endpoint.endsWith("sponsored-legislation") && !endpoint.includes("cosponsored")
+        ? "fetchMemberSponsored"
+        : "fetchMemberCosponsored";
+      upsertFetchLog(store.db, {
+        source: "congress",
+        endpoint_path: endpoint,
+        args_hash: hashArgs(tool, { bioguide: "S000148" }),
+        scope: "full",
+        fetched_at: new Date(Date.now() - ageMs).toISOString(),
+        last_rowcount: 0,
+      });
+    }
+
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
+      .mockRejectedValue(new Error("simulated upstream failure"));
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
+      .mockRejectedValue(new Error("simulated upstream failure"));
+
+    const res = await handleEntityConnections(store.db, {
+      id: e.id,
+      depth: 1,
+      min_co_occurrences: 1,
+    });
     expect(res.stale_notice?.reason).toBe("upstream_failure");
-    expect(res.root.id).toBe(entity.id);
+    expect(res.root.id).toBe(e.id);
+    // Projection still computes over the local store.
+    const nodeIds = res.nodes.map((n) => n.id);
+    expect(nodeIds).toContain(colleague.id);
+  });
+
+  it("upstream failure with no cache → error propagates", async () => {
+    const e = makeEntity("Cold-Fail Person", { bioguide: "S000148" });
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
+      .mockRejectedValue(new Error("network down"));
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
+      .mockRejectedValue(new Error("network down"));
+
+    await expect(
+      handleEntityConnections(store.db, { id: e.id, depth: 1, min_co_occurrences: 1 }),
+    ).rejects.toThrow(/network down/);
+  });
+
+  it("endpoint_path includes the ID → different entities get different cache rows", async () => {
+    const sponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
+      .mockResolvedValue({ documentsUpserted: 0 });
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
+      .mockResolvedValue({ documentsUpserted: 0 });
+
+    const e1 = makeEntity("Person One", { bioguide: "AAA111" });
+    const e2 = makeEntity("Person Two", { bioguide: "BBB222" });
+
+    await handleEntityConnections(store.db, { id: e1.id, depth: 1, min_co_occurrences: 1 });
+    await handleEntityConnections(store.db, { id: e2.id, depth: 1, min_co_occurrences: 1 });
+    expect(sponsoredSpy).toHaveBeenCalledTimes(2);
+    await handleEntityConnections(store.db, { id: e1.id, depth: 1, min_co_occurrences: 1 });
+    expect(sponsoredSpy).toHaveBeenCalledTimes(2);
   });
 });

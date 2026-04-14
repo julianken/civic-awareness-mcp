@@ -1,10 +1,14 @@
 import type Database from "better-sqlite3";
-import { EntityConnectionsInput } from "../schemas.js";
+import { CongressAdapter } from "../../adapters/congress.js";
+import { OpenFecAdapter } from "../../adapters/openfec.js";
+import { OpenStatesAdapter } from "../../adapters/openstates.js";
 import { findConnections } from "../../core/connections.js";
 import { findEntityById } from "../../core/entities.js";
-import type { StaleNotice } from "../shared.js";
-import { ensureFresh, sourcesForFullHydrate } from "../../core/hydrate.js";
 import { getLimiter } from "../../core/limiters.js";
+import { withShapedFetch } from "../../core/tool_cache.js";
+import { requireEnv } from "../../util/env.js";
+import { EntityConnectionsInput } from "../schemas.js";
+import type { StaleNotice } from "../shared.js";
 
 interface EntityMatch {
   id: string;
@@ -36,6 +40,7 @@ export interface EntityConnectionsResponse {
   nodes: EntityMatch[];
   sources: Array<{ name: string; url: string }>;
   truncated: boolean;
+  empty_reason?: "no_external_ids";
   stale_notice?: StaleNotice;
 }
 
@@ -116,14 +121,138 @@ export async function handleEntityConnections(
   const rootEntity = findEntityById(db, input.id);
   if (!rootEntity) throw new Error(`Entity not found: ${input.id}`);
 
+  const rootRoleMap = batchFetchRoles(db, [rootEntity.id]);
+  const root: EntityMatch = {
+    id: rootEntity.id,
+    kind: rootEntity.kind,
+    name: rootEntity.name,
+    roles_seen: rootRoleMap.get(rootEntity.id) ?? [],
+    last_seen_at: rootEntity.last_seen_at,
+  };
+
+  // Cold-path short-circuit per phase-8a Decision 9: an entity with no
+  // external IDs cannot be fanned out to any upstream, so entity_connections
+  // returns an empty graph with a diagnostic reason rather than silently
+  // computing a projection over whatever stale documents happen to be
+  // local.
+  if (Object.keys(rootEntity.external_ids).length === 0) {
+    return {
+      root,
+      edges: [],
+      nodes: [],
+      sources: [],
+      truncated: false,
+      empty_reason: "no_external_ids",
+    };
+  }
+
+  const ttl = { scope: "full" as const, ms: 24 * 60 * 60 * 1000 };
+  const noop = (): void => {};
+  const calls: Promise<{ stale_notice?: StaleNotice }>[] = [];
+
+  if (rootEntity.external_ids.bioguide) {
+    const bioguide = rootEntity.external_ids.bioguide;
+    calls.push(
+      withShapedFetch(
+        db,
+        {
+          source: "congress",
+          endpoint_path: `/member/${bioguide}/sponsored-legislation`,
+          args: { bioguide },
+          tool: "fetchMemberSponsored",
+        },
+        ttl,
+        async () => {
+          const adapter = new CongressAdapter({
+            apiKey: requireEnv("API_DATA_GOV_KEY"),
+            rateLimiter: getLimiter("congress"),
+          });
+          const r = await adapter.fetchMemberSponsoredBills(db, bioguide);
+          return { primary_rows_written: r.documentsUpserted };
+        },
+        noop,
+        () => getLimiter("congress").peekWaitMs(),
+      ),
+    );
+    calls.push(
+      withShapedFetch(
+        db,
+        {
+          source: "congress",
+          endpoint_path: `/member/${bioguide}/cosponsored-legislation`,
+          args: { bioguide },
+          tool: "fetchMemberCosponsored",
+        },
+        ttl,
+        async () => {
+          const adapter = new CongressAdapter({
+            apiKey: requireEnv("API_DATA_GOV_KEY"),
+            rateLimiter: getLimiter("congress"),
+          });
+          const r = await adapter.fetchMemberCosponsoredBills(db, bioguide);
+          return { primary_rows_written: r.documentsUpserted };
+        },
+        noop,
+        () => getLimiter("congress").peekWaitMs(),
+      ),
+    );
+  }
+
+  if (rootEntity.external_ids.openstates_person) {
+    const ocdId = rootEntity.external_ids.openstates_person;
+    calls.push(
+      withShapedFetch(
+        db,
+        {
+          source: "openstates",
+          endpoint_path: `/bills?sponsor=${ocdId}`,
+          args: { sponsor: ocdId },
+          tool: "fetchBillsBySponsor",
+        },
+        ttl,
+        async () => {
+          const adapter = new OpenStatesAdapter({
+            apiKey: requireEnv("OPENSTATES_API_KEY"),
+            rateLimiter: getLimiter("openstates"),
+          });
+          const r = await adapter.fetchBillsBySponsor(db, { sponsor: ocdId });
+          return { primary_rows_written: r.documentsUpserted };
+        },
+        noop,
+        () => getLimiter("openstates").peekWaitMs(),
+      ),
+    );
+  }
+
+  if (rootEntity.external_ids.fec_candidate) {
+    const candidateId = rootEntity.external_ids.fec_candidate;
+    calls.push(
+      withShapedFetch(
+        db,
+        {
+          source: "openfec",
+          endpoint_path: `/candidate/${candidateId}/schedule_a`,
+          args: { candidateId },
+          tool: "fetchContributionsToCandidate",
+        },
+        ttl,
+        async () => {
+          const adapter = new OpenFecAdapter({
+            apiKey: requireEnv("API_DATA_GOV_KEY"),
+            rateLimiter: getLimiter("openfec"),
+          });
+          const r = await adapter.fetchContributionsToCandidate(db, { candidateId });
+          return { primary_rows_written: r.documentsUpserted };
+        },
+        noop,
+        () => getLimiter("openfec").peekWaitMs(),
+      ),
+    );
+  }
+
   let stale_notice: StaleNotice | undefined;
-  const roles = (rootEntity.metadata?.roles as Array<{ jurisdiction?: string }> | undefined) ?? [];
-  const jurisdictions = [...new Set(roles.map((r) => r.jurisdiction).filter(Boolean))] as string[];
-  outer: for (const juris of jurisdictions) {
-    for (const src of sourcesForFullHydrate(juris)) {
-      const r = await ensureFresh(db, src, juris, "full", () => getLimiter(src).peekWaitMs());
-      if (r.stale_notice) { stale_notice = r.stale_notice; break outer; }
-    }
+  for (const res of await Promise.all(calls)) {
+    if (res.stale_notice && !stale_notice) stale_notice = res.stale_notice;
   }
 
   const { edges: rawEdges, truncated } = findConnections(
@@ -133,7 +262,6 @@ export async function handleEntityConnections(
     input.min_co_occurrences,
   );
 
-  // Collect all entity IDs (excluding root) and document IDs to hydrate.
   const entityIdSet = new Set<string>();
   const docIdSet = new Set<string>();
   for (const e of rawEdges) {
@@ -146,8 +274,6 @@ export async function handleEntityConnections(
   const entityMap = batchFetchEntities(db, Array.from(entityIdSet));
   const docMap = batchFetchDocs(db, Array.from(docIdSet));
   const roleMap = batchFetchRoles(db, Array.from(entityIdSet));
-  // Also fetch root roles
-  const rootRoleMap = batchFetchRoles(db, [rootEntity.id]);
 
   const toEntityMatch = (id: string): EntityMatch | null => {
     const row = entityMap.get(id);
@@ -171,14 +297,6 @@ export async function handleEntityConnections(
       occurred_at: row.occurred_at,
       source_url: row.source_url,
     };
-  };
-
-  const root: EntityMatch = {
-    id: rootEntity.id,
-    kind: rootEntity.kind,
-    name: rootEntity.name,
-    roles_seen: rootRoleMap.get(rootEntity.id) ?? [],
-    last_seen_at: rootEntity.last_seen_at,
   };
 
   const edges: ConnectionEdge[] = rawEdges.map((e) => ({

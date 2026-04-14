@@ -36,15 +36,24 @@ beforeEach(() => {
   process.env.OPENSTATES_API_KEY = "test-key";
   process.env.API_DATA_GOV_KEY = "test-key";
 
-  // R15: resolve_person no longer calls ensureFresh. Tests that pass a
-  // `jurisdiction_hint` would otherwise trigger a live fetch via the
-  // withShapedFetch fanout, so we stub the narrow adapter methods here.
+  // R15: resolve_person + entity_connections no longer call ensureFresh.
+  // Tests that pass a `jurisdiction_hint` or hit entity_connections would
+  // otherwise trigger live fetches via the withShapedFetch fanout, so we
+  // stub all narrow adapter methods the handlers might invoke.
   vi.spyOn(OpenStatesAdapter.prototype, "searchPeople")
     .mockImplementation(async () => ({ entitiesUpserted: 0 }));
   vi.spyOn(CongressAdapter.prototype, "searchMembers")
     .mockImplementation(async () => ({ entitiesUpserted: 0 }));
   vi.spyOn(OpenFecAdapter.prototype, "searchCandidates")
     .mockImplementation(async () => ({ entitiesUpserted: 0 }));
+  vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
+    .mockImplementation(async () => ({ documentsUpserted: 0 }));
+  vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
+    .mockImplementation(async () => ({ documentsUpserted: 0 }));
+  vi.spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor")
+    .mockImplementation(async () => ({ documentsUpserted: 0 }));
+  vi.spyOn(OpenFecAdapter.prototype, "fetchContributionsToCandidate")
+    .mockImplementation(async () => ({ documentsUpserted: 0 }));
 
   if (existsSync(TEST_DB)) rmSync(TEST_DB);
   store = openStore(TEST_DB);
@@ -89,6 +98,7 @@ beforeEach(() => {
   const coSponsor = upsertEntity(store.db, {
     kind: "person",
     name: "Thomas Benitez",
+    external_ids: { openstates_person: "ocd-person/test-benitez" },
   }).entity;
   coSponsorId = coSponsor.id;
 
