@@ -273,6 +273,38 @@ export class CongressAdapter implements Adapter {
   }
 
   /**
+   * Narrow per-tool fetch for R15 member search — one page of
+   * `/member?congress=N` for the current Congress. Congress.gov has no
+   * name-search endpoint, so this refreshes the full ~250-member page
+   * and relies on the local SQL projection to filter. Shared endpoint
+   * with `search_entities` / `resolve_person` (federal fanout) so
+   * cache rows coalesce under R15's endpoint-keyed fetch_log.
+   */
+  async searchMembers(
+    db: Database.Database,
+    opts: { limit?: number } = {},
+  ): Promise<{ entitiesUpserted: number }> {
+    const congress = this.congresses[0];
+    const url = new URL(`${BASE_URL}/member`);
+    url.searchParams.set("congress", String(congress));
+    url.searchParams.set("limit", String(opts.limit ?? 250));
+    url.searchParams.set("api_key", this.opts.apiKey);
+
+    const res = await rateLimitedFetch(url.toString(), {
+      userAgent: "civic-awareness-mcp/0.1.0 (+github)",
+      rateLimiter: this.rateLimiter,
+    });
+    if (!res.ok) throw new Error(`Congress.gov /member returned ${res.status}`);
+    const body = (await res.json()) as { members?: CongressMember[] };
+    let entitiesUpserted = 0;
+    for (const m of body.members ?? []) {
+      this.upsertMember(db, m);
+      entitiesUpserted += 1;
+    }
+    return { entitiesUpserted };
+  }
+
+  /**
    * Narrow per-tool fetch for R15 `recent_votes` — one page of recent
    * roll-call votes for the current Congress with optional chamber
    * filter. On 404 (free Congress.gov tier does not expose `/vote`),
