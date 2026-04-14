@@ -15,6 +15,24 @@ this file. Format loosely follows [Keep a Changelog](https://keepachangelog.com/
   name, party, state, yea/nay/present/not_voting) for one roll-call
   vote. Federal (Congress.gov) only; accepts either `vote_id` or the
   `(congress, chamber, session, roll_number)` composite. See R17, D11.
+- `entity_connections`: edges now include `via_roles[]` alongside
+  `via_kinds[]`, distinguishing sponsored / cosponsored / voted /
+  contributor edges. (phase-9d)
+- `search_entities`: optional `had_role` and `had_jurisdiction`
+  filters over `metadata.roles[]`. Both AND against a single roles
+  entry so a federal senator's state-legislator history in Texas
+  matches `(had_role=state_legislator, had_jurisdiction=us-tx)` but
+  the senator role alone does not. (phase-9d)
+- `recent_contributions`: optional `contributor_entity_id` and
+  `side` inputs. Donor-side queries ("what did X give to") no
+  longer require `entity_connections` chaining. (phase-9d)
+
+### Changed
+- `recent_contributions` cache key expanded to include
+  `contributor_entity_id` and `side`. When `candidate_or_committee`
+  is set and `side` is omitted, `side` defaults to `"recipient"` —
+  preserves back-compat so pre-9d calls hit the same cache row as
+  before. (phase-9d)
 
 ## 0.3.0 (2026-04-14)
 

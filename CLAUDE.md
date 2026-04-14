@@ -82,15 +82,15 @@ When a human opens this repo in Claude Code for the first time:
 ## How to think about this MCP
 
 The tool surface has three projections over the same entity-tagged
-event stream:
+event stream (11 tools total as of Phase 9d):
 
-- **Feeds (B):** `recent_bills`, `recent_votes`,
-  `recent_contributions`, `search_civic_documents` — time-first,
-  discovery-oriented.
+- **Feeds (B):** `recent_bills`, `list_bills`, `recent_votes`,
+  `recent_contributions`, `search_civic_documents` — time-first or
+  predicate-first, discovery-oriented.
 - **Entities (A):** `search_entities`, `get_entity`,
   `entity_connections`, `resolve_person` — identity-first,
   investigation-oriented.
-- **Details (C):** `get_bill` (and future `get_vote`,
+- **Details (C):** `get_bill`, `get_vote` (and a future
   `get_contribution`) — identifier-first, full projection of one
   resource. Uses per-document TTL (R14 / D11) tracked in
   documents.fetched_at, independent of the endpoint-level

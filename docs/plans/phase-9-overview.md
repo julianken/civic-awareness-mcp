@@ -1,5 +1,10 @@
 # Phase 9 — V2 Tool Surface Completion (Overview)
 
+> **Status (2026-04-14): ✅ COMPLETE.** All four sub-phases (9a–9d)
+> have shipped on `main`. Terminal tool count is 11. v0.4.0 sits
+> in `CHANGELOG.md` under `## Unreleased`; the release cut is a
+> separate decision (Phase 9e if needed).
+
 > **For agentic workers:** This is the index doc for Phase 9.
 > Each sub-phase (9a–9d) has its own plan file. Execute them in
 > order via `superpowers:subagent-driven-development` (recommended)
@@ -32,10 +37,10 @@ are required.
 
 | Plan | Scope | Adds | Size |
 |---|---|---|---|
-| [`phase-9a-recent-bills-limit.md`](./phase-9a-recent-bills-limit.md) | Optional `limit` on `recent_bills`; when set, the handler drops `updated_since` and returns top-N by OpenStates' native `sort=updated_desc`. Unblocks the reported biennial-legislature case (last 20 MT bills with no recent activity). | — | ~1 commit |
+| [`phase-9a-recent-bills-limit.md`](./phase-9a-recent-bills-limit.md) ✅ | Optional `limit` on `recent_bills`; when set, the handler drops `updated_since` and returns top-N by OpenStates' native `sort=updated_desc`. Unblocks the reported biennial-legislature case (last 20 MT bills with no recent activity). | — | ~1 commit |
 | [`phase-9b-list-bills.md`](./phase-9b-list-bills.md) ✅ | New `list_bills` tool. Inputs: `jurisdiction`, `session?`, `chamber?`, `sponsor_entity_id?`, `subject?`, `classification?`, `introduced_since?`/`until?`, `updated_since?`/`until?`, `sort`, `limit`. Proper bill-listing projection distinct from time-windowed feed. | Tool #10 | ~4 commits |
 | [`phase-9c-get-vote.md`](./phase-9c-get-vote.md) ✅ | New `get_vote` detail tool. Inputs: `vote_id` (or `(jurisdiction, session, identifier)` composite). Returns per-legislator `positions[]` so "how did X vote" / "party-line breakdown" / "against-their-party" queries become answerable. Mirrors `get_bill`'s C-projection shape. | Tool #11 | ~3 commits |
-| [`phase-9d-tool-polish.md`](./phase-9d-tool-polish.md) | Three small parameter additions: `via_roles[]` on `entity_connections` edges; `had_role?`/`had_jurisdiction?` on `search_entities`; `contributor_entity_id?`/`side?` on `recent_contributions` for donor-side queries. | — | ~3 commits |
+| [`phase-9d-tool-polish.md`](./phase-9d-tool-polish.md) ✅ | Three small parameter additions: `via_roles[]` on `entity_connections` edges; `had_role?`/`had_jurisdiction?` on `search_entities`; `contributor_entity_id?`/`side?` on `recent_contributions` for donor-side queries. | — | ~3 commits |
 
 Total: 2 new tools + 4 param additions → terminal count **11 tools**,
 well inside the ~15-tool LLM-selection ceiling per R5.

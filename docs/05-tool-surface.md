@@ -107,6 +107,14 @@ changing the tool surface.
 input:
   window: { from: string; to: string }        // ISO dates; required
   candidate_or_committee: string | undefined  // free-text, entity-resolved
+  side: "contributor" | "recipient" | "either" | undefined
+                                              // controls which side candidate_or_committee matches on;
+                                              // defaults to "recipient" when candidate_or_committee
+                                              // is set, "either" otherwise (back-compat for
+                                              // pre-9d callers)
+  contributor_entity_id: string | undefined   // entity-resolved donor;
+                                              // filters contributor side and threads to OpenFEC
+                                              // as contributor_name
   min_amount: number | undefined
 
 output: ToolResponse<ContributionSummary>
@@ -173,7 +181,13 @@ input:
   q: string
   kind: EntityKind | undefined
   jurisdiction: string | undefined  // filters on Organization.jurisdiction
-                                    // and on Person roles[].jurisdiction
+                                    // and on Person roles[].jurisdiction (current)
+  had_role: string | undefined      // matches any entry in metadata.roles[].role
+                                    // (historical — surfaces past as well as current;
+                                    //  see D3b cross-jurisdiction Person model)
+  had_jurisdiction: string | undefined
+                                    // matches any entry in metadata.roles[].jurisdiction
+                                    // had_role + had_jurisdiction AND against the SAME entry
   limit: number (default 20, max 50)
 
 output: ToolResponse<EntityMatch>
@@ -230,6 +244,8 @@ output: {
   edges: Array<{
     from: string; to: string;
     via_kinds: DocumentKind[];
+    via_roles: string[];              // neighbor's roles on shared documents
+                                      // (e.g. ["sponsor","cosponsor","voter"])
     co_occurrence_count: number;
     sample_documents: DocumentMatch[];
   }>,
@@ -239,8 +255,11 @@ output: {
 ```
 
 An edge between two entities exists if they co-occur on at least
-`min_co_occurrences` documents. The `via_kinds` tells the LLM whether
-the connection is via bills, votes, contributions, etc.
+`min_co_occurrences` documents. `via_kinds` tells the LLM whether
+the connection is via bills, votes, contributions, etc.; `via_roles`
+narrows that further to the neighbor's role on those documents
+(e.g. `sponsor` vs `cosponsor` vs `voter`), so a "who cosponsored
+with X" query is answerable without a second hop.
 
 ### `resolve_person` (Phase 5)
 
@@ -413,8 +432,9 @@ for operator use (cron, bulk seeding, historical backfill).
 | **8 — Shaped-query hydration (R15)** | ✅ done | No new tools; all 9 tools migrated from R13 jurisdiction-wide cache to R15 per-endpoint `fetch_log`; R13 infrastructure deleted |
 | **9b — list_bills** | ✅ done | + `list_bills` (OpenStates state bills; federal deferred) |
 | **9c — get_vote detail tool** | ✅ done | + `get_vote` (federal-only; state deferred) |
+| **9d — Tool polish** | ✅ done | No new tools; `entity_connections` edges gain `via_roles[]`; `search_entities` gains `had_role` / `had_jurisdiction`; `recent_contributions` gains `contributor_entity_id` / `side` |
 
-As of Phase 9c (2026-04-14), the server exposes **11 tools total**:
+As of Phase 9d (2026-04-14), the server exposes **11 tools total**:
 `recent_bills`, `list_bills`, `recent_votes`, `recent_contributions`,
 `search_entities`, `get_entity`, `search_civic_documents`,
 `entity_connections`, `resolve_person`, `get_bill`, `get_vote`.
@@ -426,11 +446,11 @@ a dedicated `entity_activity` tool emerges as necessary, it can be
 added as a wrapper over the existing `queryDocuments` / `findDocumentsByEntity`
 core helpers without new infrastructure.
 
-## Why 9 tools and not 20
+## Why 11 tools and not 20
 
 LLM tool-selection accuracy drops noticeably beyond ~15 tools with
-similar-sounding names. We keep to 9 with clearly distinct verbs
-(`recent_X` vs `search_X` vs `get_X` vs `resolve_X` vs
+similar-sounding names. We keep to 11 with clearly distinct verbs
+(`recent_X` vs `list_X` vs `search_X` vs `get_X` vs `resolve_X` vs
 `entity_connections`). If a future sub-source needs a new surface,
 we prefer extending an existing tool's input over adding a new tool.
 
