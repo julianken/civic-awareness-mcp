@@ -7,6 +7,11 @@ import { handleRecentBills } from "../../src/mcp/tools/recent_bills.js";
 import { handleRecentVotes } from "../../src/mcp/tools/recent_votes.js";
 import { upsertEntity } from "../../src/core/entities.js";
 
+vi.mock("../../src/core/hydrate.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/core/hydrate.js")>();
+  return { ...actual, ensureFresh: vi.fn().mockResolvedValue({ ok: true }) };
+});
+
 const TEST_DB = "./data/test-congress-e2e.db";
 let store: Store;
 

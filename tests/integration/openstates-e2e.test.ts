@@ -5,6 +5,11 @@ import { seedJurisdictions } from "../../src/core/seeds.js";
 import { OpenStatesAdapter } from "../../src/adapters/openstates.js";
 import { handleRecentBills } from "../../src/mcp/tools/recent_bills.js";
 
+vi.mock("../../src/core/hydrate.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/core/hydrate.js")>();
+  return { ...actual, ensureFresh: vi.fn().mockResolvedValue({ ok: true }) };
+});
+
 const TEST_DB = "./data/test-openstates-e2e.db";
 let store: Store;
 

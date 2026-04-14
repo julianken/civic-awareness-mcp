@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { rmSync, existsSync } from "node:fs";
 import { openStore, type Store } from "../../../../src/core/store.js";
 import { seedJurisdictions } from "../../../../src/core/seeds.js";
@@ -6,10 +6,20 @@ import { upsertEntity } from "../../../../src/core/entities.js";
 import { upsertDocument } from "../../../../src/core/documents.js";
 import { handleRecentBills } from "../../../../src/mcp/tools/recent_bills.js";
 
+vi.mock("../../../../src/core/hydrate.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/core/hydrate.js")>();
+  return { ...actual, ensureFresh: vi.fn() };
+});
+import { ensureFresh } from "../../../../src/core/hydrate.js";
+const mockEnsureFresh = vi.mocked(ensureFresh);
+
 const TEST_DB = "./data/test-tool-recent-bills.db";
 let store: Store;
 
 beforeEach(() => {
+  mockEnsureFresh.mockReset();
+  mockEnsureFresh.mockResolvedValue({ ok: true });
+
   if (existsSync(TEST_DB)) rmSync(TEST_DB);
   store = openStore(TEST_DB);
   seedJurisdictions(store.db);
@@ -214,5 +224,57 @@ describe("recent_bills tool", () => {
     const res = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
     const bytes = Buffer.byteLength(JSON.stringify(res), "utf8");
     expect(bytes).toBeLessThan(30 * 1024);
+  });
+
+  it("hydration: fresh cache returns results with no stale_notice", async () => {
+    mockEnsureFresh.mockResolvedValue({ ok: true });
+    const res = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
+    expect(res.results).toHaveLength(1);
+    expect(res.stale_notice).toBeUndefined();
+  });
+
+  it("hydration: upstream failure attaches stale_notice, still serves local data", async () => {
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "HB99 — stale test",
+      occurred_at: new Date().toISOString(),
+      source: { name: "openstates", id: "stale-1", url: "https://openstates.org/tx/bills/HB99" },
+    });
+    const notice = {
+      as_of: "2026-04-13T00:00:00.000Z",
+      reason: "upstream_failure" as const,
+      message: "Upstream openstates fetch failed; serving stale local data.",
+    };
+    mockEnsureFresh.mockResolvedValue({ ok: false, stale_notice: notice });
+    const res = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
+    expect(res.stale_notice?.reason).toBe("upstream_failure");
+    // Local data still served
+    expect(res.results.length).toBeGreaterThan(0);
+  });
+
+  it("hydration: rate-limited attaches stale_notice with retry_after_s", async () => {
+    const notice = {
+      as_of: "2026-04-13T00:00:00.000Z",
+      reason: "rate_limited" as const,
+      message: "Rate limit for openstates requires 120s wait; serving stale local data.",
+      retry_after_s: 120,
+    };
+    mockEnsureFresh.mockResolvedValue({ ok: false, stale_notice: notice });
+    const res = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
+    expect(res.stale_notice?.reason).toBe("rate_limited");
+    expect(res.stale_notice?.retry_after_s).toBe(120);
+  });
+
+  it("hydration: stale_notice propagates to empty-results diagnostic response", async () => {
+    const notice = {
+      as_of: "2026-04-13T00:00:00.000Z",
+      reason: "upstream_failure" as const,
+      message: "Upstream failed.",
+    };
+    mockEnsureFresh.mockResolvedValue({ ok: false, stale_notice: notice });
+    // us-or has no documents in the db
+    const res = await handleRecentBills(store.db, { jurisdiction: "us-or", days: 7 });
+    expect(res.results).toHaveLength(0);
+    expect(res).toHaveProperty("empty_reason");
+    expect(res.stale_notice?.reason).toBe("upstream_failure");
   });
 });

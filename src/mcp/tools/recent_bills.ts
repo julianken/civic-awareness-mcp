@@ -1,6 +1,8 @@
 import type Database from "better-sqlite3";
 import { queryDocuments } from "../../core/documents.js";
 import { findEntityById } from "../../core/entities.js";
+import { ensureFresh, sourcesFor } from "../../core/hydrate.js";
+import { getLimiter } from "../../core/limiters.js";
 import type { EntityReference } from "../../core/types.js";
 import { RecentBillsInput } from "../schemas.js";
 import { emptyFeedDiagnostic, type EmptyFeedDiagnostic, type StaleNotice } from "../shared.js";
@@ -95,6 +97,23 @@ export async function handleRecentBills(
   rawInput: unknown,
 ): Promise<RecentBillsResponse> {
   const input = RecentBillsInput.parse(rawInput);
+
+  let stale_notice: StaleNotice | undefined;
+  const sources = sourcesFor("bill", input.jurisdiction);
+  for (const src of sources) {
+    const r = await ensureFresh(
+      db,
+      src,
+      input.jurisdiction,
+      "recent",
+      () => getLimiter(src).peekWaitMs(),
+    );
+    if (r.stale_notice) {
+      stale_notice = r.stale_notice;
+      break;
+    }
+  }
+
   const to = new Date();
   const from = new Date(to.getTime() - input.days * 86400 * 1000);
 
@@ -166,7 +185,8 @@ export async function handleRecentBills(
   };
   if (results.length === 0) {
     const diag = emptyFeedDiagnostic(db, { jurisdiction: input.jurisdiction, kind: "bill" });
-    return { ...base, ...diag };
+    return { ...base, ...diag, ...(stale_notice ? { stale_notice } : {}) };
   }
+  if (stale_notice) base.stale_notice = stale_notice;
   return base;
 }
