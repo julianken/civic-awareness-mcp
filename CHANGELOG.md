@@ -3,6 +3,11 @@
 All notable changes to `civic-awareness-mcp` will be documented in
 this file. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## Unreleased
+
+### Added
+- `recent_bills` accepts an optional `limit: number` (1..20). When set, the handler drops the days-derived upstream time filter and returns top-N by last-updated. Intended for biennial and off-session jurisdictions where the default 7-day window is empty. See D12 / R16. (phase-9a)
+
 ## 0.3.0 (2026-04-14)
 
 ### Changed

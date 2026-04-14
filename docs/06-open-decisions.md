@@ -343,3 +343,14 @@ jurisdiction's recent feed."
   table growth, complicates eviction.
 - Always refetch on every `get_bill` call → hammers upstream,
   breaks rate-limit budget under concurrent MCP clients.
+
+## D12 — Feed tools accept optional `limit` for row-bounded listings (2026-04-14, LOCKED)
+
+**Decision:** Feed tools (starting with `recent_bills` in phase-9a) accept an optional `limit: z.number().int().min(1).max(20).optional()`. When `limit` is set the handler drops the `days`-derived upstream time filter (`updated_since` on OpenStates; widened `fromDateTime` on Congress.gov) so the upstream's native `sort=updated_desc` / `sort=updateDate+desc` surfaces the top-N most recently updated rows regardless of recency. When both `days` and `limit` are set, both apply: `days` constrains the local projection window and `limit` caps the result count. `limit` joins the `withShapedFetch` args bag so distinct values get distinct `fetch_log` rows.
+
+**Why:** See R16. Biennial state legislatures (Montana, Nevada, Texas in off-years) and any jurisdiction between sessions have empty 7-day windows. "Give me the last 20 updated bills" is the right query shape for that case; "give me bills updated since last Tuesday" is not.
+
+**Alternatives rejected:**
+- Make `limit` a general-purpose cap but keep `updated_since` → defeats the purpose; the upstream still filters to an empty window.
+- Auto-widen `days` when results are empty → silent semantic drift; the cache key would no longer reflect what the caller asked for.
+- Add a separate tool for listing → see D13; a distinct tool is only warranted when predicate richness grows past a single optional parameter.

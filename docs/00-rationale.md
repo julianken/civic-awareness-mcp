@@ -499,3 +499,15 @@ per-endpoint tracking in `fetch_log` is needed.
 Shipped across phase-8a through phase-8j (2026-04-14); see
 `docs/superpowers/specs/2026-04-14-shaped-query-hydration-design.md`
 for the full design.
+
+## R16 — Optional `limit` on feed tools for off-session jurisdictions (2026-04-14)
+
+Post-Phase-8 audit note. The tool-surface audit surfaced a biennial-legislature case: `recent_bills(jurisdiction="us-mt", days=7)` returns empty year-round except for the two months Montana's legislature is in session every other year. Callers asking "what are Montana's most recently updated bills" need a listing shape that doesn't depend on the 7-day window.
+
+`limit` is the minimum surface-area change that gets this right. The handler drops the upstream `updated_since` on OpenStates (and widens `fromDateTime` to 365d on Congress.gov so `sort=updateDate+desc` still works) when `limit` is set. The upstream's native updated-desc sort does the real work.
+
+The decision to keep `days` with its 7-day default — even when `limit` is set — preserves the local projection window unless the caller explicitly passes `days=365`. That preserves the invariant that `days` always constrains the local projection. Callers who want "last N ever" pass `days=365, limit=N`. This is documented in the tool description.
+
+Distinct `limit` values produce distinct `fetch_log` rows by virtue of joining the args bag — no new cache-invalidation machinery needed.
+
+Locked in phase-9a (`docs/plans/phase-9a-recent-bills-limit.md`).

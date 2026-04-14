@@ -45,6 +45,13 @@ input:
   days: number (default 7, max 365)
   chamber: "upper" | "lower" | undefined
   session: string | undefined       // e.g. "119" for 119th Congress, or OpenStates session id
+  limit: number (1..20) | undefined // optional row cap; when set, drops the
+                                    // days-derived upstream time filter and
+                                    // returns top-N by last-updated. Use for
+                                    // biennial / off-session jurisdictions.
+                                    // Both `days` and `limit` apply as upper
+                                    // bounds when both are set; pass
+                                    // `days=365, limit=N` for "last N ever."
 
 output: ToolResponse<BillSummary>
 
@@ -57,6 +64,8 @@ BillSummary = {
   source_url: string
 }
 ```
+
+Results are sorted by **last-updated**, not introduced date — a re-touched older bill with recent committee activity can rank above a freshly introduced one.
 
 ### `recent_contributions` (Phase 4)
 
