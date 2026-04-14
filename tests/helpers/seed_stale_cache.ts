@@ -3,7 +3,7 @@ import { upsertDocument } from "../../src/core/documents.js";
 import { upsertFetchLog } from "../../src/core/fetch_log.js";
 import { hashArgs } from "../../src/core/args_hash.js";
 import type { FetchLogScope } from "../../src/core/fetch_log.js";
-import type { HydrationSource } from "../../src/core/freshness.js";
+import type { HydrationSource } from "../../src/core/sources.js";
 
 export interface SeedStaleCacheInput {
   db: Database.Database;

@@ -3,7 +3,7 @@ import { hashArgs } from "./args_hash.js";
 import { DailyBudget } from "./budget.js";
 import { getFetchLog, isFetchLogFresh, upsertFetchLog } from "./fetch_log.js";
 import type { FetchLogScope } from "./fetch_log.js";
-import type { HydrationSource } from "./freshness.js";
+import type { HydrationSource } from "./sources.js";
 import { Singleflight } from "./singleflight.js";
 import type { StaleNotice } from "../mcp/shared.js";
 import { RATE_LIMIT_WAIT_THRESHOLD_MS } from "../util/http.js";

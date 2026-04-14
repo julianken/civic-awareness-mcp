@@ -1,4 +1,4 @@
-import type { HydrationSource } from "./freshness.js";
+import type { HydrationSource } from "./sources.js";
 
 export interface BudgetCheck {
   allowed: boolean;

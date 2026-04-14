@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import type { HydrationSource } from "./freshness.js";
+import type { HydrationSource } from "./sources.js";
 
 export type FetchLogScope = "recent" | "full" | "detail";
 

@@ -1,5 +1,5 @@
 import { RateLimiter } from "../util/http.js";
-import type { HydrationSource } from "./freshness.js";
+import type { HydrationSource } from "./sources.js";
 
 const limiters: Partial<Record<HydrationSource, RateLimiter>> = {};
 
