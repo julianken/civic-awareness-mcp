@@ -8,4 +8,12 @@ describe("buildServer", () => {
     expect(store).toBeDefined();
     store.close();
   });
+
+  it("registers the get_bill tool", () => {
+    const { mcp, store } = buildServer({ dbPath: ":memory:" });
+    const tools = (mcp as unknown as { _registeredTools: Record<string, unknown> })
+      ._registeredTools;
+    expect(tools).toHaveProperty("get_bill");
+    store.close();
+  });
 });

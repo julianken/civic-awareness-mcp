@@ -8,6 +8,7 @@ import { handleGetEntity } from "./tools/get_entity.js";
 import { handleSearchDocuments } from "./tools/search_civic_documents.js";
 import { handleEntityConnections } from "./tools/entity_connections.js";
 import { handleResolvePerson } from "./tools/resolve_person.js";
+import { handleGetBill } from "./tools/get_bill.js";
 import {
   RecentBillsInput,
   RecentVotesInput,
@@ -17,6 +18,7 @@ import {
   SearchDocumentsInput,
   EntityConnectionsInput,
   ResolvePersonInput,
+  GetBillInput,
 } from "./schemas.js";
 
 export interface BuildServerOptions { dbPath: string }
@@ -148,6 +150,24 @@ export function buildServer(opts: BuildServerOptions): CivicAwarenessServer {
     },
     async (input) => {
       const data = await handleResolvePerson(store.db, input);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    },
+  );
+
+  mcp.registerTool(
+    "get_bill",
+    {
+      description:
+        "Fetch full detail for a single bill by (jurisdiction, session, " +
+        "identifier). Returns subjects, abstracts, full actions history, " +
+        "primary sponsor + cosponsors with entity IDs, versions with " +
+        "text_url links (follow these URLs for bill text — the MCP does " +
+        "not proxy text), and related bills. OpenStates state bills only " +
+        "in V1; us-federal returns stale_notice.reason=\"not_yet_supported\".",
+      inputSchema: GetBillInput.shape,
+    },
+    async (input) => {
+      const data = await handleGetBill(store.db, input);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     },
   );
