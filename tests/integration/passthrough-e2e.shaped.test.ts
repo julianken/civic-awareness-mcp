@@ -23,6 +23,7 @@ import { readFileSync } from "node:fs";
 import { openStore, type Store } from "../../src/core/store.js";
 import { seedJurisdictions } from "../../src/core/seeds.js";
 import { upsertEntity } from "../../src/core/entities.js";
+import { handleGetEntity } from "../../src/mcp/tools/get_entity.js";
 import { handleRecentBills } from "../../src/mcp/tools/recent_bills.js";
 import { handleRecentVotes } from "../../src/mcp/tools/recent_votes.js";
 import { handleRecentContributions } from "../../src/mcp/tools/recent_contributions.js";
@@ -362,5 +363,99 @@ describe("passthrough shaped e2e — resolve_person / search_entities shared cac
         jurisdiction_hint: "us-tx",
       }),
     ).rejects.toThrow();
+  });
+});
+
+describe("passthrough shaped e2e — get_entity (R15)", () => {
+  it("entity with bioguide triggers exactly one Congress.gov /member/{id} fetch", async () => {
+    let memberHits = 0;
+    vi.spyOn(global, "fetch").mockImplementation(async (input) => {
+      const url = String(typeof input === "string" ? input : (input as URL | Request).toString());
+      if (url.includes("api.congress.gov/v3/member/S000148")) {
+        memberHits += 1;
+        return new Response(
+          JSON.stringify({
+            member: {
+              bioguideId: "S000148",
+              name: "Schumer, Charles E.",
+              partyName: "Democrat",
+              state: "NY",
+              terms: {
+                item: [
+                  { chamber: "Senate", startYear: 1999, endYear: null },
+                ],
+              },
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("", { status: 404 });
+    });
+
+    const { entity } = upsertEntity(store.db, {
+      kind: "person",
+      name: "Schumer, Charles E.",
+      external_ids: { bioguide: "S000148" },
+    });
+
+    const res = await handleGetEntity(store.db, { id: entity.id });
+    expect(memberHits).toBe(1);
+    expect(res.entity.external_ids.bioguide).toBe("S000148");
+    expect(res.stale_notice).toBeUndefined();
+  });
+
+  it("cache hit: same call twice only fires upstream once", async () => {
+    let memberHits = 0;
+    vi.spyOn(global, "fetch").mockImplementation(async (input) => {
+      const url = String(typeof input === "string" ? input : (input as URL | Request).toString());
+      if (url.includes("api.congress.gov/v3/member/S000148")) {
+        memberHits += 1;
+        return new Response(
+          JSON.stringify({
+            member: {
+              bioguideId: "S000148",
+              name: "Schumer, Charles E.",
+              partyName: "Democrat",
+              state: "NY",
+              terms: { item: [{ chamber: "Senate", startYear: 1999, endYear: null }] },
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("", { status: 404 });
+    });
+
+    const { entity } = upsertEntity(store.db, {
+      kind: "person",
+      name: "Schumer, Charles E.",
+      external_ids: { bioguide: "S000148" },
+    });
+
+    await handleGetEntity(store.db, { id: entity.id });
+    await handleGetEntity(store.db, { id: entity.id });
+    expect(memberHits).toBe(1);
+  });
+
+  it("entity with no external IDs triggers zero upstream fetches", async () => {
+    let upstream = 0;
+    vi.spyOn(global, "fetch").mockImplementation(async () => {
+      upstream += 1;
+      return new Response("", { status: 404 });
+    });
+
+    const { entity } = upsertEntity(store.db, {
+      kind: "person",
+      name: "Bare Entity",
+      metadata: {
+        roles: [{ jurisdiction: "us-tx", role: "state_legislator" }],
+      },
+    });
+
+    const res = await handleGetEntity(store.db, { id: entity.id });
+    expect(upstream).toBe(0);
+    expect(res.entity.name).toBe("Bare Entity");
+    expect(res.stale_notice).toBeUndefined();
   });
 });
