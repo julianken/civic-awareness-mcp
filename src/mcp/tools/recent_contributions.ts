@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { OpenFecAdapter } from "../../adapters/openfec.js";
 import { queryDocuments } from "../../core/documents.js";
+import { findEntityById } from "../../core/entities.js";
 import { getLimiter } from "../../core/limiters.js";
 import { withShapedFetch } from "../../core/tool_cache.js";
 import { requireEnv } from "../../util/env.js";
@@ -54,17 +55,34 @@ export async function handleRecentContributions(
 ): Promise<RecentContributionsResponse> {
   const input = RecentContributionsInput.parse(rawInput);
 
+  // Default side semantics: when candidate_or_committee is set and side is
+  // omitted, default to "recipient" for back-compat. When side is set, it
+  // wins. contributor_entity_id is independent of `side` and always filters
+  // the contributor side locally.
+  const effectiveSide: "contributor" | "recipient" | "either" =
+    input.side ?? (input.candidate_or_committee ? "recipient" : "either");
+
+  // Resolve contributor entity once, up front — used by both projectLocal
+  // (local entity_id filter) and fetchAndWrite (upstream contributor_name).
+  let contributorEntity: { id: string; name: string } | undefined;
+  if (input.contributor_entity_id) {
+    const row = findEntityById(db, input.contributor_entity_id);
+    if (!row) {
+      throw new Error(`Entity not found: ${input.contributor_entity_id}`);
+    }
+    contributorEntity = { id: row.id, name: row.name };
+  }
+
   const toMMDDYYYY = (iso: string): string => {
     const d = new Date(iso);
     return `${String(d.getUTCMonth() + 1).padStart(2, "0")}/${String(d.getUTCDate()).padStart(2, "0")}/${d.getUTCFullYear()}`;
   };
 
   const projectLocal = (): RecentContributionsResponse => {
-    // If candidate_or_committee is given, resolve it to an entity UUID.
-    // We match against normalized name (lowercased, punct-stripped) using
-    // a LIKE search consistent with search_entities — but limit to
-    // kinds that appear as recipients on contribution documents.
-    let recipientEntityId: string | undefined;
+    // candidate_or_committee resolves to a single best-match entity id.
+    // Under `effectiveSide`, that match is applied to the contributor
+    // side, recipient side, or either.
+    let candOrCmteEntityId: string | undefined;
     if (input.candidate_or_committee) {
       const q = input.candidate_or_committee
         .toLowerCase()
@@ -79,7 +97,7 @@ export async function handleRecentContributions(
            LIMIT 1`,
         )
         .get(`%${escapeLike(q)}%`) as { id: string } | undefined;
-      recipientEntityId = match?.id;
+      candOrCmteEntityId = match?.id;
     }
 
     const docs = queryDocuments(db, {
@@ -104,20 +122,28 @@ export async function handleRecentContributions(
       // min_amount filter.
       if (input.min_amount !== undefined && amount < input.min_amount) continue;
 
-      // candidate_or_committee filter — check that the resolved entity is
-      // the recipient on this document.
-      if (recipientEntityId) {
-        const isRecipient = doc.references.some(
-          (r) => r.entity_id === recipientEntityId && r.role === "recipient",
-        );
-        if (!isRecipient) continue;
-      }
-
-      // Resolve contributor and recipient from document_references.
       const contribRef = doc.references.find((r) => r.role === "contributor");
       const recipientRef = doc.references.find((r) => r.role === "recipient");
 
       if (!recipientRef) continue;  // malformed document — skip
+
+      // contributor_entity_id filter — always contributor side.
+      if (contributorEntity && contribRef?.entity_id !== contributorEntity.id) {
+        continue;
+      }
+
+      // candidate_or_committee filter with side semantics.
+      if (candOrCmteEntityId) {
+        const matchesContributor = contribRef?.entity_id === candOrCmteEntityId;
+        const matchesRecipient = recipientRef.entity_id === candOrCmteEntityId;
+        const ok =
+          effectiveSide === "contributor"
+            ? matchesContributor
+            : effectiveSide === "recipient"
+              ? matchesRecipient
+              : matchesContributor || matchesRecipient;
+        if (!ok) continue;
+      }
 
       // Look up entity names.
       const recipientRow = db
@@ -177,6 +203,7 @@ export async function handleRecentContributions(
     const result = await adapter.fetchRecentContributions(db, {
       min_date: toMMDDYYYY(input.window.from),
       max_date: toMMDDYYYY(input.window.to),
+      contributor_name: contributorEntity?.name,
     });
     return { primary_rows_written: result.documentsUpserted };
   };
@@ -190,6 +217,8 @@ export async function handleRecentContributions(
         window: input.window,
         candidate_or_committee: input.candidate_or_committee,
         min_amount: input.min_amount,
+        contributor_entity_id: input.contributor_entity_id,
+        side: effectiveSide,
       },
       tool: "recent_contributions",
     },

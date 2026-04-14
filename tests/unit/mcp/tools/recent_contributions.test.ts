@@ -129,7 +129,7 @@ describe("recent_contributions tool — projection (TTL-hit path)", () => {
     const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
     const now = new Date().toISOString();
     const window = { from: oneWeekAgo, to: now };
-    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: undefined });
+    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: undefined, contributor_entity_id: undefined, side: "either" });
 
     const result = await handleRecentContributions(store.db, { window });
     expect(result.results).toHaveLength(1);
@@ -140,7 +140,7 @@ describe("recent_contributions tool — projection (TTL-hit path)", () => {
     const oneYearAgo = new Date(Date.now() - 365 * 86400 * 1000).toISOString();
     const now = new Date().toISOString();
     const window = { from: oneYearAgo, to: now };
-    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: 1000 });
+    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: 1000, contributor_entity_id: undefined, side: "either" });
 
     const result = await handleRecentContributions(store.db, {
       window,
@@ -154,7 +154,7 @@ describe("recent_contributions tool — projection (TTL-hit path)", () => {
     const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
     const now = new Date().toISOString();
     const window = { from: oneWeekAgo, to: now };
-    seedFetchLogFresh({ window, candidate_or_committee: "Smith for Congress", min_amount: undefined });
+    seedFetchLogFresh({ window, candidate_or_committee: "Smith for Congress", min_amount: undefined, contributor_entity_id: undefined, side: "recipient" });
 
     const result = await handleRecentContributions(store.db, {
       window,
@@ -169,7 +169,7 @@ describe("recent_contributions tool — projection (TTL-hit path)", () => {
     const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
     const now = new Date().toISOString();
     const window = { from: oneWeekAgo, to: now };
-    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: undefined });
+    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: undefined, contributor_entity_id: undefined, side: "either" });
 
     const result = await handleRecentContributions(store.db, { window });
     expect(result.results).toHaveLength(1);
@@ -189,7 +189,7 @@ describe("recent_contributions tool — projection (TTL-hit path)", () => {
     const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
     const now = new Date().toISOString();
     const window = { from: oneWeekAgo, to: now };
-    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: undefined });
+    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: undefined, contributor_entity_id: undefined, side: "either" });
 
     const result = await handleRecentContributions(store.db, { window });
     expect(result.results[0].contributor.entity_id).toBe(contributorEntityId);
@@ -199,7 +199,7 @@ describe("recent_contributions tool — projection (TTL-hit path)", () => {
     const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
     const now = new Date().toISOString();
     const window = { from: oneWeekAgo, to: now };
-    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: undefined });
+    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: undefined, contributor_entity_id: undefined, side: "either" });
 
     const result = await handleRecentContributions(store.db, { window });
     expect(result.sources).toContainEqual(
@@ -225,7 +225,7 @@ describe("recent_contributions tool — projection (TTL-hit path)", () => {
     const farPast = new Date(Date.now() - 1000 * 86400 * 1000).toISOString();
     const almostFarPast = new Date(Date.now() - 999 * 86400 * 1000).toISOString();
     const window = { from: farPast, to: almostFarPast };
-    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: undefined });
+    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: undefined, contributor_entity_id: undefined, side: "either" });
 
     const res = await handleRecentContributions(store.db, { window });
     expect(res.results).toHaveLength(0);
@@ -319,6 +319,7 @@ describe("recent_contributions tool — R15 hydration path", () => {
       endpoint_path: "/schedules/schedule_a",
       args_hash: hashArgs("recent_contributions", {
         window, candidate_or_committee: undefined, min_amount: undefined,
+        contributor_entity_id: undefined, side: "either",
       }),
       scope: "recent",
       fetched_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
@@ -351,6 +352,7 @@ describe("recent_contributions tool — R15 hydration path", () => {
       endpoint_path: "/schedules/schedule_a",
       args_hash: hashArgs("recent_contributions", {
         window, candidate_or_committee: undefined, min_amount: undefined,
+        contributor_entity_id: undefined, side: "either",
       }),
       scope: "recent",
       fetched_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
@@ -367,5 +369,165 @@ describe("recent_contributions tool — R15 hydration path", () => {
     expect(res.stale_notice?.reason).toBe("upstream_failure");
 
     fetchSpy.mockRestore();
+  });
+});
+
+describe("recent_contributions tool — contributor-side filters", () => {
+  it("threads contributor_entity_id through to the adapter as contributor_name", async () => {
+    const fetchSpy = vi
+      .spyOn(OpenFecAdapter.prototype, "fetchRecentContributions")
+      .mockResolvedValue({ documentsUpserted: 0 });
+
+    const { entity: donor } = upsertEntity(store.db, {
+      kind: "person",
+      name: "JANE SMITH",
+      jurisdiction: undefined,
+    });
+
+    await handleRecentContributions(store.db, {
+      window: { from: "2026-04-01T00:00:00Z", to: "2026-04-30T00:00:00Z" },
+      contributor_entity_id: donor.id,
+    });
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const callOpts = fetchSpy.mock.calls[0][1] as { contributor_name?: string };
+    expect(callOpts.contributor_name).toBe("JANE SMITH");
+    fetchSpy.mockRestore();
+  });
+
+  it("side='contributor' filters candidate_or_committee against the contributor side", async () => {
+    const fetchSpy = vi
+      .spyOn(OpenFecAdapter.prototype, "fetchRecentContributions")
+      .mockResolvedValue({ documentsUpserted: 0 });
+
+    // Distinct entities so "acme" only matches the contributor side here.
+    const { entity: acmeDonor } = upsertEntity(store.db, {
+      kind: "person",
+      name: "Acme Donor",
+      jurisdiction: undefined,
+    });
+    const { entity: targetPac } = upsertEntity(store.db, {
+      kind: "pac",
+      name: "Target PAC",
+      jurisdiction: "us-federal",
+      external_ids: { fec_committee: "C99999999" },
+    });
+
+    const occurredAt = new Date().toISOString();
+    upsertDocument(store.db, {
+      kind: "contribution",
+      jurisdiction: "us-federal",
+      title: "Contribution: Acme Donor → Target PAC ($2500.00)",
+      occurred_at: occurredAt,
+      source: {
+        name: "openfec",
+        id: "SA17.SIDE1",
+        url: "https://www.fec.gov/data/committee/C99999999/",
+      },
+      references: [
+        { entity_id: acmeDonor.id, role: "contributor" },
+        { entity_id: targetPac.id, role: "recipient" },
+      ],
+      raw: {
+        amount: 2500,
+        date: occurredAt.slice(0, 10),
+        contributor_name: "Acme Donor",
+      },
+    });
+
+    const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
+    const now = new Date().toISOString();
+    const result = await handleRecentContributions(store.db, {
+      window: { from: oneWeekAgo, to: now },
+      candidate_or_committee: "acme",
+      side: "contributor",
+    });
+
+    expect(result.results.some((r) => r.contributor.entity_id === acmeDonor.id)).toBe(true);
+    // The pre-seeded Smith/Jones contribution must NOT appear — "acme"
+    // resolves to acmeDonor, which isn't the contributor on that doc.
+    expect(
+      result.results.every((r) => r.contributor.entity_id === acmeDonor.id),
+    ).toBe(true);
+    fetchSpy.mockRestore();
+  });
+
+  it("candidate_or_committee without side defaults to recipient (back-compat)", async () => {
+    const fetchSpy = vi
+      .spyOn(OpenFecAdapter.prototype, "fetchRecentContributions")
+      .mockResolvedValue({ documentsUpserted: 0 });
+
+    const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
+    const now = new Date().toISOString();
+    // "Smith for Congress" matches the pre-seeded recipient committee.
+    // Under back-compat default (side=recipient), it must match.
+    const result = await handleRecentContributions(store.db, {
+      window: { from: oneWeekAgo, to: now },
+      candidate_or_committee: "smith",
+    });
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0].recipient.entity_id).toBe(committeeEntityId);
+    fetchSpy.mockRestore();
+  });
+
+  it("contributor_entity_id + candidate_or_committee + side=recipient AND-combines", async () => {
+    const fetchSpy = vi
+      .spyOn(OpenFecAdapter.prototype, "fetchRecentContributions")
+      .mockResolvedValue({ documentsUpserted: 0 });
+
+    // Seed another recipient PAC + a contribution from the same
+    // contributor to it. Only contributions matching BOTH the donor
+    // and the "smith" recipient should survive.
+    const { entity: otherPac } = upsertEntity(store.db, {
+      kind: "pac",
+      name: "Other PAC",
+      jurisdiction: "us-federal",
+      external_ids: { fec_committee: "C00888888" },
+    });
+
+    const occurredAt = new Date().toISOString();
+    upsertDocument(store.db, {
+      kind: "contribution",
+      jurisdiction: "us-federal",
+      title: "Contribution: Jones, Alice M. → C00888888 ($100.00)",
+      occurred_at: occurredAt,
+      source: {
+        name: "openfec",
+        id: "SA17.AND1",
+        url: "https://www.fec.gov/data/committee/C00888888/",
+      },
+      references: [
+        { entity_id: contributorEntityId, role: "contributor" },
+        { entity_id: otherPac.id, role: "recipient" },
+      ],
+      raw: {
+        amount: 100,
+        date: occurredAt.slice(0, 10),
+        contributor_name: "Jones, Alice M.",
+      },
+    });
+
+    const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
+    const now = new Date().toISOString();
+    const result = await handleRecentContributions(store.db, {
+      window: { from: oneWeekAgo, to: now },
+      contributor_entity_id: contributorEntityId,
+      candidate_or_committee: "smith",
+      side: "recipient",
+    });
+
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0].recipient.entity_id).toBe(committeeEntityId);
+    expect(result.results[0].contributor.entity_id).toBe(contributorEntityId);
+    fetchSpy.mockRestore();
+  });
+
+  it("throws when contributor_entity_id does not resolve", async () => {
+    await expect(
+      handleRecentContributions(store.db, {
+        window: { from: "2026-04-01T00:00:00Z", to: "2026-04-30T00:00:00Z" },
+        contributor_entity_id: "does-not-exist",
+      }),
+    ).rejects.toThrow(/Entity not found/);
   });
 });

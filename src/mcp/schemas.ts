@@ -59,6 +59,8 @@ export const RecentContributionsInput = z.object({
   }),
   candidate_or_committee: z.string().optional(),
   min_amount: z.number().min(0).optional(),
+  contributor_entity_id: z.string().optional(),
+  side: z.enum(["contributor", "recipient", "either"]).optional(),
 });
 export type RecentContributionsInput = z.infer<typeof RecentContributionsInput>;
 

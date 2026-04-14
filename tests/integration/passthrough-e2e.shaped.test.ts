@@ -261,7 +261,7 @@ describe("passthrough shaped e2e — recent_contributions", () => {
       endpoint_path: "/schedules/schedule_a",
       scope: "recent",
       tool: "recent_contributions",
-      args: { window, candidate_or_committee: undefined, min_amount: undefined },
+      args: { window, candidate_or_committee: undefined, min_amount: undefined, contributor_entity_id: undefined, side: "either" },
       documents: [{
         kind: "contribution",
         jurisdiction: "us-federal",

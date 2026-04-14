@@ -334,6 +334,7 @@ export class OpenFecAdapter implements Adapter {
       min_date: string;
       max_date?: string;
       committee_ids?: string[];
+      contributor_name?: string;
       limit?: number;
     },
   ): Promise<{ documentsUpserted: number }> {
@@ -342,6 +343,9 @@ export class OpenFecAdapter implements Adapter {
     if (opts.max_date) url.searchParams.set("max_date", opts.max_date);
     for (const id of opts.committee_ids ?? []) {
       url.searchParams.append("committee_id", id);
+    }
+    if (opts.contributor_name) {
+      url.searchParams.set("contributor_name", opts.contributor_name);
     }
     url.searchParams.set("per_page", String(opts.limit ?? 100));
     url.searchParams.set("sort", "-contribution_receipt_date");
