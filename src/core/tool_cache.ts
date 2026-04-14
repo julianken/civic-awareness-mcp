@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import { hashArgs } from "./args_hash.js";
-import { isFetchLogFresh } from "./fetch_log.js";
+import { isFetchLogFresh, upsertFetchLog } from "./fetch_log.js";
 import type { FetchLogScope } from "./fetch_log.js";
 import type { HydrationSource } from "./freshness.js";
 import type { StaleNotice } from "../mcp/shared.js";
@@ -26,6 +26,21 @@ export function _resetToolCacheForTesting(): void {
   // Subsequent tasks add singleflight + budget singletons; reset them here.
 }
 
+async function runInTransaction<R>(
+  db: Database.Database,
+  fn: () => Promise<R>,
+): Promise<R> {
+  db.prepare("BEGIN IMMEDIATE").run();
+  try {
+    const result = await fn();
+    db.prepare("COMMIT").run();
+    return result;
+  } catch (err) {
+    db.prepare("ROLLBACK").run();
+    throw err;
+  }
+}
+
 export async function withShapedFetch<T>(
   db: Database.Database,
   key: ShapedFetchKey,
@@ -34,7 +49,6 @@ export async function withShapedFetch<T>(
   readLocal: () => T,
   peekWaitMs: () => number,
 ): Promise<ShapedFetchResult<T>> {
-  void fetchAndWrite;
   void peekWaitMs;
   const args_hash = hashArgs(key.tool, key.args);
 
@@ -42,7 +56,18 @@ export async function withShapedFetch<T>(
     return { value: readLocal() };
   }
 
-  // Subsequent tasks implement the miss path + singleflight + budget +
-  // transactional write-through + stale fallback. Throw until they land.
-  throw new Error("withShapedFetch TTL-miss path not yet implemented");
+  await runInTransaction(db, async () => {
+    const result = await fetchAndWrite();
+    upsertFetchLog(db, {
+      source: key.source,
+      endpoint_path: key.endpoint_path,
+      args_hash,
+      scope: ttl.scope,
+      fetched_at: new Date().toISOString(),
+      last_rowcount: result.primary_rows_written,
+    });
+    return result;
+  });
+
+  return { value: readLocal() };
 }
