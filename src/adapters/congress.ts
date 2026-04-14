@@ -245,10 +245,11 @@ export class CongressAdapter implements Adapter {
     const congress = this.congresses[0];
     const url = new URL(`${BASE_URL}/bill`);
     url.searchParams.set("congress", String(congress));
-    url.searchParams.set("fromDateTime", opts.fromDateTime);
+    url.searchParams.set("fromDateTime", opts.fromDateTime.replace(/\.\d{3}Z$/, "Z"));
     url.searchParams.set("sort", "updateDate+desc");
     url.searchParams.set("limit", String(opts.limit ?? 250));
     url.searchParams.set("api_key", this.opts.apiKey);
+    url.searchParams.set("format", "json");
 
     const res = await rateLimitedFetch(url.toString(), {
       userAgent: "civic-awareness-mcp/0.1.0 (+github)",
@@ -285,6 +286,7 @@ export class CongressAdapter implements Adapter {
   ): Promise<{ entitiesUpserted: number }> {
     const url = new URL(`${BASE_URL}/member/${bioguideId}`);
     url.searchParams.set("api_key", this.opts.apiKey);
+    url.searchParams.set("format", "json");
     const res = await rateLimitedFetch(url.toString(), {
       userAgent: "civic-awareness-mcp/0.1.0 (+github)",
       rateLimiter: this.rateLimiter,
@@ -316,6 +318,7 @@ export class CongressAdapter implements Adapter {
     url.searchParams.set("congress", String(congress));
     url.searchParams.set("limit", String(opts.limit ?? 250));
     url.searchParams.set("api_key", this.opts.apiKey);
+    url.searchParams.set("format", "json");
 
     const res = await rateLimitedFetch(url.toString(), {
       userAgent: "civic-awareness-mcp/0.1.0 (+github)",
@@ -348,6 +351,7 @@ export class CongressAdapter implements Adapter {
     const url = new URL(`${BASE_URL}/member/${bioguideId}/sponsored-legislation`);
     url.searchParams.set("limit", String(opts.limit ?? 250));
     url.searchParams.set("api_key", this.opts.apiKey);
+    url.searchParams.set("format", "json");
     const res = await rateLimitedFetch(url.toString(), {
       userAgent: "civic-awareness-mcp/0.1.0 (+github)",
       rateLimiter: this.rateLimiter,
@@ -380,6 +384,7 @@ export class CongressAdapter implements Adapter {
     const url = new URL(`${BASE_URL}/member/${bioguideId}/cosponsored-legislation`);
     url.searchParams.set("limit", String(opts.limit ?? 250));
     url.searchParams.set("api_key", this.opts.apiKey);
+    url.searchParams.set("format", "json");
     const res = await rateLimitedFetch(url.toString(), {
       userAgent: "civic-awareness-mcp/0.1.0 (+github)",
       rateLimiter: this.rateLimiter,
@@ -415,6 +420,7 @@ export class CongressAdapter implements Adapter {
     url.searchParams.set("sort", "updateDate+desc");
     url.searchParams.set("limit", String(opts.limit ?? 250));
     url.searchParams.set("api_key", this.opts.apiKey);
+    url.searchParams.set("format", "json");
 
     const res = await rateLimitedFetch(url.toString(), {
       userAgent: "civic-awareness-mcp/0.1.0 (+github)",
@@ -462,6 +468,7 @@ export class CongressAdapter implements Adapter {
       // Append the API key as a query parameter (Congress.gov convention).
       const reqUrl = new URL(url);
       reqUrl.searchParams.set("api_key", this.opts.apiKey);
+      reqUrl.searchParams.set("format", "json");
 
       const res = await rateLimitedFetch(reqUrl.toString(), {
         userAgent: "civic-awareness-mcp/0.1.0 (+github)",
