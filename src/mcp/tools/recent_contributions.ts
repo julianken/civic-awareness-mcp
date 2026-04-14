@@ -1,5 +1,7 @@
 import type Database from "better-sqlite3";
 import { queryDocuments } from "../../core/documents.js";
+import { ensureFresh, sourcesFor } from "../../core/hydrate.js";
+import { getLimiter } from "../../core/limiters.js";
 import { RecentContributionsInput } from "../schemas.js";
 import { escapeLike } from "../../util/sql.js";
 import type { StaleNotice } from "../shared.js";
@@ -36,6 +38,23 @@ export async function handleRecentContributions(
   rawInput: unknown,
 ): Promise<RecentContributionsResponse> {
   const input = RecentContributionsInput.parse(rawInput);
+
+  // OpenFEC is federal-only (D2); jurisdiction is always "us-federal".
+  let stale_notice: StaleNotice | undefined;
+  const sources = sourcesFor("contribution", "us-federal");
+  for (const src of sources) {
+    const r = await ensureFresh(
+      db,
+      src,
+      "us-federal",
+      "recent",
+      () => getLimiter(src).peekWaitMs(),
+    );
+    if (r.stale_notice) {
+      stale_notice = r.stale_notice;
+      break;
+    }
+  }
 
   // If candidate_or_committee is given, resolve it to an entity UUID.
   // We match against normalized name (lowercased, punct-stripped) using
@@ -131,7 +150,7 @@ export async function handleRecentContributions(
     });
   }
 
-  return {
+  const response: RecentContributionsResponse = {
     results,
     total: results.length,
     sources: results.length > 0
@@ -139,4 +158,6 @@ export async function handleRecentContributions(
       : [],
     window: input.window,
   };
+  if (stale_notice) response.stale_notice = stale_notice;
+  return response;
 }
