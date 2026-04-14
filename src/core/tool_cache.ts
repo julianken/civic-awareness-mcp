@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { hashArgs } from "./args_hash.js";
+import { DailyBudget } from "./budget.js";
 import { isFetchLogFresh, upsertFetchLog } from "./fetch_log.js";
 import type { FetchLogScope } from "./fetch_log.js";
 import type { HydrationSource } from "./freshness.js";
@@ -25,10 +26,12 @@ export interface ShapedFetchResult<T> {
 
 let sf = new Singleflight<ShapedFetchResult<unknown>>();
 let txMutex: Promise<void> = Promise.resolve();
+let budget = new DailyBudget(process.env.CIVIC_AWARENESS_DAILY_BUDGET);
 
 export function _resetToolCacheForTesting(): void {
   sf = new Singleflight<ShapedFetchResult<unknown>>();
   txMutex = Promise.resolve();
+  budget = new DailyBudget(process.env.CIVIC_AWARENESS_DAILY_BUDGET);
 }
 
 async function runInTransaction<R>(
@@ -74,6 +77,10 @@ export async function withShapedFetch<T>(
     if (isFetchLogFresh(db, key.source, key.endpoint_path, args_hash, ttl.ms)) {
       return { value: readLocal() } as ShapedFetchResult<unknown>;
     }
+    const b = budget.check(key.source);
+    if (!b.allowed) {
+      throw new Error(`Daily budget for ${key.source} exhausted`);
+    }
     await runInTransaction(db, async () => {
       const result = await fetchAndWrite();
       upsertFetchLog(db, {
@@ -86,6 +93,7 @@ export async function withShapedFetch<T>(
       });
       return result;
     });
+    budget.record(key.source);
     return { value: readLocal() } as ShapedFetchResult<unknown>;
   })) as ShapedFetchResult<T>;
 }

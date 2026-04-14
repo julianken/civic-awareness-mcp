@@ -161,3 +161,29 @@ describe("withShapedFetch — singleflight", () => {
     expect(fetchCount).toBe(2);
   });
 });
+
+describe("withShapedFetch — daily budget", () => {
+  it("propagates budget-exhausted when no cached data exists", async () => {
+    process.env.CIVIC_AWARENESS_DAILY_BUDGET = "openstates=0";
+    _resetToolCacheForTesting();
+
+    const fetchAndWrite = vi.fn(async () => ({ primary_rows_written: 1 }));
+    const readLocal = vi.fn(() => [] as string[]);
+
+    await expect(
+      withShapedFetch(
+        db,
+        { source: "openstates", endpoint_path: "/people", args: { name: "x" }, tool: "__test__" },
+        { scope: "full", ms: 24 * 60 * 60 * 1000 },
+        fetchAndWrite,
+        readLocal,
+        () => 0,
+      ),
+    ).rejects.toThrow(/daily budget/i);
+
+    expect(fetchAndWrite).not.toHaveBeenCalled();
+
+    delete process.env.CIVIC_AWARENESS_DAILY_BUDGET;
+    _resetToolCacheForTesting();
+  });
+});
