@@ -108,10 +108,29 @@ export async function handleRecentVotes(
     };
   });
 
+  // Build source URLs from each document's actual source_name —
+  // congress for federal votes, openstates when state vote ingestion lands.
+  // Matches the pattern in get_entity.ts.
+  const sourceByName = new Map<string, string>();
+  for (const d of filtered) {
+    if (sourceByName.has(d.source.name)) continue;
+    if (d.source.name === "congress") {
+      sourceByName.set(d.source.name, "https://www.congress.gov/");
+    } else if (d.source.name === "openstates") {
+      const stateAbbr = d.jurisdiction.replace(/^us-/, "");
+      const url = d.jurisdiction === "*"
+        ? "https://openstates.org/"
+        : `https://openstates.org/${stateAbbr}/`;
+      sourceByName.set(d.source.name, url);
+    } else {
+      sourceByName.set(d.source.name, "");
+    }
+  }
+
   const base: RecentVotesResponse = {
     results,
     total: results.length,
-    sources: results.length > 0 ? [{ name: "congress", url: "https://www.congress.gov/" }] : [],
+    sources: Array.from(sourceByName, ([name, url]) => ({ name, url })),
     window: { from: from.toISOString(), to: to.toISOString() },
   };
   if (results.length === 0) {

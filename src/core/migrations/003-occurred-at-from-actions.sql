@@ -4,14 +4,15 @@
 -- "recent" feeds surface crawl-time activity instead of real
 -- legislative activity. Adapter is fixed at refresh-write time; this
 -- migration heals existing rows by reading the action date out of
--- `raw.actions`.
+-- `raw.actions` and canonicalising it to the full ISO-8601 form that
+-- Document.occurred_at (Zod iso.datetime) requires.
 --
--- Idempotent: running on already-healed rows is a no-op because
--- json_extract of a non-existent path returns NULL and COALESCE
--- preserves the existing value.
+-- Idempotent: already-canonical rows are preserved because strftime
+-- on a parseable date returns the same canonical form, and rows
+-- without actions are filtered by json_array_length > 0.
 UPDATE documents
 SET occurred_at = COALESCE(
-    json_extract(raw, '$.actions[#-1].date'),
+    strftime('%Y-%m-%dT%H:%M:%fZ', json_extract(raw, '$.actions[#-1].date')),
     occurred_at
 )
 WHERE kind = 'bill'

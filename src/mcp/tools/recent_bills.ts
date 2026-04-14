@@ -138,19 +138,29 @@ export async function handleRecentBills(
     };
   });
 
-  // Build a jurisdiction-aware source URL: "us-tx" → "/tx/".
-  // For "*" (cross-state), link to the OpenStates root.
-  const stateAbbr = input.jurisdiction.replace(/^us-/, "");
-  const openstatesUrl = input.jurisdiction === "*"
-    ? "https://openstates.org/"
-    : `https://openstates.org/${stateAbbr}/`;
-  const sourceUrls = new Map<string, string>();
-  for (const d of filtered) sourceUrls.set(d.source.name, openstatesUrl);
+  // Build source URLs from each document's actual source_name —
+  // openstates for state bills, congress for federal, etc. Matches
+  // the pattern in get_entity.ts.
+  const sourceByName = new Map<string, string>();
+  for (const d of filtered) {
+    if (sourceByName.has(d.source.name)) continue;
+    if (d.source.name === "openstates") {
+      const stateAbbr = d.jurisdiction.replace(/^us-/, "");
+      const url = d.jurisdiction === "*"
+        ? "https://openstates.org/"
+        : `https://openstates.org/${stateAbbr}/`;
+      sourceByName.set(d.source.name, url);
+    } else if (d.source.name === "congress") {
+      sourceByName.set(d.source.name, "https://www.congress.gov/");
+    } else {
+      sourceByName.set(d.source.name, "");
+    }
+  }
 
   const base: RecentBillsResponse = {
     results,
     total: results.length,
-    sources: Array.from(sourceUrls, ([name, url]) => ({ name, url })),
+    sources: Array.from(sourceByName, ([name, url]) => ({ name, url })),
     window: { from: from.toISOString(), to: to.toISOString() },
   };
   if (results.length === 0) {

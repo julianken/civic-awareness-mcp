@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { rmSync, existsSync, readFileSync } from "node:fs";
 import { openStore, type Store } from "../../../src/core/store.js";
+import { queryDocuments } from "../../../src/core/documents.js";
 
 const TEST_DB = "./data/test-migration-003.db";
 let store: Store;
@@ -25,7 +26,7 @@ describe("migration 003 — occurred_at from actions", () => {
         source_name, source_id, source_url, raw)
        VALUES (?, 'bill', 'us-tx', 'SB 5 — Test', ?, ?, 'openstates', 'ocd-bill/x', 'https://ex', ?)`,
     ).run(
-      "00000000-0000-0000-0000-000000000001",
+      "a1b2c3d4-e5f6-4789-8000-0a1b2c3d4e5f",
       "2026-04-10T10:00:00.000Z",  // bug: crawl time
       "2026-04-10T10:00:00.000Z",
       JSON.stringify({ actions: [
@@ -42,7 +43,11 @@ describe("migration 003 — occurred_at from actions", () => {
     const row = store.db.prepare(
       "SELECT occurred_at FROM documents WHERE source_id = 'ocd-bill/x'",
     ).get() as { occurred_at: string };
-    expect(row.occurred_at).toBe("2025-09-18");  // date-only per SQLite json_extract
+    expect(row.occurred_at).toBe("2025-09-18T00:00:00.000Z");
+    // Full Zod-parse roundtrip: queryDocuments must not throw on the healed row.
+    const docs = queryDocuments(store.db, { kind: "bill", limit: 10 });
+    expect(docs).toHaveLength(1);
+    expect(docs[0].occurred_at).toBe("2025-09-18T00:00:00.000Z");
   });
 
   it("is idempotent — re-running on healed rows is a no-op", () => {
@@ -56,7 +61,7 @@ describe("migration 003 — occurred_at from actions", () => {
        VALUES (?, 'bill', 'us-tx', 'SB 5 — Test', ?, ?, 'openstates', 'ocd-bill/x', 'https://ex', ?)`,
     ).run(
       "00000000-0000-0000-0000-000000000002",
-      "2025-09-18",  // already-healed value
+      "2025-09-18T00:00:00.000Z",  // already-healed canonical value
       "2026-04-10T10:00:00.000Z",
       JSON.stringify({ actions: [{ date: "2025-09-18", description: "became law" }] }),
     );
@@ -69,7 +74,7 @@ describe("migration 003 — occurred_at from actions", () => {
     const row = store.db.prepare(
       "SELECT occurred_at FROM documents WHERE source_id = 'ocd-bill/x'",
     ).get() as { occurred_at: string };
-    expect(row.occurred_at).toBe("2025-09-18");
+    expect(row.occurred_at).toBe("2025-09-18T00:00:00.000Z");
   });
 
   it("skips bills with empty actions[]", () => {
