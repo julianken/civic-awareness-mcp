@@ -30,10 +30,12 @@ export async function withShapedFetch<T>(
   db: Database.Database,
   key: ShapedFetchKey,
   ttl: ShapedFetchTTL,
-  _fetchAndWrite: () => Promise<{ primary_rows_written: number }>,
+  fetchAndWrite: () => Promise<{ primary_rows_written: number }>,
   readLocal: () => T,
-  _peekWaitMs: () => number,
+  peekWaitMs: () => number,
 ): Promise<ShapedFetchResult<T>> {
+  void fetchAndWrite;
+  void peekWaitMs;
   const args_hash = hashArgs(key.tool, key.args);
 
   if (isFetchLogFresh(db, key.source, key.endpoint_path, args_hash, ttl.ms)) {
