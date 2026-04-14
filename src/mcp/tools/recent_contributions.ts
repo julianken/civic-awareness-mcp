@@ -4,7 +4,7 @@ import { ensureFresh, sourcesFor } from "../../core/hydrate.js";
 import { getLimiter } from "../../core/limiters.js";
 import { RecentContributionsInput } from "../schemas.js";
 import { escapeLike } from "../../util/sql.js";
-import type { StaleNotice } from "../shared.js";
+import { emptyFeedDiagnostic, type EmptyFeedDiagnostic, type StaleNotice } from "../shared.js";
 
 export interface ContributorRef {
   name: string;
@@ -30,6 +30,9 @@ export interface RecentContributionsResponse {
   total: number;
   sources: Array<{ name: string; url: string }>;
   window: { from: string; to: string };
+  empty_reason?: EmptyFeedDiagnostic["empty_reason"];
+  data_freshness?: EmptyFeedDiagnostic["data_freshness"];
+  hint?: string;
   stale_notice?: StaleNotice;
 }
 
@@ -158,6 +161,10 @@ export async function handleRecentContributions(
       : [],
     window: input.window,
   };
+  if (results.length === 0) {
+    const diag = emptyFeedDiagnostic(db, { jurisdiction: "us-federal", kind: "contribution" });
+    Object.assign(response, diag);
+  }
   if (stale_notice) response.stale_notice = stale_notice;
   return response;
 }
