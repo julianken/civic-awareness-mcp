@@ -769,6 +769,59 @@ describe("CongressAdapter.fetchVote", () => {
     fetchSpy.mockRestore();
   });
 
+  it("enriches a previously-seen entity with party and state metadata", async () => {
+    // Seed the entity via a feed-list-style call that carries no party/state.
+    const seeded = upsertEntity(store.db, {
+      kind: "person",
+      name: "Schumer, Charles E.",
+      external_ids: { bioguide: "S000148" },
+      metadata: {},
+    });
+
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          voteInformation: {
+            congress: 119,
+            chamber: "Senate",
+            rollNumber: 42,
+            date: "2026-04-01",
+            question: "On Passage",
+            result: "Passed",
+            bill: { type: "HR", number: "1234" },
+            totals: { yea: 1, nay: 0, present: 0, notVoting: 0 },
+            members: {
+              item: [
+                {
+                  bioguideId: "S000148",
+                  name: "Schumer, Charles E.",
+                  partyName: "Democratic",
+                  state: "NY",
+                  votePosition: "Yea",
+                },
+              ],
+            },
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const adapter = new CongressAdapter({ apiKey: "test-key" });
+    await adapter.fetchVote(store.db, {
+      congress: 119, chamber: "upper", session: 1, roll_number: 42,
+    });
+
+    const row = store.db
+      .prepare("SELECT id, metadata FROM entities WHERE id = ?")
+      .get(seeded.entity.id) as { id: string; metadata: string };
+    expect(row).toBeDefined();
+    const meta = JSON.parse(row.metadata) as { party?: string; state?: string };
+    expect(meta.party).toBe("Democratic");
+    expect(meta.state).toBe("NY");
+    fetchSpy.mockRestore();
+  });
+
   it("throws VoteNotFoundError on 404", async () => {
     vi.spyOn(global, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ error: "not found" }), { status: 404 }),

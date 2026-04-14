@@ -700,39 +700,31 @@ export class CongressAdapter implements Adapter {
     const title = `Vote ${v.congress}-${v.chamber}-${v.rollNumber}: ${billId} — ${v.question ?? ""}`;
     const humanUrl = voteUrl(v.congress, v.chamber, v.rollNumber);
 
-    const positions = (v.positions ?? []).map((pos) => ({
-      bioguideId: pos.member.bioguideId,
-      name: pos.member.name,
-      party: pos.member.partyName ?? null,
-      state: pos.member.state ?? null,
-      position: normalizeVotePosition(pos.votePosition),
-    }));
-
-    const refs = (v.positions ?? []).map((pos) => {
-      const qualifier = normalizeVotePosition(pos.votePosition);
-      const existing = db
-        .prepare(
-          "SELECT id FROM entities WHERE json_extract(external_ids, '$.\"bioguide\"') = ? LIMIT 1",
-        )
-        .get(pos.member.bioguideId) as { id: string } | undefined;
-      let entityId: string;
-      if (existing) {
-        entityId = existing.id;
-      } else {
-        const { entity } = upsertEntity(db, {
-          kind: "person",
+    const voters = (v.positions ?? []).map((pos) => {
+      const position = normalizeVotePosition(pos.votePosition);
+      const { entity } = upsertEntity(db, {
+        kind: "person",
+        name: pos.member.name,
+        jurisdiction: undefined,
+        external_ids: { bioguide: pos.member.bioguideId },
+        metadata: {
+          party: pos.member.partyName,
+          state: pos.member.state,
+        },
+      });
+      return {
+        positionRow: {
+          bioguideId: pos.member.bioguideId,
           name: pos.member.name,
-          jurisdiction: undefined,
-          external_ids: { bioguide: pos.member.bioguideId },
-          metadata: {
-            party: pos.member.partyName,
-            state: pos.member.state,
-          },
-        });
-        entityId = entity.id;
-      }
-      return { entity_id: entityId, role: "voter" as const, qualifier };
+          party: pos.member.partyName ?? null,
+          state: pos.member.state ?? null,
+          position,
+        },
+        ref: { entity_id: entity.id, role: "voter" as const, qualifier: position },
+      };
     });
+    const positions = voters.map((x) => x.positionRow);
+    const refs = voters.map((x) => x.ref);
 
     upsertDocument(db, {
       kind: "vote",
