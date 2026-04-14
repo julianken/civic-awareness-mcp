@@ -3,13 +3,7 @@ import { rmSync, existsSync, readFileSync } from "node:fs";
 import { openStore, type Store } from "../../src/core/store.js";
 import { seedJurisdictions } from "../../src/core/seeds.js";
 import { CongressAdapter } from "../../src/adapters/congress.js";
-import { handleRecentVotes } from "../../src/mcp/tools/recent_votes.js";
 import { upsertEntity } from "../../src/core/entities.js";
-
-vi.mock("../../src/core/hydrate.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../src/core/hydrate.js")>();
-  return { ...actual, ensureFresh: vi.fn().mockResolvedValue({ ok: true }) };
-});
 
 const TEST_DB = "./data/test-congress-e2e.db";
 let store: Store;
@@ -38,20 +32,6 @@ afterEach(() => {
 });
 
 describe("Congress.gov end-to-end", () => {
-  it("refreshes and exposes federal votes via recent_votes", async () => {
-    const adapter = new CongressAdapter({ apiKey: "fake", congresses: [119] });
-    await adapter.refresh({ db: store.db, maxPages: 1 });
-
-    const votes = await handleRecentVotes(store.db, {
-      jurisdiction: "us-federal",
-      days: 90,
-    });
-    expect(votes.results.length).toBeGreaterThan(0);
-    expect(votes.results[0].tally.yea).toBe(218);
-    expect(votes.results[0].result).toBe("Passed");
-    expect(votes.sources[0].name).toBe("congress");
-  });
-
   it("Members of Congress appear in the entity store with federal role metadata", async () => {
     const adapter = new CongressAdapter({ apiKey: "fake", congresses: [119] });
     await adapter.refresh({ db: store.db, maxPages: 1 });

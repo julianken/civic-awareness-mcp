@@ -23,11 +23,13 @@ import { readFileSync } from "node:fs";
 import { openStore, type Store } from "../../src/core/store.js";
 import { seedJurisdictions } from "../../src/core/seeds.js";
 import { handleRecentBills } from "../../src/mcp/tools/recent_bills.js";
+import { handleRecentVotes } from "../../src/mcp/tools/recent_votes.js";
 import { _resetToolCacheForTesting } from "../../src/core/tool_cache.js";
 import { _resetLimitersForTesting } from "../../src/core/limiters.js";
 import { seedStaleCache } from "../helpers/seed_stale_cache.js";
 
 vi.stubEnv("OPENSTATES_API_KEY", "test-key");
+vi.stubEnv("API_DATA_GOV_KEY", "test-key");
 
 const billsFixture = readFileSync(
   "tests/integration/fixtures/openstates-bills-page1.json",
@@ -129,5 +131,99 @@ describe("passthrough shaped e2e — recent_bills (R15)", () => {
     expect(result.stale_notice?.reason).toBe("upstream_failure");
     expect(result.results.length).toBeGreaterThan(0);
     expect(result.results[0].identifier).toBe("HB99");
+  });
+});
+
+describe("passthrough shaped e2e — recent_votes (federal)", () => {
+  it("cold fetch → warm hit: second call is cache hit", async () => {
+    let votesUpstreamHits = 0;
+    const fetchSpy = vi.spyOn(global, "fetch").mockImplementation(async () => {
+      votesUpstreamHits += 1;
+      return new Response(
+        JSON.stringify({
+          votes: [
+            {
+              congress: 119,
+              chamber: "Senate",
+              rollNumber: 1,
+              date: "2026-04-10T12:00:00Z",
+              positions: [],
+              totals: {},
+            },
+          ],
+          pagination: { count: 1 },
+        }),
+        { status: 200 },
+      );
+    });
+
+    await handleRecentVotes(store.db, { jurisdiction: "us-federal", days: 7 });
+    await handleRecentVotes(store.db, { jurisdiction: "us-federal", days: 7 });
+
+    expect(votesUpstreamHits).toBe(1);
+    fetchSpy.mockRestore();
+  });
+
+  it("404 degraded mode returns empty without stale_notice", async () => {
+    const fetchSpy = vi
+      .spyOn(global, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({}), { status: 404 }));
+
+    const result = await handleRecentVotes(store.db, {
+      jurisdiction: "us-federal",
+      days: 7,
+    });
+    expect(result.results).toEqual([]);
+    expect(result.stale_notice).toBeUndefined();
+    fetchSpy.mockRestore();
+  });
+
+  it("upstream failure with stale cache returns stale + notice", async () => {
+    seedStaleCache({
+      db: store.db,
+      source: "congress",
+      endpoint_path: "/vote",
+      scope: "recent",
+      tool: "recent_votes",
+      args: {
+        jurisdiction: "us-federal",
+        days: 7,
+        chamber: undefined,
+        session: undefined,
+        bill_identifier: undefined,
+      },
+      documents: [
+        {
+          kind: "vote",
+          jurisdiction: "us-federal",
+          title: "Vote 119-Senate-1: S.1234 — Motion",
+          occurred_at: "2026-04-10T00:00:00Z",
+          source: {
+            name: "congress",
+            id: "vote-119-senate-1",
+            url: "https://www.congress.gov/roll-call-votes/119/senate/1",
+          },
+          references: [],
+          raw: {
+            congress: 119,
+            chamber: "Senate",
+            rollNumber: 1,
+            totals: { yea: 60, nay: 40 },
+          },
+        },
+      ],
+    });
+
+    const fetchSpy = vi
+      .spyOn(global, "fetch")
+      .mockRejectedValue(new Error("network down"));
+
+    const result = await handleRecentVotes(store.db, {
+      jurisdiction: "us-federal",
+      days: 7,
+    });
+    expect(result.stale_notice?.reason).toBe("upstream_failure");
+    expect(result.results.length).toBeGreaterThan(0);
+    fetchSpy.mockRestore();
   });
 });
