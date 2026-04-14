@@ -4,14 +4,12 @@ import { openStore, type Store } from "../../../../src/core/store.js";
 import { seedJurisdictions } from "../../../../src/core/seeds.js";
 import { upsertEntity } from "../../../../src/core/entities.js";
 import { upsertDocument } from "../../../../src/core/documents.js";
+import { upsertFetchLog } from "../../../../src/core/fetch_log.js";
+import { hashArgs } from "../../../../src/core/args_hash.js";
+import { _resetToolCacheForTesting } from "../../../../src/core/tool_cache.js";
+import { _resetLimitersForTesting } from "../../../../src/core/limiters.js";
+import { OpenFecAdapter } from "../../../../src/adapters/openfec.js";
 import { handleRecentContributions } from "../../../../src/mcp/tools/recent_contributions.js";
-
-vi.mock("../../../../src/core/hydrate.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../../../src/core/hydrate.js")>();
-  return { ...actual, ensureFresh: vi.fn() };
-});
-import { ensureFresh } from "../../../../src/core/hydrate.js";
-const mockEnsureFresh = vi.mocked(ensureFresh);
 
 const TEST_DB = "./data/test-tool-recent-contributions.db";
 let store: Store;
@@ -22,9 +20,27 @@ const OLD = new Date(Date.now() - 90 * 86400 * 1000).toISOString();
 let committeeEntityId: string;
 let contributorEntityId: string;
 
+/**
+ * Pre-seeds a fetch_log row for (openfec, /schedules/schedule_a, args)
+ * so `withShapedFetch` takes the TTL-hit path — the adapter method is
+ * NOT called, and the handler runs the SQL projection directly. Used
+ * for tests that focus on projection behaviour rather than hydration.
+ */
+function seedFetchLogFresh(args: Record<string, unknown>): void {
+  upsertFetchLog(store.db, {
+    source: "openfec",
+    endpoint_path: "/schedules/schedule_a",
+    args_hash: hashArgs("recent_contributions", args),
+    scope: "recent",
+    fetched_at: new Date().toISOString(),
+    last_rowcount: 1,
+  });
+}
+
 beforeEach(() => {
-  mockEnsureFresh.mockReset();
-  mockEnsureFresh.mockResolvedValue({ ok: true });
+  _resetToolCacheForTesting();
+  _resetLimitersForTesting();
+  process.env.API_DATA_GOV_KEY = "test-key";
 
   if (existsSync(TEST_DB)) rmSync(TEST_DB);
   store = openStore(TEST_DB);
@@ -103,16 +119,19 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => store.close());
+afterEach(() => {
+  store.close();
+  delete process.env.API_DATA_GOV_KEY;
+});
 
-describe("recent_contributions tool", () => {
+describe("recent_contributions tool — projection (TTL-hit path)", () => {
   it("returns only contributions within the required window", async () => {
     const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
     const now = new Date().toISOString();
+    const window = { from: oneWeekAgo, to: now };
+    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: undefined });
 
-    const result = await handleRecentContributions(store.db, {
-      window: { from: oneWeekAgo, to: now },
-    });
+    const result = await handleRecentContributions(store.db, { window });
     expect(result.results).toHaveLength(1);
     expect(result.results[0].amount).toBe(2800.0);
   });
@@ -120,9 +139,11 @@ describe("recent_contributions tool", () => {
   it("filters by min_amount", async () => {
     const oneYearAgo = new Date(Date.now() - 365 * 86400 * 1000).toISOString();
     const now = new Date().toISOString();
+    const window = { from: oneYearAgo, to: now };
+    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: 1000 });
 
     const result = await handleRecentContributions(store.db, {
-      window: { from: oneYearAgo, to: now },
+      window,
       min_amount: 1000,
     });
     expect(result.results).toHaveLength(1);
@@ -132,9 +153,11 @@ describe("recent_contributions tool", () => {
   it("filters by candidate_or_committee resolved to entity", async () => {
     const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
     const now = new Date().toISOString();
+    const window = { from: oneWeekAgo, to: now };
+    seedFetchLogFresh({ window, candidate_or_committee: "Smith for Congress", min_amount: undefined });
 
     const result = await handleRecentContributions(store.db, {
-      window: { from: oneWeekAgo, to: now },
+      window,
       candidate_or_committee: "Smith for Congress",
     });
     expect(result.results).toHaveLength(1);
@@ -145,10 +168,10 @@ describe("recent_contributions tool", () => {
   it("does not expose contributor address or employer in response", async () => {
     const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
     const now = new Date().toISOString();
+    const window = { from: oneWeekAgo, to: now };
+    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: undefined });
 
-    const result = await handleRecentContributions(store.db, {
-      window: { from: oneWeekAgo, to: now },
-    });
+    const result = await handleRecentContributions(store.db, { window });
     expect(result.results).toHaveLength(1);
     const contrib = result.results[0];
 
@@ -165,20 +188,20 @@ describe("recent_contributions tool", () => {
   it("includes contributor entity_id when the contributor is a known entity", async () => {
     const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
     const now = new Date().toISOString();
+    const window = { from: oneWeekAgo, to: now };
+    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: undefined });
 
-    const result = await handleRecentContributions(store.db, {
-      window: { from: oneWeekAgo, to: now },
-    });
+    const result = await handleRecentContributions(store.db, { window });
     expect(result.results[0].contributor.entity_id).toBe(contributorEntityId);
   });
 
   it("includes source provenance", async () => {
     const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
     const now = new Date().toISOString();
+    const window = { from: oneWeekAgo, to: now };
+    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: undefined });
 
-    const result = await handleRecentContributions(store.db, {
-      window: { from: oneWeekAgo, to: now },
-    });
+    const result = await handleRecentContributions(store.db, { window });
     expect(result.sources).toContainEqual(
       expect.objectContaining({ name: "openfec" }),
     );
@@ -198,56 +221,151 @@ describe("recent_contributions tool", () => {
     ).rejects.toThrow();
   });
 
-  it("hydration: fresh cache returns results with no stale_notice", async () => {
-    mockEnsureFresh.mockResolvedValue({ ok: true });
-    const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
-    const now = new Date().toISOString();
-    const res = await handleRecentContributions(store.db, { window: { from: oneWeekAgo, to: now } });
-    expect(res.results).toHaveLength(1);
-    expect(res.stale_notice).toBeUndefined();
-  });
-
-  it("hydration: upstream failure attaches stale_notice, still serves local data", async () => {
-    const notice = {
-      as_of: "2026-04-13T00:00:00.000Z",
-      reason: "upstream_failure" as const,
-      message: "Upstream openfec fetch failed; serving stale local data.",
-    };
-    mockEnsureFresh.mockResolvedValue({ ok: false, stale_notice: notice });
-    const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
-    const now = new Date().toISOString();
-    const res = await handleRecentContributions(store.db, { window: { from: oneWeekAgo, to: now } });
-    expect(res.stale_notice?.reason).toBe("upstream_failure");
-    expect(res.results.length).toBeGreaterThan(0);
-  });
-
-  it("hydration: rate-limited attaches stale_notice with retry_after_s", async () => {
-    const notice = {
-      as_of: "2026-04-13T00:00:00.000Z",
-      reason: "rate_limited" as const,
-      message: "Rate limit for openfec requires 120s wait; serving stale local data.",
-      retry_after_s: 120,
-    };
-    mockEnsureFresh.mockResolvedValue({ ok: false, stale_notice: notice });
-    const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
-    const now = new Date().toISOString();
-    const res = await handleRecentContributions(store.db, { window: { from: oneWeekAgo, to: now } });
-    expect(res.stale_notice?.reason).toBe("rate_limited");
-    expect(res.stale_notice?.retry_after_s).toBe(120);
-  });
-
-  it("hydration: stale_notice present even when results are empty", async () => {
-    const notice = {
-      as_of: "2026-04-13T00:00:00.000Z",
-      reason: "upstream_failure" as const,
-      message: "Upstream failed.",
-    };
-    mockEnsureFresh.mockResolvedValue({ ok: false, stale_notice: notice });
-    // window in the far past — no documents match
+  it("attaches empty_reason diagnostic when results are empty", async () => {
     const farPast = new Date(Date.now() - 1000 * 86400 * 1000).toISOString();
     const almostFarPast = new Date(Date.now() - 999 * 86400 * 1000).toISOString();
-    const res = await handleRecentContributions(store.db, { window: { from: farPast, to: almostFarPast } });
+    const window = { from: farPast, to: almostFarPast };
+    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: undefined });
+
+    const res = await handleRecentContributions(store.db, { window });
     expect(res.results).toHaveLength(0);
+    expect(res).toHaveProperty("empty_reason");
+  });
+});
+
+describe("recent_contributions tool — R15 hydration path", () => {
+  it("invokes OpenFEC fetchRecentContributions on cache miss", async () => {
+    const fetchSpy = vi
+      .spyOn(OpenFecAdapter.prototype, "fetchRecentContributions")
+      .mockImplementation(async () => ({ documentsUpserted: 0 }));
+
+    const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
+    const now = new Date().toISOString();
+    const res = await handleRecentContributions(store.db, {
+      window: { from: oneWeekAgo, to: now },
+    });
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    // Local projection still runs — recent fixture is in-window.
+    expect(res.results).toHaveLength(1);
+    expect(res.stale_notice).toBeUndefined();
+
+    fetchSpy.mockRestore();
+  });
+
+  it("passes MM/DD/YYYY-formatted dates to the adapter", async () => {
+    const fetchSpy = vi
+      .spyOn(OpenFecAdapter.prototype, "fetchRecentContributions")
+      .mockImplementation(async () => ({ documentsUpserted: 0 }));
+
+    await handleRecentContributions(store.db, {
+      window: {
+        from: "2026-04-01T00:00:00.000Z",
+        to: "2026-04-30T00:00:00.000Z",
+      },
+    });
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      store.db,
+      expect.objectContaining({
+        min_date: "04/01/2026",
+        max_date: "04/30/2026",
+      }),
+    );
+
+    fetchSpy.mockRestore();
+  });
+
+  it("cache hit: does NOT call the adapter on the second call within TTL", async () => {
+    const fetchSpy = vi
+      .spyOn(OpenFecAdapter.prototype, "fetchRecentContributions")
+      .mockImplementation(async () => ({ documentsUpserted: 0 }));
+
+    const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
+    const now = new Date().toISOString();
+    const window = { from: oneWeekAgo, to: now };
+
+    await handleRecentContributions(store.db, { window });
+    await handleRecentContributions(store.db, { window });
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    fetchSpy.mockRestore();
+  });
+
+  it("upstream failure with no cached data propagates the error", async () => {
+    const fetchSpy = vi
+      .spyOn(OpenFecAdapter.prototype, "fetchRecentContributions")
+      .mockRejectedValue(new Error("network down"));
+
+    const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
+    const now = new Date().toISOString();
+
+    await expect(
+      handleRecentContributions(store.db, {
+        window: { from: oneWeekAgo, to: now },
+      }),
+    ).rejects.toThrow(/network down/);
+
+    fetchSpy.mockRestore();
+  });
+
+  it("upstream failure with stale cached data surfaces stale_notice and still serves local data", async () => {
+    const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
+    const now = new Date().toISOString();
+    const window = { from: oneWeekAgo, to: now };
+
+    upsertFetchLog(store.db, {
+      source: "openfec",
+      endpoint_path: "/schedules/schedule_a",
+      args_hash: hashArgs("recent_contributions", {
+        window, candidate_or_committee: undefined, min_amount: undefined,
+      }),
+      scope: "recent",
+      fetched_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+      last_rowcount: 1,
+    });
+
+    const fetchSpy = vi
+      .spyOn(OpenFecAdapter.prototype, "fetchRecentContributions")
+      .mockRejectedValue(new Error("simulated upstream failure"));
+
+    const res = await handleRecentContributions(store.db, { window });
+
     expect(res.stale_notice?.reason).toBe("upstream_failure");
+    expect(res.results.length).toBeGreaterThan(0);
+
+    fetchSpy.mockRestore();
+  });
+
+  it("stale_notice propagates into empty-results diagnostic response", async () => {
+    // Wipe fixtures so the projection is empty while the stale-fallback
+    // path triggers on the /schedules/schedule_a key.
+    store.db.prepare("DELETE FROM documents WHERE kind = 'contribution'").run();
+
+    const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
+    const now = new Date().toISOString();
+    const window = { from: oneWeekAgo, to: now };
+
+    upsertFetchLog(store.db, {
+      source: "openfec",
+      endpoint_path: "/schedules/schedule_a",
+      args_hash: hashArgs("recent_contributions", {
+        window, candidate_or_committee: undefined, min_amount: undefined,
+      }),
+      scope: "recent",
+      fetched_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+      last_rowcount: 0,
+    });
+
+    const fetchSpy = vi
+      .spyOn(OpenFecAdapter.prototype, "fetchRecentContributions")
+      .mockRejectedValue(new Error("upstream down"));
+
+    const res = await handleRecentContributions(store.db, { window });
+    expect(res.results).toHaveLength(0);
+    expect(res).toHaveProperty("empty_reason");
+    expect(res.stale_notice?.reason).toBe("upstream_failure");
+
+    fetchSpy.mockRestore();
   });
 });
