@@ -1,4 +1,7 @@
 import type Database from "better-sqlite3";
+import { ensureFresh, sourcesFor } from "../../core/hydrate.js";
+import { getLimiter } from "../../core/limiters.js";
+import type { DocumentKind } from "../../core/types.js";
 import { SearchDocumentsInput } from "../schemas.js";
 import { escapeLike } from "../../util/sql.js";
 import type { StaleNotice } from "../shared.js";
@@ -30,8 +33,36 @@ export async function handleSearchDocuments(
   rawInput: unknown,
 ): Promise<SearchDocumentsResponse> {
   const input = SearchDocumentsInput.parse(rawInput);
+
+  let stale_notice: StaleNotice | undefined;
+  if (input.jurisdiction) {
+    const kinds = (input.kinds ?? ["bill", "vote", "contribution"]) as DocumentKind[];
+    const seenSources = new Set<string>();
+    outer: for (const kind of kinds) {
+      for (const src of sourcesFor(kind, input.jurisdiction)) {
+        if (seenSources.has(src)) continue;
+        seenSources.add(src);
+        const r = await ensureFresh(
+          db,
+          src,
+          input.jurisdiction,
+          "recent",
+          () => getLimiter(src).peekWaitMs(),
+        );
+        if (r.stale_notice) {
+          stale_notice = r.stale_notice;
+          break outer;
+        }
+      }
+    }
+  }
+
   const clauses = ["title LIKE ? ESCAPE '\\'"];
   const params: unknown[] = [`%${escapeLike(input.q)}%`];
+  if (input.jurisdiction) {
+    clauses.push("jurisdiction = ?");
+    params.push(input.jurisdiction);
+  }
   if (input.kinds?.length) {
     const qs = input.kinds.map(() => "?").join(",");
     clauses.push(`kind IN (${qs})`);
@@ -72,5 +103,7 @@ export async function handleSearchDocuments(
     return { name, url: "" };
   });
 
-  return { results, total: results.length, sources };
+  const response: SearchDocumentsResponse = { results, total: results.length, sources };
+  if (stale_notice) response.stale_notice = stale_notice;
+  return response;
 }

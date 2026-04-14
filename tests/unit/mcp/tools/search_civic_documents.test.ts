@@ -1,14 +1,24 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { rmSync, existsSync } from "node:fs";
 import { openStore, type Store } from "../../../../src/core/store.js";
 import { seedJurisdictions } from "../../../../src/core/seeds.js";
 import { upsertDocument } from "../../../../src/core/documents.js";
 import { handleSearchDocuments } from "../../../../src/mcp/tools/search_civic_documents.js";
 
+vi.mock("../../../../src/core/hydrate.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/core/hydrate.js")>();
+  return { ...actual, ensureFresh: vi.fn() };
+});
+import { ensureFresh } from "../../../../src/core/hydrate.js";
+const mockEnsureFresh = vi.mocked(ensureFresh);
+
 const TEST_DB = "./data/test-tool-search-docs.db";
 let store: Store;
 
 beforeEach(() => {
+  mockEnsureFresh.mockReset();
+  mockEnsureFresh.mockResolvedValue({ ok: true });
+
   if (existsSync(TEST_DB)) rmSync(TEST_DB);
   store = openStore(TEST_DB);
   seedJurisdictions(store.db);
@@ -46,5 +56,38 @@ describe("search_civic_documents", () => {
       q: "HB", sources: ["openstates"],
     });
     expect(res.results).toHaveLength(2);
+  });
+
+  it("hydration: no jurisdiction filter — ensureFresh never called", async () => {
+    const res = await handleSearchDocuments(store.db, { q: "civic awareness" });
+    expect(mockEnsureFresh).not.toHaveBeenCalled();
+    expect(res.stale_notice).toBeUndefined();
+    expect(res.results).toHaveLength(2);
+  });
+
+  it("hydration: jurisdiction filter + success — results returned without stale_notice", async () => {
+    mockEnsureFresh.mockResolvedValue({ ok: true });
+    const res = await handleSearchDocuments(store.db, {
+      q: "civic awareness", jurisdiction: "us-tx",
+    });
+    expect(mockEnsureFresh).toHaveBeenCalled();
+    expect(res.stale_notice).toBeUndefined();
+    expect(res.results).toHaveLength(1);
+    expect(res.results[0].title).toContain("HB1234");
+  });
+
+  it("hydration: jurisdiction filter + upstream failure — stale_notice attached", async () => {
+    const notice = {
+      as_of: "2026-04-13T00:00:00.000Z",
+      reason: "upstream_failure" as const,
+      message: "Upstream openstates fetch failed; serving stale local data.",
+    };
+    mockEnsureFresh.mockResolvedValue({ ok: false, stale_notice: notice });
+    const res = await handleSearchDocuments(store.db, {
+      q: "civic awareness", jurisdiction: "us-tx",
+    });
+    expect(res.stale_notice?.reason).toBe("upstream_failure");
+    // Local data still served
+    expect(res.results).toHaveLength(1);
   });
 });

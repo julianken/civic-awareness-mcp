@@ -26,6 +26,7 @@ export type GetEntityInput = z.infer<typeof GetEntityInput>;
 
 export const SearchDocumentsInput = z.object({
   q: z.string().min(1),
+  jurisdiction: z.string().optional(),
   kinds: z.array(z.string()).optional(),
   sources: z.array(z.string()).optional(),
   from: z.iso.datetime().optional(),
