@@ -3,6 +3,7 @@ import { hashArgs } from "./args_hash.js";
 import { isFetchLogFresh, upsertFetchLog } from "./fetch_log.js";
 import type { FetchLogScope } from "./fetch_log.js";
 import type { HydrationSource } from "./freshness.js";
+import { Singleflight } from "./singleflight.js";
 import type { StaleNotice } from "../mcp/shared.js";
 
 export interface ShapedFetchKey {
@@ -22,22 +23,34 @@ export interface ShapedFetchResult<T> {
   stale_notice?: StaleNotice;
 }
 
+let sf = new Singleflight<ShapedFetchResult<unknown>>();
+let txMutex: Promise<void> = Promise.resolve();
+
 export function _resetToolCacheForTesting(): void {
-  // Subsequent tasks add singleflight + budget singletons; reset them here.
+  sf = new Singleflight<ShapedFetchResult<unknown>>();
+  txMutex = Promise.resolve();
 }
 
 async function runInTransaction<R>(
   db: Database.Database,
   fn: () => Promise<R>,
 ): Promise<R> {
-  db.prepare("BEGIN IMMEDIATE").run();
+  const prev = txMutex;
+  let release!: () => void;
+  txMutex = new Promise<void>((r) => { release = r; });
+  await prev;
   try {
-    const result = await fn();
-    db.prepare("COMMIT").run();
-    return result;
-  } catch (err) {
-    db.prepare("ROLLBACK").run();
-    throw err;
+    db.prepare("BEGIN IMMEDIATE").run();
+    try {
+      const result = await fn();
+      db.prepare("COMMIT").run();
+      return result;
+    } catch (err) {
+      db.prepare("ROLLBACK").run();
+      throw err;
+    }
+  } finally {
+    release();
   }
 }
 
@@ -56,18 +69,23 @@ export async function withShapedFetch<T>(
     return { value: readLocal() };
   }
 
-  await runInTransaction(db, async () => {
-    const result = await fetchAndWrite();
-    upsertFetchLog(db, {
-      source: key.source,
-      endpoint_path: key.endpoint_path,
-      args_hash,
-      scope: ttl.scope,
-      fetched_at: new Date().toISOString(),
-      last_rowcount: result.primary_rows_written,
+  const singleflightKey = `${key.source}:${key.endpoint_path}:${args_hash}`;
+  return (await sf.do(singleflightKey, async () => {
+    if (isFetchLogFresh(db, key.source, key.endpoint_path, args_hash, ttl.ms)) {
+      return { value: readLocal() } as ShapedFetchResult<unknown>;
+    }
+    await runInTransaction(db, async () => {
+      const result = await fetchAndWrite();
+      upsertFetchLog(db, {
+        source: key.source,
+        endpoint_path: key.endpoint_path,
+        args_hash,
+        scope: ttl.scope,
+        fetched_at: new Date().toISOString(),
+        last_rowcount: result.primary_rows_written,
+      });
+      return result;
     });
-    return result;
-  });
-
-  return { value: readLocal() };
+    return { value: readLocal() } as ShapedFetchResult<unknown>;
+  })) as ShapedFetchResult<T>;
 }

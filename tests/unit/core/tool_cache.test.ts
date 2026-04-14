@@ -102,3 +102,62 @@ describe("withShapedFetch — TTL miss", () => {
     expect(logged).toBeNull();
   });
 });
+
+describe("withShapedFetch — singleflight", () => {
+  it("coalesces concurrent identical calls into one upstream fetch", async () => {
+    let fetchCount = 0;
+    let resolveFetch: (() => void) | null = null;
+    const fetchAndWrite = async () => {
+      fetchCount += 1;
+      await new Promise<void>((resolve) => { resolveFetch = resolve; });
+      return { primary_rows_written: 1 };
+    };
+    const readLocal = () => ["result"];
+
+    const key = {
+      source: "openstates" as const,
+      endpoint_path: "/people",
+      args: { name: "coalesce" },
+      tool: "__test__",
+    };
+    const ttl = { scope: "full" as const, ms: 24 * 60 * 60 * 1000 };
+
+    const p1 = withShapedFetch(db, key, ttl, fetchAndWrite, readLocal, () => 0);
+    const p2 = withShapedFetch(db, key, ttl, fetchAndWrite, readLocal, () => 0);
+    const p3 = withShapedFetch(db, key, ttl, fetchAndWrite, readLocal, () => 0);
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(fetchCount).toBe(1);
+
+    resolveFetch!();
+    const results = await Promise.all([p1, p2, p3]);
+
+    expect(fetchCount).toBe(1);
+    expect(results.map((r) => r.value)).toEqual([["result"], ["result"], ["result"]]);
+  });
+
+  it("different args do NOT coalesce", async () => {
+    let fetchCount = 0;
+    const fetchAndWrite = async () => {
+      fetchCount += 1;
+      return { primary_rows_written: 1 };
+    };
+    const readLocal = () => ["result"];
+    const ttl = { scope: "full" as const, ms: 24 * 60 * 60 * 1000 };
+
+    await Promise.all([
+      withShapedFetch(
+        db,
+        { source: "openstates", endpoint_path: "/people", args: { name: "a" }, tool: "__test__" },
+        ttl, fetchAndWrite, readLocal, () => 0,
+      ),
+      withShapedFetch(
+        db,
+        { source: "openstates", endpoint_path: "/people", args: { name: "b" }, tool: "__test__" },
+        ttl, fetchAndWrite, readLocal, () => 0,
+      ),
+    ]);
+
+    expect(fetchCount).toBe(2);
+  });
+});
