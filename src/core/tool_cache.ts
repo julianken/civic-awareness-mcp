@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { hashArgs } from "./args_hash.js";
 import { DailyBudget } from "./budget.js";
-import { isFetchLogFresh, upsertFetchLog } from "./fetch_log.js";
+import { getFetchLog, isFetchLogFresh, upsertFetchLog } from "./fetch_log.js";
 import type { FetchLogScope } from "./fetch_log.js";
 import type { HydrationSource } from "./freshness.js";
 import { Singleflight } from "./singleflight.js";
@@ -77,23 +77,39 @@ export async function withShapedFetch<T>(
     if (isFetchLogFresh(db, key.source, key.endpoint_path, args_hash, ttl.ms)) {
       return { value: readLocal() } as ShapedFetchResult<unknown>;
     }
-    const b = budget.check(key.source);
-    if (!b.allowed) {
-      throw new Error(`Daily budget for ${key.source} exhausted`);
-    }
-    await runInTransaction(db, async () => {
-      const result = await fetchAndWrite();
-      upsertFetchLog(db, {
-        source: key.source,
-        endpoint_path: key.endpoint_path,
-        args_hash,
-        scope: ttl.scope,
-        fetched_at: new Date().toISOString(),
-        last_rowcount: result.primary_rows_written,
+    try {
+      const b = budget.check(key.source);
+      if (!b.allowed) {
+        throw new Error(`Daily budget for ${key.source} exhausted`);
+      }
+      await runInTransaction(db, async () => {
+        const result = await fetchAndWrite();
+        upsertFetchLog(db, {
+          source: key.source,
+          endpoint_path: key.endpoint_path,
+          args_hash,
+          scope: ttl.scope,
+          fetched_at: new Date().toISOString(),
+          last_rowcount: result.primary_rows_written,
+        });
+        return result;
       });
-      return result;
-    });
-    budget.record(key.source);
-    return { value: readLocal() } as ShapedFetchResult<unknown>;
+      budget.record(key.source);
+      return { value: readLocal() } as ShapedFetchResult<unknown>;
+    } catch (err) {
+      const prior = getFetchLog(db, key.source, key.endpoint_path, args_hash);
+      if (prior) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          value: readLocal(),
+          stale_notice: {
+            as_of: prior.fetched_at,
+            reason: "upstream_failure",
+            message: `Upstream ${key.source} fetch failed; serving stale cached data. ${msg}`,
+          },
+        } as ShapedFetchResult<unknown>;
+      }
+      throw err;
+    }
   })) as ShapedFetchResult<T>;
 }

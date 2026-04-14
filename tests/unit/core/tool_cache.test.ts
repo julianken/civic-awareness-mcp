@@ -187,3 +187,57 @@ describe("withShapedFetch — daily budget", () => {
     _resetToolCacheForTesting();
   });
 });
+
+describe("withShapedFetch — stale fallback", () => {
+  it("returns stale cached value + stale_notice when upstream fails", async () => {
+    const args = { name: "expired" };
+    const hash = hashArgs("__test__", args);
+    upsertFetchLog(db, {
+      source: "openstates",
+      endpoint_path: "/people",
+      args_hash: hash,
+      scope: "full",
+      fetched_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+      last_rowcount: 3,
+    });
+
+    const fetchAndWrite = vi.fn(async () => {
+      throw new Error("network down");
+    });
+    const readLocal = vi.fn(() => ["stale-but-useful"]);
+
+    const result = await withShapedFetch(
+      db,
+      { source: "openstates", endpoint_path: "/people", args, tool: "__test__" },
+      { scope: "full", ms: 24 * 60 * 60 * 1000 },
+      fetchAndWrite,
+      readLocal,
+      () => 0,
+    );
+
+    expect(fetchAndWrite).toHaveBeenCalledOnce();
+    expect(readLocal).toHaveBeenCalledOnce();
+    expect(result.value).toEqual(["stale-but-useful"]);
+    expect(result.stale_notice).toBeDefined();
+    expect(result.stale_notice?.reason).toBe("upstream_failure");
+    expect(result.stale_notice?.message).toMatch(/network down/);
+  });
+
+  it("propagates upstream error when no cached data exists", async () => {
+    const fetchAndWrite = vi.fn(async () => {
+      throw new Error("network down");
+    });
+    const readLocal = vi.fn(() => [] as string[]);
+
+    await expect(
+      withShapedFetch(
+        db,
+        { source: "openstates", endpoint_path: "/people", args: { name: "cold" }, tool: "__test__" },
+        { scope: "full", ms: 24 * 60 * 60 * 1000 },
+        fetchAndWrite,
+        readLocal,
+        () => 0,
+      ),
+    ).rejects.toThrow(/network down/);
+  });
+});
