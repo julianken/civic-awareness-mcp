@@ -9,8 +9,7 @@ function canonicalize(v: unknown): unknown {
     return v;
   }
   if (typeof v === "string") {
-    const s = v.normalize("NFC").trim().replace(/\s+/g, " ").toLowerCase();
-    return s === "" ? undefined : s;
+    return v.normalize("NFC").trim().replace(/\s+/g, " ").toLowerCase();
   }
   if (Array.isArray(v)) {
     return v.map(canonicalize);
@@ -21,7 +20,15 @@ function canonicalize(v: unknown): unknown {
     const out: Record<string, unknown> = {};
     for (const k of keys) {
       const cv = canonicalize(obj[k]);
-      if (cv !== undefined) out[k] = cv;
+      if (cv === undefined) continue;
+      if (typeof cv === "string" && cv === "") continue;
+      if (
+        typeof cv === "object" &&
+        cv !== null &&
+        !Array.isArray(cv) &&
+        Object.keys(cv).length === 0
+      ) continue;
+      out[k] = cv;
     }
     return out;
   }

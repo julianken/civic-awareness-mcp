@@ -44,6 +44,30 @@ describe("args_hash", () => {
       const b = canonicalizeArgs("get_bill", { id: "x" });
       expect(a).not.toBe(b);
     });
+
+    it("cascade-drops empty nested objects", () => {
+      expect(canonicalizeArgs("tool", { a: { b: "" } }))
+        .toBe('tool:{}');
+      expect(canonicalizeArgs("tool", { a: { b: {} } }))
+        .toBe('tool:{}');
+      expect(canonicalizeArgs("tool", { a: { b: "", c: { d: undefined } } }))
+        .toBe('tool:{}');
+    });
+
+    it("treats empty-options equal to omitted-options", () => {
+      expect(canonicalizeArgs("resolve_person", { name: "Angus King" }))
+        .toBe(canonicalizeArgs("resolve_person", { name: "Angus King", options: {} }));
+    });
+
+    it("preserves empty-string elements in arrays (position-semantic)", () => {
+      expect(canonicalizeArgs("tool", { kinds: ["bill", "", "vote"] }))
+        .toBe('tool:{"kinds":["bill","","vote"]}');
+    });
+
+    it("preserves empty arrays as distinct from missing keys", () => {
+      expect(canonicalizeArgs("tool", { kinds: [] }))
+        .toBe('tool:{"kinds":[]}');
+    });
   });
 
   describe("hashArgs", () => {
