@@ -511,3 +511,30 @@ The decision to keep `days` with its 7-day default — even when `limit` is set 
 Distinct `limit` values produce distinct `fetch_log` rows by virtue of joining the args bag — no new cache-invalidation machinery needed.
 
 Locked in phase-9a (`docs/plans/phase-9a-recent-bills-limit.md`).
+
+## R17 — `get_vote` as a separate detail tool, not a feed extension (2026-04-14)
+
+Phase 9's tool-surface audit found that `VoteSummary` as returned by
+`recent_votes` cannot answer "how did Senator X vote on bill Y" —
+the tally is aggregate, not per-member. Two options existed:
+
+1. Add `positions[]` to `VoteSummary` and expand `recent_votes`.
+2. Add a new `get_vote` detail tool that returns `positions[]` only
+   when the caller asks for one specific vote.
+
+Option 2 wins because `recent_votes` is a feed projection — its
+purpose is to answer "what votes happened recently" with enough
+context for the LLM to pick one. Inlining every voter's position
+into every feed row would bloat payloads 100×–500× (one row is
+~200 bytes today; with positions it's 50–100 KB for a full federal
+roll call) and push every feed response past typical MCP content
+limits for marginal query value. The C-projection pattern
+established by `get_bill` — "feed-tool result → LLM picks one →
+detail-tool fetch" — is the right shape.
+
+Cost: one additional tool registration, against the ~15-tool
+LLM-selection ceiling (R5). Terminal count after Phase 9 is 11,
+still well inside the ceiling.
+
+Cross-references: R14 (per-document freshness for detail tools),
+D11 (detail-tool hydration scope locked).

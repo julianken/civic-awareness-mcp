@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ListBillsInput } from "../../../src/mcp/schemas.js";
+import { GetVoteInput, ListBillsInput } from "../../../src/mcp/schemas.js";
 
 describe("ListBillsInput", () => {
   it("requires jurisdiction", () => {
@@ -56,6 +56,39 @@ describe("ListBillsInput", () => {
   it("rejects unknown sort value", () => {
     expect(() =>
       ListBillsInput.parse({ jurisdiction: "us-tx", sort: "by_title" }),
+    ).toThrow();
+  });
+});
+
+describe("GetVoteInput", () => {
+  it("accepts a vote_id alone", () => {
+    const parsed = GetVoteInput.parse({ vote_id: "doc-uuid-abc" });
+    expect(parsed.vote_id).toBe("doc-uuid-abc");
+  });
+
+  it("accepts the full federal composite", () => {
+    const parsed = GetVoteInput.parse({
+      congress: 119, chamber: "upper", session: 1, roll_number: 42,
+    });
+    expect(parsed.congress).toBe(119);
+    expect(parsed.roll_number).toBe(42);
+  });
+
+  it("rejects empty input", () => {
+    expect(() => GetVoteInput.parse({})).toThrow();
+  });
+
+  it("rejects a partial composite (missing roll_number)", () => {
+    expect(() =>
+      GetVoteInput.parse({ congress: 119, chamber: "upper", session: 1 }),
+    ).toThrow();
+  });
+
+  it("rejects session values other than 1 or 2", () => {
+    expect(() =>
+      GetVoteInput.parse({
+        congress: 119, chamber: "upper", session: 3, roll_number: 42,
+      }),
     ).toThrow();
   });
 });

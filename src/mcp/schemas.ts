@@ -99,3 +99,25 @@ export const ListBillsInput = z.object({
   limit: z.number().int().min(1).max(50).default(20),
 });
 export type ListBillsInput = z.infer<typeof ListBillsInput>;
+
+export const GetVoteInput = z
+  .object({
+    vote_id: z.string().min(1).optional(),
+    congress: z.number().int().positive().optional(),
+    chamber: z.enum(["upper", "lower"]).optional(),
+    session: z.union([z.literal(1), z.literal(2)]).optional(),
+    roll_number: z.number().int().positive().optional(),
+  })
+  .refine(
+    (v) =>
+      v.vote_id !== undefined ||
+      (v.congress !== undefined &&
+        v.chamber !== undefined &&
+        v.session !== undefined &&
+        v.roll_number !== undefined),
+    {
+      message:
+        "Provide either vote_id OR the full composite (congress, chamber, session, roll_number).",
+    },
+  );
+export type GetVoteInput = z.infer<typeof GetVoteInput>;
