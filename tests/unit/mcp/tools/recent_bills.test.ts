@@ -4,21 +4,44 @@ import { openStore, type Store } from "../../../../src/core/store.js";
 import { seedJurisdictions } from "../../../../src/core/seeds.js";
 import { upsertEntity } from "../../../../src/core/entities.js";
 import { upsertDocument } from "../../../../src/core/documents.js";
+import { upsertFetchLog } from "../../../../src/core/fetch_log.js";
+import { hashArgs } from "../../../../src/core/args_hash.js";
+import { _resetToolCacheForTesting } from "../../../../src/core/tool_cache.js";
+import { _resetLimitersForTesting, _setLimiterForTesting } from "../../../../src/core/limiters.js";
+import { RateLimiter } from "../../../../src/util/http.js";
+import { OpenStatesAdapter } from "../../../../src/adapters/openstates.js";
+import { CongressAdapter } from "../../../../src/adapters/congress.js";
 import { handleRecentBills } from "../../../../src/mcp/tools/recent_bills.js";
-
-vi.mock("../../../../src/core/hydrate.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../../../src/core/hydrate.js")>();
-  return { ...actual, ensureFresh: vi.fn() };
-});
-import { ensureFresh } from "../../../../src/core/hydrate.js";
-const mockEnsureFresh = vi.mocked(ensureFresh);
 
 const TEST_DB = "./data/test-tool-recent-bills.db";
 let store: Store;
 
+/**
+ * Pre-seeds a fetch_log row for (source, endpoint_path, args) so
+ * `withShapedFetch` takes the TTL-hit path — the adapter method is
+ * NOT called, and the handler runs the SQL projection directly. Used
+ * for tests that focus on projection behaviour rather than hydration.
+ */
+function seedFetchLogFresh(
+  source: "openstates" | "congress",
+  endpoint_path: string,
+  args: Record<string, unknown>,
+): void {
+  upsertFetchLog(store.db, {
+    source,
+    endpoint_path,
+    args_hash: hashArgs("recent_bills", args),
+    scope: "recent",
+    fetched_at: new Date().toISOString(),
+    last_rowcount: 1,
+  });
+}
+
 beforeEach(() => {
-  mockEnsureFresh.mockReset();
-  mockEnsureFresh.mockResolvedValue({ ok: true });
+  _resetToolCacheForTesting();
+  _resetLimitersForTesting();
+  process.env.OPENSTATES_API_KEY = "test-key";
+  process.env.API_DATA_GOV_KEY = "test-key";
 
   if (existsSync(TEST_DB)) rmSync(TEST_DB);
   store = openStore(TEST_DB);
@@ -52,22 +75,34 @@ beforeEach(() => {
     source: { name: "openstates", id: "3", url: "https://openstates.org/ca/bills/AB123" },
   });
 });
-afterEach(() => store.close());
+afterEach(() => {
+  store.close();
+  delete process.env.OPENSTATES_API_KEY;
+  delete process.env.API_DATA_GOV_KEY;
+});
 
-describe("recent_bills tool", () => {
+describe("recent_bills tool — projection (TTL-hit path)", () => {
   it("returns only bills within the window for the specified state", async () => {
+    seedFetchLogFresh("openstates", "/bills",
+      { jurisdiction: "us-tx", days: 7, chamber: undefined, session: undefined });
     const result = await handleRecentBills(store.db, { days: 7, jurisdiction: "us-tx" });
     expect(result.results).toHaveLength(1);
     expect(result.results[0].identifier).toBe("HB1");
     expect(result.results[0].title).toBe("recent bill");
   });
+
   it("scopes to the requested jurisdiction (TX vs CA)", async () => {
+    seedFetchLogFresh("openstates", "/bills",
+      { jurisdiction: "us-ca", days: 7, chamber: undefined, session: undefined });
     const ca = await handleRecentBills(store.db, { days: 7, jurisdiction: "us-ca" });
     expect(ca.results).toHaveLength(1);
     expect(ca.results[0].identifier).toBe("AB123");
     expect(ca.results[0].title).toBe("california bill");
   });
+
   it("includes sponsor info via sponsor_summary", async () => {
+    seedFetchLogFresh("openstates", "/bills",
+      { jurisdiction: "us-tx", days: 7, chamber: undefined, session: undefined });
     const result = await handleRecentBills(store.db, { days: 7, jurisdiction: "us-tx" });
     const r = result.results[0];
     expect(r).toHaveProperty("sponsor_summary");
@@ -76,13 +111,17 @@ describe("recent_bills tool", () => {
     expect(r.sponsor_summary.top[0].party).toBe("Democratic");
     expect(r.sponsor_summary.top[0].role).toBe("sponsor");
   });
+
   it("includes source provenance with a jurisdiction-aware URL", async () => {
+    seedFetchLogFresh("openstates", "/bills",
+      { jurisdiction: "us-tx", days: 7, chamber: undefined, session: undefined });
     const result = await handleRecentBills(store.db, { days: 7, jurisdiction: "us-tx" });
     expect(result.sources).toContainEqual({
       name: "openstates",
       url: expect.stringContaining("/tx/"),
     });
   });
+
   it("rejects input with no jurisdiction", async () => {
     await expect(
       handleRecentBills(store.db, { days: 7 }),
@@ -109,6 +148,8 @@ describe("recent_bills tool", () => {
       raw: { actions: [] },
     });
 
+    seedFetchLogFresh("openstates", "/bills",
+      { jurisdiction: "us-tx", days: 7, chamber: undefined, session: undefined });
     const res = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
     const billWithSummary = res.results.find((r) => r.identifier === "SB 1");
     expect(billWithSummary).toBeDefined();
@@ -142,14 +183,20 @@ describe("recent_bills tool", () => {
       ],
       raw: { actions: [] },
     });
+    seedFetchLogFresh("openstates", "/bills",
+      { jurisdiction: "us-tx", days: 7, chamber: undefined, session: undefined });
     const res = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
-    expect(res.results[0].sponsor_summary.by_party).toMatchObject({
+    const target = res.results.find((r) => r.identifier === "SB X");
+    expect(target).toBeDefined();
+    expect(target!.sponsor_summary.by_party).toMatchObject({
       Republican: 1,
       unknown: 1,
     });
   });
 
   it("accepts days up to 365", async () => {
+    seedFetchLogFresh("openstates", "/bills",
+      { jurisdiction: "us-or", days: 365, chamber: undefined, session: undefined });
     const res = await handleRecentBills(store.db, { jurisdiction: "us-or", days: 365 });
     expect(res.window.from).toBeDefined();
   });
@@ -174,6 +221,8 @@ describe("recent_bills tool", () => {
       references: [], raw: { session: "891", actions: [] },
     });
 
+    seedFetchLogFresh("openstates", "/bills",
+      { jurisdiction: "us-tx", days: 7, chamber: undefined, session: "892" });
     const res = await handleRecentBills(store.db, {
       jurisdiction: "us-tx",
       days: 7,        // window excludes both bills
@@ -184,6 +233,8 @@ describe("recent_bills tool", () => {
   });
 
   it("attaches empty_reason diagnostic when results are empty", async () => {
+    seedFetchLogFresh("openstates", "/bills",
+      { jurisdiction: "us-or", days: 7, chamber: undefined, session: undefined });
     const res = await handleRecentBills(store.db, { jurisdiction: "us-or", days: 7 });
     expect(res.results).toHaveLength(0);
     expect(res).toHaveProperty("empty_reason", "no_events_in_window");
@@ -198,6 +249,8 @@ describe("recent_bills tool", () => {
       source: { name: "openstates", id: "or-1", url: "https://ex" },
       references: [], raw: { actions: [] },
     });
+    seedFetchLogFresh("openstates", "/bills",
+      { jurisdiction: "us-or", days: 7, chamber: undefined, session: undefined });
     const res = await handleRecentBills(store.db, { jurisdiction: "us-or", days: 7 });
     expect(res.results).toHaveLength(1);
     expect(res).not.toHaveProperty("empty_reason");
@@ -221,60 +274,164 @@ describe("recent_bills tool", () => {
         raw: { actions: [] },
       });
     }
+    seedFetchLogFresh("openstates", "/bills",
+      { jurisdiction: "us-tx", days: 7, chamber: undefined, session: undefined });
     const res = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
     const bytes = Buffer.byteLength(JSON.stringify(res), "utf8");
     expect(bytes).toBeLessThan(30 * 1024);
   });
+});
 
-  it("hydration: fresh cache returns results with no stale_notice", async () => {
-    mockEnsureFresh.mockResolvedValue({ ok: true });
+describe("recent_bills tool — R15 hydration path", () => {
+  it("state jurisdiction: invokes OpenStates fetchRecentBills on cache miss", async () => {
+    const fetchSpy = vi
+      .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
+      .mockImplementation(async () => ({ documentsUpserted: 0 }));
+
     const res = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    // Local projection still runs — HB1 fixture is in-window.
     expect(res.results).toHaveLength(1);
+    expect(res.results[0].identifier).toBe("HB1");
     expect(res.stale_notice).toBeUndefined();
+
+    fetchSpy.mockRestore();
   });
 
-  it("hydration: upstream failure attaches stale_notice, still serves local data", async () => {
-    upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HB99 — stale test",
-      occurred_at: new Date().toISOString(),
-      source: { name: "openstates", id: "stale-1", url: "https://openstates.org/tx/bills/HB99" },
+  it("us-federal: invokes Congress fetchRecentBills", async () => {
+    const fetchSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchRecentBills")
+      .mockImplementation(async () => ({ documentsUpserted: 0 }));
+
+    await handleRecentBills(store.db, { jurisdiction: "us-federal", days: 7 });
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    fetchSpy.mockRestore();
+  });
+
+  it("cache hit: does NOT call the adapter on the second call within TTL", async () => {
+    const fetchSpy = vi
+      .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
+      .mockImplementation(async () => ({ documentsUpserted: 0 }));
+
+    await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
+    await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    fetchSpy.mockRestore();
+  });
+
+  it("wildcard jurisdiction `*` is local-only — no adapter call", async () => {
+    const openstatesSpy = vi
+      .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
+      .mockImplementation(async () => ({ documentsUpserted: 0 }));
+    const congressSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchRecentBills")
+      .mockImplementation(async () => ({ documentsUpserted: 0 }));
+
+    const res = await handleRecentBills(store.db, { jurisdiction: "*", days: 7 });
+
+    expect(openstatesSpy).not.toHaveBeenCalled();
+    expect(congressSpy).not.toHaveBeenCalled();
+    // TX and CA fixtures both land in the "*" window.
+    expect(res.results.length).toBeGreaterThanOrEqual(2);
+
+    openstatesSpy.mockRestore();
+    congressSpy.mockRestore();
+  });
+
+  it("upstream failure with no cached data propagates the error", async () => {
+    const fetchSpy = vi
+      .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
+      .mockRejectedValue(new Error("network down"));
+
+    await expect(
+      handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 }),
+    ).rejects.toThrow(/network down/);
+
+    fetchSpy.mockRestore();
+  });
+
+  it("upstream failure with stale cached data surfaces stale_notice and still serves local data", async () => {
+    // Seed a stale fetch_log row so withShapedFetch chooses the stale
+    // fallback branch instead of propagating the upstream error.
+    upsertFetchLog(store.db, {
+      source: "openstates",
+      endpoint_path: "/bills",
+      args_hash: hashArgs("recent_bills", {
+        jurisdiction: "us-tx", days: 7, chamber: undefined, session: undefined,
+      }),
+      scope: "recent",
+      fetched_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+      last_rowcount: 1,
     });
-    const notice = {
-      as_of: "2026-04-13T00:00:00.000Z",
-      reason: "upstream_failure" as const,
-      message: "Upstream openstates fetch failed; serving stale local data.",
-    };
-    mockEnsureFresh.mockResolvedValue({ ok: false, stale_notice: notice });
+
+    const fetchSpy = vi
+      .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
+      .mockRejectedValue(new Error("simulated upstream failure"));
+
     const res = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
+
     expect(res.stale_notice?.reason).toBe("upstream_failure");
-    // Local data still served
     expect(res.results.length).toBeGreaterThan(0);
+
+    fetchSpy.mockRestore();
   });
 
-  it("hydration: rate-limited attaches stale_notice with retry_after_s", async () => {
-    const notice = {
-      as_of: "2026-04-13T00:00:00.000Z",
-      reason: "rate_limited" as const,
-      message: "Rate limit for openstates requires 120s wait; serving stale local data.",
-      retry_after_s: 120,
-    };
-    mockEnsureFresh.mockResolvedValue({ ok: false, stale_notice: notice });
+  it("rate-limited: stale cached data returns stale_notice without hitting upstream", async () => {
+    upsertFetchLog(store.db, {
+      source: "openstates",
+      endpoint_path: "/bills",
+      args_hash: hashArgs("recent_bills", {
+        jurisdiction: "us-tx", days: 7, chamber: undefined, session: undefined,
+      }),
+      scope: "recent",
+      fetched_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+      last_rowcount: 1,
+    });
+
+    // Drain the openstates limiter so peekWaitMs() > 2.5s threshold.
+    const drained = new RateLimiter({ tokensPerInterval: 1, intervalMs: 60_000 });
+    await drained.acquire();
+    _setLimiterForTesting("openstates", drained);
+
+    const fetchSpy = vi
+      .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
+      .mockImplementation(async () => ({ documentsUpserted: 0 }));
+
     const res = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
-    expect(res.stale_notice?.reason).toBe("rate_limited");
-    expect(res.stale_notice?.retry_after_s).toBe(120);
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(res.stale_notice?.reason).toBe("upstream_failure");
+    expect(res.stale_notice?.message).toMatch(/rate.?limit/i);
+    expect(res.results.length).toBeGreaterThan(0);
+
+    fetchSpy.mockRestore();
   });
 
-  it("hydration: stale_notice propagates to empty-results diagnostic response", async () => {
-    const notice = {
-      as_of: "2026-04-13T00:00:00.000Z",
-      reason: "upstream_failure" as const,
-      message: "Upstream failed.",
-    };
-    mockEnsureFresh.mockResolvedValue({ ok: false, stale_notice: notice });
-    // us-or has no documents in the db
+  it("stale_notice propagates into empty-results diagnostic response", async () => {
+    upsertFetchLog(store.db, {
+      source: "openstates",
+      endpoint_path: "/bills",
+      args_hash: hashArgs("recent_bills", {
+        jurisdiction: "us-or", days: 7, chamber: undefined, session: undefined,
+      }),
+      scope: "recent",
+      fetched_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+      last_rowcount: 0,
+    });
+
+    const fetchSpy = vi
+      .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
+      .mockRejectedValue(new Error("upstream down"));
+
+    // us-or has no bills in store.
     const res = await handleRecentBills(store.db, { jurisdiction: "us-or", days: 7 });
     expect(res.results).toHaveLength(0);
     expect(res).toHaveProperty("empty_reason");
     expect(res.stale_notice?.reason).toBe("upstream_failure");
+
+    fetchSpy.mockRestore();
   });
 });

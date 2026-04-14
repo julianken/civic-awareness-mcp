@@ -1,9 +1,12 @@
 import type Database from "better-sqlite3";
+import { OpenStatesAdapter } from "../../adapters/openstates.js";
+import { CongressAdapter } from "../../adapters/congress.js";
 import { queryDocuments } from "../../core/documents.js";
 import { findEntityById } from "../../core/entities.js";
-import { ensureFresh, sourcesFor } from "../../core/hydrate.js";
 import { getLimiter } from "../../core/limiters.js";
+import { withShapedFetch } from "../../core/tool_cache.js";
 import type { EntityReference } from "../../core/types.js";
+import { requireEnv } from "../../util/env.js";
 import { RecentBillsInput } from "../schemas.js";
 import { emptyFeedDiagnostic, type EmptyFeedDiagnostic, type StaleNotice } from "../shared.js";
 
@@ -86,8 +89,12 @@ function buildSponsorSummary(
 
 /**
  * Returns recently-updated bills for the given jurisdiction.
- * As of Phase 3, also accepts `jurisdiction = "us-federal"` to query
- * federal bills ingested by the Congress.gov adapter.
+ *
+ * R15 vertical: the handler is a thin orchestrator around
+ * `withShapedFetch`. It branches on jurisdiction — `us-federal` uses
+ * the Congress.gov adapter's `fetchRecentBills`, state jurisdictions
+ * use the OpenStates adapter's `fetchRecentBills`. Wildcard `"*"`
+ * short-circuits to local-only (no upstream fetch).
  *
  * Title format is always "IDENTIFIER — TITLE" — the handler splits on
  * " — " to separate `identifier` from `title` in the response.
@@ -98,95 +105,138 @@ export async function handleRecentBills(
 ): Promise<RecentBillsResponse> {
   const input = RecentBillsInput.parse(rawInput);
 
-  let stale_notice: StaleNotice | undefined;
-  const sources = sourcesFor("bill", input.jurisdiction);
-  for (const src of sources) {
-    const r = await ensureFresh(
-      db,
-      src,
-      input.jurisdiction,
-      "recent",
-      () => getLimiter(src).peekWaitMs(),
-    );
-    if (r.stale_notice) {
-      stale_notice = r.stale_notice;
-      break;
-    }
-  }
-
   const to = new Date();
   const from = new Date(to.getTime() - input.days * 86400 * 1000);
 
-  const docs = input.session
-    ? queryDocuments(db, {
-        kind: "bill",
-        jurisdiction: input.jurisdiction,
-        limit: 100,
-      })
-    : queryDocuments(db, {
-        kind: "bill",
-        jurisdiction: input.jurisdiction,
-        from: from.toISOString(),
-        to: to.toISOString(),
-        limit: 50,
-      });
+  const projectLocal = (): RecentBillsResponse => {
+    const docs = input.session
+      ? queryDocuments(db, {
+          kind: "bill",
+          jurisdiction: input.jurisdiction,
+          limit: 100,
+        })
+      : queryDocuments(db, {
+          kind: "bill",
+          jurisdiction: input.jurisdiction,
+          from: from.toISOString(),
+          to: to.toISOString(),
+          limit: 50,
+        });
 
-  const sessionFiltered = input.session
-    ? docs.filter((d) => (d.raw as { session?: string }).session === input.session)
-    : docs;
+    const sessionFiltered = input.session
+      ? docs.filter((d) => (d.raw as { session?: string }).session === input.session)
+      : docs;
 
-  const filtered = input.chamber
-    ? sessionFiltered.filter((d) => {
-        const sponsor = d.references.find((r) => r.role === "sponsor");
-        if (!sponsor) return false;
-        const ent = findEntityById(db, sponsor.entity_id);
-        return ent?.metadata.chamber === input.chamber;
-      })
-    : sessionFiltered;
+    const filtered = input.chamber
+      ? sessionFiltered.filter((d) => {
+          const sponsor = d.references.find((r) => r.role === "sponsor");
+          if (!sponsor) return false;
+          const ent = findEntityById(db, sponsor.entity_id);
+          return ent?.metadata.chamber === input.chamber;
+        })
+      : sessionFiltered;
 
-  const results: BillSummary[] = filtered.map((d) => {
-    const [identifier, ...titleParts] = d.title.split(" — ");
-    const actions = (d.raw.actions as Array<{ date: string; description: string }> | undefined) ?? [];
-    const latest = actions.length ? actions[actions.length - 1] : null;
-    return {
-      id: d.id,
-      identifier: identifier?.trim() ?? d.title,
-      title: titleParts.join(" — ").trim() || d.title,
-      latest_action: latest,
-      sponsor_summary: buildSponsorSummary(db, d.references),
-      source_url: d.source.url,
-    };
-  });
+    const results: BillSummary[] = filtered.map((d) => {
+      const [identifier, ...titleParts] = d.title.split(" — ");
+      const actions = (d.raw.actions as Array<{ date: string; description: string }> | undefined) ?? [];
+      const latest = actions.length ? actions[actions.length - 1] : null;
+      return {
+        id: d.id,
+        identifier: identifier?.trim() ?? d.title,
+        title: titleParts.join(" — ").trim() || d.title,
+        latest_action: latest,
+        sponsor_summary: buildSponsorSummary(db, d.references),
+        source_url: d.source.url,
+      };
+    });
 
-  // Build source URLs from each document's actual source_name —
-  // openstates for state bills, congress for federal, etc. Matches
-  // the pattern in get_entity.ts.
-  const sourceByName = new Map<string, string>();
-  for (const d of filtered) {
-    if (sourceByName.has(d.source.name)) continue;
-    if (d.source.name === "openstates") {
-      const stateAbbr = d.jurisdiction.replace(/^us-/, "");
-      const url = d.jurisdiction === "*"
-        ? "https://openstates.org/"
-        : `https://openstates.org/${stateAbbr}/`;
-      sourceByName.set(d.source.name, url);
-    } else if (d.source.name === "congress") {
-      sourceByName.set(d.source.name, "https://www.congress.gov/");
-    } else {
-      sourceByName.set(d.source.name, "");
+    // Build source URLs from each document's actual source_name —
+    // openstates for state bills, congress for federal, etc. Matches
+    // the pattern in get_entity.ts.
+    const sourceByName = new Map<string, string>();
+    for (const d of filtered) {
+      if (sourceByName.has(d.source.name)) continue;
+      if (d.source.name === "openstates") {
+        const stateAbbr = d.jurisdiction.replace(/^us-/, "");
+        const url = d.jurisdiction === "*"
+          ? "https://openstates.org/"
+          : `https://openstates.org/${stateAbbr}/`;
+        sourceByName.set(d.source.name, url);
+      } else if (d.source.name === "congress") {
+        sourceByName.set(d.source.name, "https://www.congress.gov/");
+      } else {
+        sourceByName.set(d.source.name, "");
+      }
     }
+
+    const base: RecentBillsResponse = {
+      results,
+      total: results.length,
+      sources: Array.from(sourceByName, ([name, url]) => ({ name, url })),
+      window: { from: from.toISOString(), to: to.toISOString() },
+    };
+    if (results.length === 0) {
+      const diag = emptyFeedDiagnostic(db, { jurisdiction: input.jurisdiction, kind: "bill" });
+      return { ...base, ...diag };
+    }
+    return base;
+  };
+
+  // Wildcard: local-only. No hydration, no upstream fetch — matches
+  // search-style behaviour.
+  if (input.jurisdiction === "*") {
+    return projectLocal();
   }
 
-  const base: RecentBillsResponse = {
-    results,
-    total: results.length,
-    sources: Array.from(sourceByName, ([name, url]) => ({ name, url })),
-    window: { from: from.toISOString(), to: to.toISOString() },
+  const isFederal = input.jurisdiction === "us-federal";
+  const source = isFederal ? "congress" as const : "openstates" as const;
+  const endpoint_path = isFederal ? "/bill" : "/bills";
+
+  const fetchAndWrite = async (): Promise<{ primary_rows_written: number }> => {
+    if (isFederal) {
+      const adapter = new CongressAdapter({
+        apiKey: requireEnv("API_DATA_GOV_KEY"),
+        rateLimiter: getLimiter("congress"),
+      });
+      const { documentsUpserted } = await adapter.fetchRecentBills(db, {
+        fromDateTime: from.toISOString(),
+        chamber: input.chamber,
+      });
+      return { primary_rows_written: documentsUpserted };
+    }
+    const adapter = new OpenStatesAdapter({
+      apiKey: requireEnv("OPENSTATES_API_KEY"),
+      rateLimiter: getLimiter("openstates"),
+    });
+    const { documentsUpserted } = await adapter.fetchRecentBills(db, {
+      jurisdiction: input.jurisdiction,
+      updated_since: from.toISOString().slice(0, 10),
+      chamber: input.chamber,
+    });
+    return { primary_rows_written: documentsUpserted };
   };
-  if (results.length === 0) {
-    const diag = emptyFeedDiagnostic(db, { jurisdiction: input.jurisdiction, kind: "bill" });
-    return { ...base, ...diag, ...(stale_notice ? { stale_notice } : {}) };
+
+  const result = await withShapedFetch(
+    db,
+    {
+      source,
+      endpoint_path,
+      args: {
+        jurisdiction: input.jurisdiction,
+        days: input.days,
+        chamber: input.chamber,
+        session: input.session,
+      },
+      tool: "recent_bills",
+    },
+    { scope: "recent", ms: 60 * 60 * 1000 },
+    fetchAndWrite,
+    projectLocal,
+    () => getLimiter(source).peekWaitMs(),
+  );
+
+  if (result.stale_notice) {
+    return { ...result.value, stale_notice: result.stale_notice };
   }
-  if (stale_notice) base.stale_notice = stale_notice;
-  return base;
+  return result.value;
 }
