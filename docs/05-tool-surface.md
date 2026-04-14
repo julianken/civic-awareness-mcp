@@ -220,8 +220,10 @@ output:
 ## Detail tools (C) — 1 tool
 
 Identifier-first, full projection of a single resource. Uses
-per-document freshness (R14 / D11) rather than the jurisdiction-
-level cache (R13) — see `docs/00-rationale.md` for the rationale.
+per-document freshness (R14 / D11) — `documents.fetched_at` drives
+the TTL — rather than the per-endpoint `fetch_log` used by the
+listing and search tools (R15). See `docs/00-rationale.md` for the
+rationale.
 
 ### `get_bill` (Phase 7)
 
@@ -261,7 +263,7 @@ output:
     fetched_at: string
   } | null
   sources: Array<{ name, url }>
-  stale_notice?: { ... }                // reason ∈ "not_found" | "not_yet_supported" | ... (R13 reasons)
+  stale_notice?: { ... }                // reason ∈ "upstream_failure" | "not_found" | "not_yet_supported"
 ```
 
 Freshness: per-document TTL of 1h keyed on `documents.fetched_at`.
@@ -273,30 +275,39 @@ serve the last-known row with a `stale_notice`.
 `versions[*].text_url` to the state leginfo site. See R9 / D3c —
 summarization is the consuming LLM's job, not the MCP's.
 
-## Pass-through cache (R13)
+## Shaped-query cache (R15)
 
-Read tools transparently hydrate their jurisdiction from upstream on cache miss. The SQLite store is a TTL cache, not a user concern.
+Read tools perform a narrow upstream fetch shaped to the specific
+tool call, write-through to SQLite inside one transaction, then read
+locally. The SQLite store is a TTL cache, not a user concern.
 
-- `scope="recent"` (feed pulls): TTL = 1h
-- `scope="full"` (entity hydration): TTL = 24h
-- Keyed per `(source, jurisdiction, scope)` in the `hydrations` table
+- Keyed per `(source, endpoint_path, args_hash)` in the `fetch_log` table
+- TTL is set per tool (values live in `src/core/tool_cache.ts`); listing/feed endpoints use short windows, lookup-by-id endpoints use longer ones
+- The `get_bill` detail tool uses a per-document TTL on `documents.fetched_at` instead of `fetch_log` (R14)
 
-On upstream failure, rate-limit wait > 2.5s, or daily-budget exhaustion, tools serve stale local data with a `stale_notice` sibling field on the response:
+On upstream failure, tools serve stale local data (if any) with a
+`stale_notice` sibling field on the response:
 
 ```jsonc
 {
   "results": [...],
   "stale_notice": {
     "as_of": "2026-04-12T14:30:00Z",
-    "reason": "upstream_failure",  // or: rate_limited | partial_hydrate | daily_budget_exhausted
-    "message": "Human-readable one-line summary.",
-    "retry_after_s": 60,
-    "completeness": "active_session_only"
+    "reason": "upstream_failure",  // or: not_found | not_yet_supported
+    "message": "Human-readable one-line summary."
   }
 }
 ```
 
-`refresh_source` is not an MCP tool. The `pnpm refresh` CLI is retained for operator use (cron, bulk seeding, historical backfill).
+Valid `stale_notice.reason` values under R15: `upstream_failure`,
+`not_found`, `not_yet_supported`. The earlier R13 reasons
+`partial_hydrate`, `rate_limited`, and `daily_budget_exhausted` are
+retired — shaped queries either fit the per-call budget, fall back
+to stale cache as `upstream_failure`, or surface a real error.
+
+`refresh_source` is not an MCP tool (historical artifact removed
+when R13 was superseded by R15). The `pnpm refresh` CLI is retained
+for operator use (cron, bulk seeding, historical backfill).
 
 ## Phase-to-tool mapping
 
@@ -307,10 +318,11 @@ On upstream failure, rate-limit wait > 2.5s, or daily-budget exhaustion, tools s
 | **3 — Congress.gov** | ✅ done | + `recent_votes`; `recent_bills`, `search_entities`, `get_entity`, `search_civic_documents` expand to include federal |
 | **4 — OpenFEC** | ✅ done | + `recent_contributions`; cross-source entity merge (fec_candidate ↔ bioguide ↔ openstates_person) |
 | **5 — Connections** | ✅ done | + `entity_connections`, `resolve_person` |
-| **6 — Pass-through cache** | ✅ done | No new tools; `refresh_source` removed from MCP surface |
+| **6 — Pass-through cache (R13)** | ✅ done | No new tools; `refresh_source` removed from MCP surface |
 | **7 — Detail projection** | ✅ done | + `get_bill` (OpenStates state bills only; federal deferred to 7b) |
+| **8 — Shaped-query hydration (R15)** | ✅ done | No new tools; all 9 tools migrated from R13 jurisdiction-wide cache to R15 per-endpoint `fetch_log`; R13 infrastructure deleted |
 
-As of Phase 7 (2026-04-13), the server exposes **9 tools total**:
+As of Phase 8 (2026-04-14), the server exposes **9 tools total**:
 `recent_bills`, `recent_votes`, `recent_contributions`,
 `search_entities`, `get_entity`, `search_civic_documents`,
 `entity_connections`, `resolve_person`, `get_bill`.
@@ -322,10 +334,10 @@ a dedicated `entity_activity` tool emerges as necessary, it can be
 added as a wrapper over the existing `queryDocuments` / `findDocumentsByEntity`
 core helpers without new infrastructure.
 
-## Why 8 tools and not 20
+## Why 9 tools and not 20
 
 LLM tool-selection accuracy drops noticeably beyond ~15 tools with
-similar-sounding names. We keep to 8 with clearly distinct verbs
+similar-sounding names. We keep to 9 with clearly distinct verbs
 (`recent_X` vs `search_X` vs `get_X` vs `resolve_X` vs
 `entity_connections`). If a future sub-source needs a new surface,
 we prefer extending an existing tool's input over adding a new tool.
