@@ -25,9 +25,7 @@ import { seedJurisdictions } from "../../src/core/seeds.js";
 import { handleRecentBills } from "../../src/mcp/tools/recent_bills.js";
 import { _resetToolCacheForTesting } from "../../src/core/tool_cache.js";
 import { _resetLimitersForTesting } from "../../src/core/limiters.js";
-import { upsertFetchLog } from "../../src/core/fetch_log.js";
-import { hashArgs } from "../../src/core/args_hash.js";
-import { upsertDocument } from "../../src/core/documents.js";
+import { seedStaleCache } from "../helpers/seed_stale_cache.js";
 
 vi.stubEnv("OPENSTATES_API_KEY", "test-key");
 
@@ -90,31 +88,32 @@ describe("passthrough shaped e2e — recent_bills (R15)", () => {
     // Seed a stale fetch_log row and the document it projects from.
     // `last_rowcount` is informational only — the projection reads
     // whatever is in `documents` at the time of the call.
-    upsertDocument(store.db, {
-      kind: "bill",
-      jurisdiction: "us-tx",
-      title: "HB99 — Stale Bill",
-      occurred_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-      source: {
-        name: "openstates",
-        id: "ocd-bill/tx-stale",
-        url: "https://openstates.org/tx/bills/HB99",
-      },
-      raw: { actions: [] },
-    });
-
-    upsertFetchLog(store.db, {
+    seedStaleCache({
+      db: store.db,
       source: "openstates",
       endpoint_path: "/bills",
-      args_hash: hashArgs("recent_bills", {
+      scope: "recent",
+      tool: "recent_bills",
+      args: {
         jurisdiction: "us-tx",
         days: 90,
         chamber: undefined,
         session: undefined,
-      }),
-      scope: "recent",
-      fetched_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
-      last_rowcount: 1,
+      },
+      documents: [
+        {
+          kind: "bill",
+          jurisdiction: "us-tx",
+          title: "HB99 — Stale Bill",
+          occurred_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+          source: {
+            name: "openstates",
+            id: "ocd-bill/tx-stale",
+            url: "https://openstates.org/tx/bills/HB99",
+          },
+          raw: { actions: [] },
+        },
+      ],
     });
 
     vi.spyOn(global, "fetch").mockImplementation(async (input) => {
