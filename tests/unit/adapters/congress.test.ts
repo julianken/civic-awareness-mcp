@@ -314,3 +314,99 @@ describe("CongressAdapter", () => {
     expect(result.errors).toEqual([]);
   });
 });
+
+describe("CongressAdapter.fetchRecentBills", () => {
+  it("fetches one page of recent bills with fromDateTime filter", async () => {
+    let capturedUrl: string | null = null;
+    vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
+      capturedUrl = String(url);
+      return new Response(
+        JSON.stringify({
+          bills: [
+            {
+              congress: 119,
+              type: "HR",
+              number: "123",
+              title: "Test Bill",
+              updateDate: "2026-04-10",
+              url: "https://api.congress.gov/v3/bill/119/HR/123",
+              sponsors: [{ bioguideId: "T000001", fullName: "Rep. T" }],
+              latestAction: { actionDate: "2026-04-10", text: "Introduced" },
+            },
+          ],
+          pagination: { count: 1 },
+        }),
+        { status: 200 },
+      );
+    });
+
+    const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
+    const result = await adapter.fetchRecentBills(store.db, {
+      fromDateTime: "2026-04-01T00:00:00Z",
+    });
+
+    expect(capturedUrl).toBeTruthy();
+    const u = new URL(capturedUrl!);
+    expect(u.searchParams.get("fromDateTime")).toBe("2026-04-01T00:00:00Z");
+    expect(u.searchParams.get("sort")).toBe("updateDate+desc");
+    expect(u.searchParams.get("limit")).toBe("250");
+    expect(u.searchParams.get("congress")).toBe("119");
+    expect(u.searchParams.get("api_key")).toBe("test-key");
+
+    expect(result.documentsUpserted).toBe(1);
+    const bills = store.db
+      .prepare(
+        "SELECT id, title FROM documents WHERE source_name='congress' AND kind='bill'",
+      )
+      .all() as Array<{ id: string; title: string }>;
+    expect(bills).toHaveLength(1);
+  });
+
+  it("filters by chamber when provided (upper = Senate, S prefix)", async () => {
+    vi.spyOn(global, "fetch").mockImplementation(async () => {
+      return new Response(
+        JSON.stringify({
+          bills: [
+            {
+              congress: 119,
+              type: "HR",
+              number: "1",
+              title: "House Bill",
+              updateDate: "2026-04-10",
+              url: "https://api.congress.gov/v3/bill/119/HR/1",
+              sponsors: [],
+              latestAction: null,
+            },
+            {
+              congress: 119,
+              type: "S",
+              number: "2",
+              title: "Senate Bill",
+              updateDate: "2026-04-10",
+              url: "https://api.congress.gov/v3/bill/119/S/2",
+              sponsors: [],
+              latestAction: null,
+            },
+          ],
+          pagination: { count: 2 },
+        }),
+        { status: 200 },
+      );
+    });
+
+    const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
+    const result = await adapter.fetchRecentBills(store.db, {
+      fromDateTime: "2026-04-01T00:00:00Z",
+      chamber: "upper",
+    });
+
+    expect(result.documentsUpserted).toBe(1);
+    const titles = store.db
+      .prepare(
+        "SELECT title FROM documents WHERE source_name='congress' AND kind='bill'",
+      )
+      .all() as Array<{ title: string }>;
+    expect(titles).toHaveLength(1);
+    expect(titles[0].title).toMatch(/Senate Bill/);
+  });
+});

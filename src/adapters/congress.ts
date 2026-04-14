@@ -228,6 +228,50 @@ export class CongressAdapter implements Adapter {
     return result;
   }
 
+  /**
+   * Narrow per-tool fetch for R15 `recent_bills` — one page of
+   * recently-updated bills with `fromDateTime` filter. Write-through
+   * via existing `upsertBill`. Returns telemetry count.
+   *
+   * Uses only the current Congress (`this.congresses[0]`) — prior
+   * congresses are bulk-loaded via `pnpm refresh`. Optional chamber
+   * filter is applied client-side by bill-type prefix (`"S"` → upper/
+   * Senate; everything else → lower/House).
+   */
+  async fetchRecentBills(
+    db: Database.Database,
+    opts: { fromDateTime: string; chamber?: "upper" | "lower"; limit?: number },
+  ): Promise<{ documentsUpserted: number }> {
+    const congress = this.congresses[0];
+    const url = new URL(`${BASE_URL}/bill`);
+    url.searchParams.set("congress", String(congress));
+    url.searchParams.set("fromDateTime", opts.fromDateTime);
+    url.searchParams.set("sort", "updateDate+desc");
+    url.searchParams.set("limit", String(opts.limit ?? 250));
+    url.searchParams.set("api_key", this.opts.apiKey);
+
+    const res = await rateLimitedFetch(url.toString(), {
+      userAgent: "civic-awareness-mcp/0.1.0 (+github)",
+      rateLimiter: this.rateLimiter,
+    });
+    if (!res.ok) throw new Error(`Congress.gov /bill returned ${res.status}`);
+    const body = (await res.json()) as { bills?: CongressBill[] };
+
+    const chamberMatch = (billType: string): boolean => {
+      if (!opts.chamber) return true;
+      const senate = billType.toUpperCase().startsWith("S");
+      return opts.chamber === "upper" ? senate : !senate;
+    };
+
+    let documentsUpserted = 0;
+    for (const b of body.bills ?? []) {
+      if (!chamberMatch(b.type)) continue;
+      this.upsertBill(db, b);
+      documentsUpserted += 1;
+    }
+    return { documentsUpserted };
+  }
+
   // ── Private helpers ────────────────────────────────────────────────
 
   private async fetchAllPages<T, B>(
