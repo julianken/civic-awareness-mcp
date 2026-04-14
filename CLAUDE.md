@@ -108,8 +108,9 @@ event stream:
   investigation-oriented.
 - **Details (C):** `get_bill` (and future `get_vote`,
   `get_contribution`) — identifier-first, full projection of one
-  resource. Uses per-document TTL (R14 / D11) rather than the
-  jurisdiction-level cache of R13.
+  resource. Uses per-document TTL (R14 / D11) tracked in
+  documents.fetched_at, independent of the endpoint-level
+  fetch_log cache used by feed and entity tools.
 - **Shaped-query hydration (R15, in flight):** Tools gate their
   upstream fetches on a `fetch_log` row keyed by
   `(source, endpoint_path, args_hash)`. On a miss they call
@@ -141,10 +142,12 @@ middle-name match, or role-jurisdiction overlap). See
 - Don't over-engineer entity resolution. V1 is **external-IDs, exact
   name, and fuzzy Levenshtein with linking-signal merges**. No ML,
   no embeddings, no vector search. See `docs/04-entity-schema.md`.
-- The SQLite store IS the cache under R13 (1h `scope="recent"` /
-  24h `scope="full"`). Don't add a second cache layer in memory
-  or elsewhere. The `hydrations` table tracks freshness; TTL
-  values live in `src/core/freshness.ts`.
+- The SQLite store IS the cache (`fetch_log` table under R15;
+  `hydrations` table retained for not-yet-migrated tools until
+  phase 8.10). Don't add a second cache layer in memory or
+  elsewhere. Per-tool TTLs live in `src/core/tool_cache.ts`;
+  legacy per-jurisdiction TTLs live in `src/core/freshness.ts`
+  until their removal in phase 8.10.
 - Don't bake jurisdiction into Person entity uniqueness constraints.
   Per D3b, `entities` must not have a UNIQUE on
   `(kind, jurisdiction, name_normalized)` that includes Person rows.
