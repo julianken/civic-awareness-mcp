@@ -241,6 +241,39 @@ export class OpenStatesAdapter implements Adapter {
     return { entitiesUpserted };
   }
 
+  /** Narrow per-tool fetch for R15 `entity_connections` — one page of
+   *  bills sponsored by a given OpenStates person (OCD ID). Writes
+   *  through to `documents` via `upsertBill` so results land where
+   *  `findConnections` reads. OpenStates v3 `/bills?sponsor=` accepts
+   *  the OCD person ID directly; no two-step lookup is needed. */
+  async fetchBillsBySponsor(
+    db: Database.Database,
+    opts: { sponsor: string; limit?: number },
+  ): Promise<{ documentsUpserted: number }> {
+    const url = new URL(`${BASE_URL}/bills`);
+    url.searchParams.set("sponsor", opts.sponsor);
+    url.searchParams.set("sort", "updated_desc");
+    url.searchParams.set("per_page", String(opts.limit ?? 20));
+    for (const inc of ["sponsorships", "abstracts", "actions"]) {
+      url.searchParams.append("include", inc);
+    }
+    const res = await rateLimitedFetch(url.toString(), {
+      userAgent: "civic-awareness-mcp/0.1.0 (+github)",
+      rateLimiter: this.rateLimiter,
+      headers: { "X-API-KEY": this.opts.apiKey },
+    });
+    if (!res.ok) {
+      throw new Error(`OpenStates /bills?sponsor=${opts.sponsor} returned ${res.status}`);
+    }
+    const body = (await res.json()) as { results?: OpenStatesBill[] };
+    let documentsUpserted = 0;
+    for (const b of body.results ?? []) {
+      this.upsertBill(db, b);
+      documentsUpserted += 1;
+    }
+    return { documentsUpserted };
+  }
+
   /** Narrow per-tool fetch for R15 `recent_bills` — one page of
    *  recently-updated bills for a jurisdiction, with optional
    *  `updated_since` filter and optional client-side chamber filter.
