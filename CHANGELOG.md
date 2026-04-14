@@ -11,6 +11,10 @@ this file. Format loosely follows [Keep a Changelog](https://keepachangelog.com/
   subject, classification, session, chamber, and date ranges.
   Ships OpenStates state-bill support; federal returns
   `not_yet_supported` until a future phase.
+- `get_vote` detail tool: returns per-legislator positions (entity_id,
+  name, party, state, yea/nay/present/not_voting) for one roll-call
+  vote. Federal (Congress.gov) only; accepts either `vote_id` or the
+  `(congress, chamber, session, roll_number)` composite. See R17, D11.
 
 ## 0.3.0 (2026-04-14)
 

@@ -1,6 +1,6 @@
 # 05 — MCP Tool Surface
 
-The MCP exposes **10 tools**, split into three groups by query
+The MCP exposes **11 tools**, split into three groups by query
 projection. Feed tools (B) answer "what's happening?"; entity tools
 (A) answer "who is X and what have they done?"; detail tools (C)
 answer "give me the full record of this one resource by ID". All
@@ -260,7 +260,7 @@ output:
   }>
 ```
 
-## Detail tools (C) — 1 tool
+## Detail tools (C) — 2 tools
 
 Identifier-first, full projection of a single resource. Uses
 per-document freshness (R14 / D11) — `documents.fetched_at` drives
@@ -318,6 +318,53 @@ serve the last-known row with a `stale_notice`.
 `versions[*].text_url` to the state leginfo site. See R9 / D3c —
 summarization is the consuming LLM's job, not the MCP's.
 
+### `get_vote` (Phase 9c)
+
+```
+input:
+  // Either:
+  vote_id: string                       // the documents.id from recent_votes
+  // OR (federal composite — Congress.gov only in V2):
+  congress: number                      // e.g. 119
+  chamber: "upper" | "lower"
+  session: 1 | 2                        // 1st or 2nd session of the Congress
+  roll_number: number
+
+output:
+  vote: {
+    id: string
+    bill_identifier: string | null      // e.g. "HR1234"; null for procedural
+    jurisdiction: "us-federal"
+    session: string                     // Congress number as string
+    chamber: "upper" | "lower"
+    date: string
+    result: string                      // "Passed", "Failed", etc.
+    tally: { yea, nay, present, absent }
+    positions: Array<{
+      entity_id: string | null          // resolved via external_ids.bioguide
+      name: string
+      party: string | null              // e.g. "Democratic", "Republican"
+      state?: string                    // federal only; absent for state votes
+      vote: "yea" | "nay" | "present" | "absent" | "not_voting"
+    }>
+    source_url: string
+    fetched_at: string
+  } | null
+  sources: Array<{ name, url }>
+  stale_notice?: { reason, ... }
+```
+
+Freshness: per-document TTL of 1h keyed on `documents.fetched_at`
+(R14 / D11). On a composite miss the handler calls
+`CongressAdapter.fetchVote` (`/senate-vote/{c}/{s}/{r}` or
+`/house-vote/...`), upserts, then projects. Upstream failures serve
+the last-known row with a `stale_notice`.
+
+Federal (Congress.gov) only in V2. State-jurisdiction votes are
+not ingested; a `vote_id` unknown to the local store returns
+`stale_notice.reason="not_found"`. See R17 for why `get_vote` is a
+new tool rather than an extension of `VoteSummary`.
+
 ## Shaped-query cache (R15)
 
 Read tools perform a narrow upstream fetch shaped to the specific
@@ -365,11 +412,12 @@ for operator use (cron, bulk seeding, historical backfill).
 | **7 — Detail projection** | ✅ done | + `get_bill` (OpenStates state bills only; federal deferred to 7b) |
 | **8 — Shaped-query hydration (R15)** | ✅ done | No new tools; all 9 tools migrated from R13 jurisdiction-wide cache to R15 per-endpoint `fetch_log`; R13 infrastructure deleted |
 | **9b — list_bills** | ✅ done | + `list_bills` (OpenStates state bills; federal deferred) |
+| **9c — get_vote detail tool** | ✅ done | + `get_vote` (federal-only; state deferred) |
 
-As of Phase 9b (2026-04-14), the server exposes **10 tools total**:
+As of Phase 9c (2026-04-14), the server exposes **11 tools total**:
 `recent_bills`, `list_bills`, `recent_votes`, `recent_contributions`,
 `search_entities`, `get_entity`, `search_civic_documents`,
-`entity_connections`, `resolve_person`, `get_bill`.
+`entity_connections`, `resolve_person`, `get_bill`, `get_vote`.
 
 The original spec mentioned `entity_activity` as a separate tool.
 That surface is effectively covered by `get_entity.recent_documents`
