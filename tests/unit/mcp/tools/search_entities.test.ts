@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { rmSync, existsSync } from "node:fs";
 import { openStore, type Store } from "../../../../src/core/store.js";
+import { bootstrap } from "../../../../src/cli/bootstrap.js";
 import { seedJurisdictions } from "../../../../src/core/seeds.js";
 import { upsertEntity } from "../../../../src/core/entities.js";
 import { upsertFetchLog } from "../../../../src/core/fetch_log.js";
@@ -158,5 +159,128 @@ describe("search_entities tool — R15 hydration path", () => {
     ).rejects.toThrow(/network down/);
 
     spy.mockRestore();
+  });
+});
+
+describe("handleSearchEntities had_role / had_jurisdiction", () => {
+  it("had_role matches a historical role even when current jurisdiction is different", async () => {
+    _resetToolCacheForTesting();
+    const dbPath = `/tmp/se-had-role-${Date.now()}-${Math.random()}.db`;
+    await bootstrap({ dbPath });
+    const db = openStore(dbPath).db;
+
+    const now = new Date().toISOString();
+    db.prepare(
+      `INSERT INTO entities
+       (id, kind, name, name_normalized, jurisdiction, external_ids, aliases, metadata, first_seen_at, last_seen_at)
+       VALUES ('p1', 'person', 'Jane Doe', 'jane doe', 'us-federal',
+         '{"bioguide":"D000001"}', '[]', ?, ?, ?)`,
+    ).run(
+      JSON.stringify({
+        roles: [
+          { jurisdiction: "us-tx", role: "state_legislator" },
+          { jurisdiction: "us-federal", role: "senator" },
+        ],
+      }),
+      now,
+      now,
+    );
+
+    const result = await handleSearchEntities(db, {
+      q: "jane",
+      had_role: "state_legislator",
+    });
+
+    expect(result.results.map((r) => r.id)).toContain("p1");
+  });
+
+  it("had_jurisdiction matches a historical jurisdiction", async () => {
+    _resetToolCacheForTesting();
+    const dbPath = `/tmp/se-had-juris-${Date.now()}-${Math.random()}.db`;
+    await bootstrap({ dbPath });
+    const db = openStore(dbPath).db;
+
+    const now = new Date().toISOString();
+    db.prepare(
+      `INSERT INTO entities
+       (id, kind, name, name_normalized, jurisdiction, external_ids, aliases, metadata, first_seen_at, last_seen_at)
+       VALUES ('p1', 'person', 'Jane Doe', 'jane doe', 'us-federal',
+         '{"bioguide":"D000001"}', '[]', ?, ?, ?)`,
+    ).run(
+      JSON.stringify({
+        roles: [
+          { jurisdiction: "us-tx", role: "state_legislator" },
+          { jurisdiction: "us-federal", role: "senator" },
+        ],
+      }),
+      now,
+      now,
+    );
+
+    const result = await handleSearchEntities(db, {
+      q: "jane",
+      had_jurisdiction: "us-tx",
+    });
+
+    expect(result.results.map((r) => r.id)).toContain("p1");
+  });
+
+  it("had_role + had_jurisdiction require the SAME role entry to match both", async () => {
+    _resetToolCacheForTesting();
+    const dbPath = `/tmp/se-had-and-${Date.now()}-${Math.random()}.db`;
+    await bootstrap({ dbPath });
+    const db = openStore(dbPath).db;
+
+    const now = new Date().toISOString();
+    db.prepare(
+      `INSERT INTO entities
+       (id, kind, name, name_normalized, jurisdiction, external_ids, aliases, metadata, first_seen_at, last_seen_at)
+       VALUES ('p1', 'person', 'Jane Doe', 'jane doe', 'us-federal',
+         '{"bioguide":"D000001"}', '[]', ?, ?, ?)`,
+    ).run(
+      JSON.stringify({
+        roles: [
+          { jurisdiction: "us-tx", role: "state_legislator" },
+          { jurisdiction: "us-federal", role: "senator" },
+        ],
+      }),
+      now,
+      now,
+    );
+
+    const noMatch = await handleSearchEntities(db, {
+      q: "jane",
+      had_role: "senator",
+      had_jurisdiction: "us-tx",
+    });
+    expect(noMatch.results.map((r) => r.id)).not.toContain("p1");
+
+    const match = await handleSearchEntities(db, {
+      q: "jane",
+      had_role: "state_legislator",
+      had_jurisdiction: "us-tx",
+    });
+    expect(match.results.map((r) => r.id)).toContain("p1");
+  });
+
+  it("had_role drops entities whose metadata has no roles[]", async () => {
+    _resetToolCacheForTesting();
+    const dbPath = `/tmp/se-had-none-${Date.now()}-${Math.random()}.db`;
+    await bootstrap({ dbPath });
+    const db = openStore(dbPath).db;
+
+    const now = new Date().toISOString();
+    db.prepare(
+      `INSERT INTO entities
+       (id, kind, name, name_normalized, jurisdiction, external_ids, aliases, metadata, first_seen_at, last_seen_at)
+       VALUES ('p2', 'person', 'Jim Smith', 'jim smith', 'us-federal',
+         '{}', '[]', '{}', ?, ?)`,
+    ).run(now, now);
+
+    const result = await handleSearchEntities(db, {
+      q: "jim",
+      had_role: "senator",
+    });
+    expect(result.results.map((r) => r.id)).not.toContain("p2");
   });
 });

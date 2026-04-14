@@ -54,6 +54,25 @@ export async function handleSearchEntities(
       clauses.push("e.jurisdiction = ?");
       params.push(input.jurisdiction);
     }
+    if (input.had_role || input.had_jurisdiction) {
+      const roleChecks: string[] = [];
+      const roleParams: unknown[] = [];
+      if (input.had_role) {
+        roleChecks.push("json_extract(je.value, '$.role') = ?");
+        roleParams.push(input.had_role);
+      }
+      if (input.had_jurisdiction) {
+        roleChecks.push("json_extract(je.value, '$.jurisdiction') = ?");
+        roleParams.push(input.had_jurisdiction);
+      }
+      clauses.push(
+        `EXISTS (
+          SELECT 1 FROM json_each(e.metadata, '$.roles') je
+          WHERE ${roleChecks.join(" AND ")}
+        )`,
+      );
+      params.push(...roleParams);
+    }
     params.push(input.limit);
 
     const rows = db

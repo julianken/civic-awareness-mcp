@@ -21,6 +21,8 @@ export const SearchEntitiesInput = z.object({
   q: z.string().min(1),
   kind: z.enum(["person", "organization", "committee", "pac", "agency"]).optional(),
   jurisdiction: z.string().optional(),
+  had_role: z.string().optional(),
+  had_jurisdiction: z.string().optional(),
   limit: z.number().int().min(1).max(50).default(20),
 });
 export type SearchEntitiesInput = z.infer<typeof SearchEntitiesInput>;
