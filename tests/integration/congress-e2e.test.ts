@@ -3,7 +3,6 @@ import { rmSync, existsSync, readFileSync } from "node:fs";
 import { openStore, type Store } from "../../src/core/store.js";
 import { seedJurisdictions } from "../../src/core/seeds.js";
 import { CongressAdapter } from "../../src/adapters/congress.js";
-import { handleRecentBills } from "../../src/mcp/tools/recent_bills.js";
 import { handleRecentVotes } from "../../src/mcp/tools/recent_votes.js";
 import { upsertEntity } from "../../src/core/entities.js";
 
@@ -39,24 +38,6 @@ afterEach(() => {
 });
 
 describe("Congress.gov end-to-end", () => {
-  it("refreshes and exposes federal bills via recent_bills", async () => {
-    const adapter = new CongressAdapter({ apiKey: "fake", congresses: [119] });
-    const result = await adapter.refresh({ db: store.db, maxPages: 1 });
-    expect(result.errors).toEqual([]);
-    expect(result.documentsUpserted).toBeGreaterThan(0);
-
-    const bills = await handleRecentBills(store.db, {
-      days: 90,
-      jurisdiction: "us-federal",
-    });
-    expect(bills.results.length).toBeGreaterThan(0);
-    expect(bills.sources[0].name).toBe("congress");
-
-    const bill = bills.results[0];
-    expect(bill.identifier).toBe("HR1234");
-    expect(bill.title).toMatch(/Civic Awareness/);
-  });
-
   it("refreshes and exposes federal votes via recent_votes", async () => {
     const adapter = new CongressAdapter({ apiKey: "fake", congresses: [119] });
     await adapter.refresh({ db: store.db, maxPages: 1 });

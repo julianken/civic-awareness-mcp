@@ -1,0 +1,134 @@
+/**
+ * Shaped-fetch integration tests (R15 path) for `recent_bills`.
+ *
+ * Mirrors the scenarios the R13 passthrough suite used to cover for
+ * recent_bills, adapted to the R15 `withShapedFetch` contract:
+ *
+ *  1. Cold fetch → warm hit: first call hits upstream, second call
+ *     (within TTL) serves from the local store with no upstream hit.
+ *  2. Upstream failure with no prior cache propagates the error.
+ *  3. Upstream failure with a stale `fetch_log` row serves local
+ *     data plus `stale_notice.reason === "upstream_failure"`.
+ *
+ * The `rate_limited` stale-notice reason was retired under R15 — gate
+ * failures produce `upstream_failure` when cached data exists, else
+ * propagate. That behaviour is covered by the unit suite
+ * (tests/unit/mcp/tools/recent_bills.test.ts).
+ *
+ * HTTP is stubbed via `vi.spyOn(global, "fetch")` to match the rest
+ * of this codebase (msw is not a project dep).
+ */
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { openStore, type Store } from "../../src/core/store.js";
+import { seedJurisdictions } from "../../src/core/seeds.js";
+import { handleRecentBills } from "../../src/mcp/tools/recent_bills.js";
+import { _resetToolCacheForTesting } from "../../src/core/tool_cache.js";
+import { _resetLimitersForTesting } from "../../src/core/limiters.js";
+import { upsertFetchLog } from "../../src/core/fetch_log.js";
+import { hashArgs } from "../../src/core/args_hash.js";
+import { upsertDocument } from "../../src/core/documents.js";
+
+vi.stubEnv("OPENSTATES_API_KEY", "test-key");
+
+const billsFixture = readFileSync(
+  "tests/integration/fixtures/openstates-bills-page1.json",
+  "utf-8",
+);
+
+let store: Store;
+let upstreamHits = 0;
+
+beforeEach(() => {
+  upstreamHits = 0;
+  _resetToolCacheForTesting();
+  _resetLimitersForTesting();
+  store = openStore(":memory:");
+  seedJurisdictions(store.db);
+});
+
+afterEach(() => {
+  store.close();
+  vi.restoreAllMocks();
+});
+
+describe("passthrough shaped e2e — recent_bills (R15)", () => {
+  it("cold fetch → warm hit: second call does not hit upstream", async () => {
+    vi.spyOn(global, "fetch").mockImplementation(async (input) => {
+      const url = String(typeof input === "string" ? input : (input as URL | Request).toString());
+      if (!url.includes("openstates.org/bills")) return new Response("", { status: 404 });
+      upstreamHits += 1;
+      return new Response(billsFixture, { status: 200 });
+    });
+
+    const first = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 90 });
+    const second = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 90 });
+
+    expect(upstreamHits).toBe(1);
+    expect(first.results.length).toBeGreaterThan(0);
+    expect(second.results.length).toBeGreaterThan(0);
+    expect(first.stale_notice).toBeUndefined();
+    expect(second.stale_notice).toBeUndefined();
+  });
+
+  it("upstream failure with no prior cache propagates the error", async () => {
+    vi.spyOn(global, "fetch").mockImplementation(async (input) => {
+      const url = String(typeof input === "string" ? input : (input as URL | Request).toString());
+      if (!url.includes("openstates.org/bills")) return new Response("", { status: 404 });
+      upstreamHits += 1;
+      return new Response(JSON.stringify({ detail: "server error" }), { status: 500 });
+    });
+
+    await expect(
+      handleRecentBills(store.db, { jurisdiction: "us-tx", days: 90 }),
+    ).rejects.toThrow();
+
+    expect(upstreamHits).toBeGreaterThan(0);
+  });
+
+  it("upstream failure with stale cache returns stale + upstream_failure notice", async () => {
+    // Seed a stale fetch_log row and the document it projects from.
+    // `last_rowcount` is informational only — the projection reads
+    // whatever is in `documents` at the time of the call.
+    upsertDocument(store.db, {
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HB99 — Stale Bill",
+      occurred_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+      source: {
+        name: "openstates",
+        id: "ocd-bill/tx-stale",
+        url: "https://openstates.org/tx/bills/HB99",
+      },
+      raw: { actions: [] },
+    });
+
+    upsertFetchLog(store.db, {
+      source: "openstates",
+      endpoint_path: "/bills",
+      args_hash: hashArgs("recent_bills", {
+        jurisdiction: "us-tx",
+        days: 90,
+        chamber: undefined,
+        session: undefined,
+      }),
+      scope: "recent",
+      fetched_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+      last_rowcount: 1,
+    });
+
+    vi.spyOn(global, "fetch").mockImplementation(async (input) => {
+      const url = String(typeof input === "string" ? input : (input as URL | Request).toString());
+      if (!url.includes("openstates.org/bills")) return new Response("", { status: 404 });
+      upstreamHits += 1;
+      return new Response(JSON.stringify({ detail: "server error" }), { status: 500 });
+    });
+
+    const result = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 90 });
+
+    expect(upstreamHits).toBeGreaterThan(0);
+    expect(result.stale_notice?.reason).toBe("upstream_failure");
+    expect(result.results.length).toBeGreaterThan(0);
+    expect(result.results[0].identifier).toBe("HB99");
+  });
+});
