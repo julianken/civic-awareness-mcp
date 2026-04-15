@@ -99,3 +99,67 @@ describe("seedJurisdictions", () => {
     s.close();
   });
 });
+
+// Regression for drift audit C1: migration 007's expression index
+// `idx_entities_bioguide` is keyed on `json_extract(external_ids, '$."bioguide"')`
+// — with inner double-quotes around the key. SQLite's planner matches the
+// indexed expression by exact text, so a future call site that drops the
+// inner quotes (`'$.bioguide'`) silently regresses to a full table scan.
+// These tests pin both the positive and negative cases against EXPLAIN
+// QUERY PLAN so the index stays load-bearing for get_vote and the
+// congress sponsor-upsert path.
+describe("migration 007: bioguide expression index", () => {
+  function seedEntity(s: ReturnType<typeof openStore>, id: string, bioguide: string): void {
+    s.db
+      .prepare(
+        `INSERT INTO entities (id, kind, name, name_normalized, external_ids, first_seen_at, last_seen_at)
+         VALUES (?, 'person', ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        id,
+        `Member ${bioguide}`,
+        `member ${bioguide}`,
+        JSON.stringify({ bioguide }),
+        "2026-04-14T00:00:00.000Z",
+        "2026-04-14T00:00:00.000Z",
+      );
+  }
+
+  it("query plan with quoted '$.\"bioguide\"' path uses idx_entities_bioguide", () => {
+    const s = openStore(TEST_DB);
+    seedJurisdictions(s.db);
+    seedEntity(s, "p1", "A000001");
+    seedEntity(s, "p2", "B000002");
+    seedEntity(s, "p3", "C000003");
+
+    const plan = s.db
+      .prepare(
+        `EXPLAIN QUERY PLAN
+         SELECT id FROM entities
+         WHERE json_extract(external_ids, '$."bioguide"') = ?`,
+      )
+      .all("A000001") as Array<{ detail: string }>;
+    s.close();
+
+    const detail = plan.map((r) => r.detail).join(" | ");
+    expect(detail).toContain("USING INDEX idx_entities_bioguide");
+  });
+
+  it("query plan with unquoted '$.bioguide' path does NOT use idx_entities_bioguide", () => {
+    const s = openStore(TEST_DB);
+    seedJurisdictions(s.db);
+    seedEntity(s, "p1", "A000001");
+
+    const plan = s.db
+      .prepare(
+        `EXPLAIN QUERY PLAN
+         SELECT id FROM entities
+         WHERE json_extract(external_ids, '$.bioguide') = ?`,
+      )
+      .all("A000001") as Array<{ detail: string }>;
+    s.close();
+
+    const detail = plan.map((r) => r.detail).join(" | ");
+    expect(detail).not.toContain("USING INDEX idx_entities_bioguide");
+  });
+});
