@@ -175,6 +175,14 @@ All paths upsert into `./data/civic-awareness.db` (gitignored).
 The schema auto-bootstraps on first server start — no `pnpm
 bootstrap` needed unless you want to create the DB ahead of time.
 
+To prune the per-endpoint freshness table (`fetch_log`) of long-stale
+rows — recommended monthly to prevent stale-row drift — run:
+
+```bash
+pnpm evict-fetch-log                       # default: rows older than 30d
+pnpm evict-fetch-log --older-than-days 90  # override cutoff
+```
+
 ### Claude Desktop config
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or the equivalent on other platforms:

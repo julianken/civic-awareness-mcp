@@ -47,6 +47,19 @@ export function upsertFetchLog(db: Database.Database, row: FetchLogRow): void {
   );
 }
 
+export function evictStaleFetchLogRows(
+  db: Database.Database,
+  opts: { olderThanDays: number },
+): { evictedCount: number } {
+  const cutoff = new Date(
+    Date.now() - opts.olderThanDays * 86400 * 1000,
+  ).toISOString();
+  const result = db
+    .prepare("DELETE FROM fetch_log WHERE fetched_at < ?")
+    .run(cutoff);
+  return { evictedCount: Number(result.changes) };
+}
+
 export function isFetchLogFresh(
   db: Database.Database,
   source: HydrationSource,

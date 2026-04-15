@@ -2,7 +2,12 @@ import { describe, it, expect, beforeEach } from "vitest";
 import type Database from "better-sqlite3";
 import { bootstrap } from "../../../src/cli/bootstrap.js";
 import { openStore } from "../../../src/core/store.js";
-import { getFetchLog, upsertFetchLog, isFetchLogFresh } from "../../../src/core/fetch_log.js";
+import {
+  getFetchLog,
+  upsertFetchLog,
+  isFetchLogFresh,
+  evictStaleFetchLogRows,
+} from "../../../src/core/fetch_log.js";
 
 let db: Database.Database;
 
@@ -92,5 +97,63 @@ describe("fetch_log", () => {
   it("isFetchLogFresh returns false when row is absent", () => {
     expect(isFetchLogFresh(db, "openstates", "/people", "unknown", 60 * 60 * 1000))
       .toBe(false);
+  });
+
+  describe("evictStaleFetchLogRows", () => {
+    it("deletes only rows older than the cutoff", () => {
+      const now = Date.now();
+      const day = 86400 * 1000;
+      upsertFetchLog(db, {
+        source: "openstates",
+        endpoint_path: "/people",
+        args_hash: "old",
+        scope: "full",
+        fetched_at: new Date(now - 30 * day).toISOString(),
+        last_rowcount: 1,
+      });
+      upsertFetchLog(db, {
+        source: "openstates",
+        endpoint_path: "/people",
+        args_hash: "borderline",
+        scope: "full",
+        fetched_at: new Date(now - 8 * day).toISOString(),
+        last_rowcount: 1,
+      });
+      upsertFetchLog(db, {
+        source: "openstates",
+        endpoint_path: "/people",
+        args_hash: "fresh",
+        scope: "full",
+        fetched_at: new Date(now - 1 * day).toISOString(),
+        last_rowcount: 1,
+      });
+
+      const { evictedCount } = evictStaleFetchLogRows(db, { olderThanDays: 7 });
+
+      expect(evictedCount).toBe(2);
+      expect(getFetchLog(db, "openstates", "/people", "old")).toBeNull();
+      expect(getFetchLog(db, "openstates", "/people", "borderline")).toBeNull();
+      expect(getFetchLog(db, "openstates", "/people", "fresh")).not.toBeNull();
+    });
+
+    it("returns zero when nothing matches", () => {
+      const now = Date.now();
+      upsertFetchLog(db, {
+        source: "openstates",
+        endpoint_path: "/people",
+        args_hash: "fresh",
+        scope: "full",
+        fetched_at: new Date(now - 1 * 86400 * 1000).toISOString(),
+        last_rowcount: 1,
+      });
+      const { evictedCount } = evictStaleFetchLogRows(db, { olderThanDays: 30 });
+      expect(evictedCount).toBe(0);
+      expect(getFetchLog(db, "openstates", "/people", "fresh")).not.toBeNull();
+    });
+
+    it("is a no-op on an empty table", () => {
+      const { evictedCount } = evictStaleFetchLogRows(db, { olderThanDays: 30 });
+      expect(evictedCount).toBe(0);
+    });
   });
 });
