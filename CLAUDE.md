@@ -21,11 +21,13 @@ Each server has its own `bin` entry, own schemas, own CLI. `src/core/` has no so
 - **Hydration flow:** tools call `withShapedFetch(db, key, ttl, fetchAndWrite, readLocal, peekWaitMs)` from `src/core/tool_cache.ts`. Cache key is `(source, endpoint_path, args_hash)`; freshness rows live in `fetch_log`. `stale_notice` fires only when an upstream fetch failed and cached data exists as fallback.
 - **Person entities** use `EXTERNAL_ID_PATHS` in `src/core/entities.ts` for federal IDs; `src/state/entities.ts` extends with `STATE_EXTERNAL_ID_PATHS` for `openstates_person`.
 - **Code style:** no comments explaining WHAT — only WHY when non-obvious. No defensive programming. No backwards-compatibility hacks.
+- **Live API sanity check before merge.** Any PR touching `src/*/adapters/` or `src/*/tools/` must run `tsx --env-file=.env.local scripts/sanity-check-tools.ts` against real upstreams and show no new errors. MSW-mocked unit tests miss API-contract bugs (datetime format, required query params, upstream filter rules). New tools must add their own case to the sanity script in the same PR. This rule comes from PR #2, which caught 3 such bugs (3/17 = 18%) that passed `npm test` cleanly.
 
 ## Commands
 
 - `npm run dev:federal` / `npm run dev:state` — run a server locally via `tsx`
 - `npm run bootstrap:federal` / `npm run bootstrap:state` — initialize the local SQLite DB
 - `npm run refresh:federal` / `npm run refresh:state` — bulk pre-fill from upstream
-- `npm test` — vitest
+- `npm test` — vitest (mocked with MSW — **does NOT exercise live APIs**)
+- `tsx --env-file=.env.local scripts/sanity-check-tools.ts` — **live-API sanity gate** on all 17 tool handlers; required before merging any PR touching adapters or tool handlers
 - `npm run build` — tsc + schema copy
