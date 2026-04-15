@@ -33,9 +33,8 @@ export function _resetToolCacheForTesting(): void {
  * R15 cache-gated upstream fetch. See
  * `docs/superpowers/specs/2026-04-14-shaped-query-hydration-design.md`.
  *
- * Flow: TTL fast-path → miss path (double-check TTL, daily budget,
- * rate-limit peek, atomic write-through inside a transaction, budget
- * record). Upstream failures with a prior `fetch_log` row fall back to
+ * Flow: TTL fast-path → daily budget → rate-limit peek → atomic
+ * write-through inside a transaction → budget record. Upstream failures with a prior `fetch_log` row fall back to
  * stale cached data plus a `stale_notice`; cold failures propagate the
  * error.
  *
@@ -67,9 +66,6 @@ export async function withShapedFetch<T>(
     return { value: readLocal() };
   }
 
-  if (isFetchLogFresh(db, key.source, key.endpoint_path, args_hash, ttl.ms)) {
-    return { value: readLocal() };
-  }
   try {
     const b = budget.check(key.source);
     if (!b.allowed) {
