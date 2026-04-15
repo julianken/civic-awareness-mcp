@@ -7,6 +7,11 @@ import { withShapedFetch } from "../../core/tool_cache.js";
 import type { EntityReference } from "../../core/types.js";
 import { requireEnv } from "../../util/env.js";
 import { logger } from "../../util/logger.js";
+import {
+  isHighCostLimit,
+  buildConfirmationResponse,
+  type RequiresConfirmationResponse,
+} from "../cost_estimate.js";
 import { RecentBillsInput } from "../schemas.js";
 import { emptyFeedDiagnostic, type EmptyFeedDiagnostic, type StaleNotice } from "../shared.js";
 
@@ -117,8 +122,20 @@ export function buildSponsorSummary(
 export async function handleRecentBills(
   db: Database.Database,
   rawInput: unknown,
-): Promise<RecentBillsResponse> {
+): Promise<RecentBillsResponse | RequiresConfirmationResponse> {
   const input = RecentBillsInput.parse(rawInput);
+
+  // Wildcard short-circuit happens further down (local-only); the
+  // gate only applies to upstream-bound jurisdictions.
+  if (
+    input.jurisdiction !== "*" &&
+    input.limit !== undefined &&
+    isHighCostLimit(input.limit) &&
+    input.acknowledge_high_cost !== true
+  ) {
+    const source = input.jurisdiction === "us-federal" ? "congress" : "openstates";
+    return buildConfirmationResponse(source, input.limit);
+  }
 
   const to = new Date();
   const from = new Date(to.getTime() - input.days * 86400 * 1000);

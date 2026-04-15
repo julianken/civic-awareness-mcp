@@ -25,7 +25,7 @@ import { seedJurisdictions } from "../../src/core/seeds.js";
 import { upsertEntity } from "../../src/core/entities.js";
 import { handleEntityConnections } from "../../src/mcp/tools/entity_connections.js";
 import { handleGetEntity } from "../../src/mcp/tools/get_entity.js";
-import { handleRecentBills } from "../../src/mcp/tools/recent_bills.js";
+import { handleRecentBills, type RecentBillsResponse } from "../../src/mcp/tools/recent_bills.js";
 import { handleRecentVotes } from "../../src/mcp/tools/recent_votes.js";
 import { handleRecentContributions } from "../../src/mcp/tools/recent_contributions.js";
 import { handleResolvePerson } from "../../src/mcp/tools/resolve_person.js";
@@ -67,8 +67,8 @@ describe("passthrough shaped e2e — recent_bills (R15)", () => {
       return new Response(billsFixture, { status: 200 });
     });
 
-    const first = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 90 });
-    const second = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 90 });
+    const first = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 90 }) as RecentBillsResponse;
+    const second = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 90 }) as RecentBillsResponse;
 
     expect(upstreamHits).toBe(1);
     expect(first.results.length).toBeGreaterThan(0);
@@ -131,7 +131,7 @@ describe("passthrough shaped e2e — recent_bills (R15)", () => {
       return new Response(JSON.stringify({ detail: "server error" }), { status: 500 });
     });
 
-    const result = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 90 });
+    const result = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 90 }) as RecentBillsResponse;
 
     expect(upstreamHits).toBeGreaterThan(0);
     expect(result.stale_notice?.reason).toBe("upstream_failure");

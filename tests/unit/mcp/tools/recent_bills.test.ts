@@ -11,8 +11,16 @@ import { _resetLimitersForTesting, _setLimiterForTesting } from "../../../../src
 import { RateLimiter } from "../../../../src/util/http.js";
 import { OpenStatesAdapter } from "../../../../src/adapters/openstates.js";
 import { CongressAdapter } from "../../../../src/adapters/congress.js";
-import { handleRecentBills } from "../../../../src/mcp/tools/recent_bills.js";
+import { handleRecentBills, type RecentBillsResponse } from "../../../../src/mcp/tools/recent_bills.js";
 import { RecentBillsInput } from "../../../../src/mcp/schemas.js";
+
+/** Cast for existing tests that are provably outside the gate path (limit ≤ 500). */
+async function callBills(
+  db: Parameters<typeof handleRecentBills>[0],
+  input: Parameters<typeof handleRecentBills>[1],
+): Promise<RecentBillsResponse> {
+  return handleRecentBills(db, input) as Promise<RecentBillsResponse>;
+}
 
 const TEST_DB = "./data/test-tool-recent-bills.db";
 let store: Store;
@@ -86,7 +94,7 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
   it("returns only bills within the window for the specified state", async () => {
     seedFetchLogFresh("openstates", "/bills",
       { jurisdiction: "us-tx", days: 7, chamber: undefined, session: undefined });
-    const result = await handleRecentBills(store.db, { days: 7, jurisdiction: "us-tx" });
+    const result = await callBills(store.db, { days: 7, jurisdiction: "us-tx" });
     expect(result.results).toHaveLength(1);
     expect(result.results[0].identifier).toBe("HB1");
     expect(result.results[0].title).toBe("recent bill");
@@ -95,7 +103,7 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
   it("scopes to the requested jurisdiction (TX vs CA)", async () => {
     seedFetchLogFresh("openstates", "/bills",
       { jurisdiction: "us-ca", days: 7, chamber: undefined, session: undefined });
-    const ca = await handleRecentBills(store.db, { days: 7, jurisdiction: "us-ca" });
+    const ca = await callBills(store.db, { days: 7, jurisdiction: "us-ca" });
     expect(ca.results).toHaveLength(1);
     expect(ca.results[0].identifier).toBe("AB123");
     expect(ca.results[0].title).toBe("california bill");
@@ -104,7 +112,7 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
   it("includes sponsor info via sponsor_summary", async () => {
     seedFetchLogFresh("openstates", "/bills",
       { jurisdiction: "us-tx", days: 7, chamber: undefined, session: undefined });
-    const result = await handleRecentBills(store.db, { days: 7, jurisdiction: "us-tx" });
+    const result = await callBills(store.db, { days: 7, jurisdiction: "us-tx" });
     const r = result.results[0];
     expect(r).toHaveProperty("sponsor_summary");
     expect(r).not.toHaveProperty("sponsors");
@@ -116,7 +124,7 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
   it("includes source provenance with a jurisdiction-aware URL", async () => {
     seedFetchLogFresh("openstates", "/bills",
       { jurisdiction: "us-tx", days: 7, chamber: undefined, session: undefined });
-    const result = await handleRecentBills(store.db, { days: 7, jurisdiction: "us-tx" });
+    const result = await callBills(store.db, { days: 7, jurisdiction: "us-tx" });
     expect(result.sources).toContainEqual({
       name: "openstates",
       url: expect.stringContaining("/tx/"),
@@ -151,7 +159,7 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
 
     seedFetchLogFresh("openstates", "/bills",
       { jurisdiction: "us-tx", days: 7, chamber: undefined, session: undefined });
-    const res = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
+    const res = await callBills(store.db, { jurisdiction: "us-tx", days: 7 });
     const billWithSummary = res.results.find((r) => r.identifier === "SB 1");
     expect(billWithSummary).toBeDefined();
     const r = billWithSummary!;
@@ -186,7 +194,7 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
     });
     seedFetchLogFresh("openstates", "/bills",
       { jurisdiction: "us-tx", days: 7, chamber: undefined, session: undefined });
-    const res = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
+    const res = await callBills(store.db, { jurisdiction: "us-tx", days: 7 });
     const target = res.results.find((r) => r.identifier === "SB X");
     expect(target).toBeDefined();
     expect(target!.sponsor_summary.by_party).toMatchObject({
@@ -198,7 +206,7 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
   it("accepts days up to 365", async () => {
     seedFetchLogFresh("openstates", "/bills",
       { jurisdiction: "us-or", days: 365, chamber: undefined, session: undefined });
-    const res = await handleRecentBills(store.db, { jurisdiction: "us-or", days: 365 });
+    const res = await callBills(store.db, { jurisdiction: "us-or", days: 365 });
     expect(res.window.from).toBeDefined();
   });
 
@@ -242,7 +250,7 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
 
     seedFetchLogFresh("openstates", "/bills",
       { jurisdiction: "us-tx", days: 7, chamber: undefined, session: "892" });
-    const res = await handleRecentBills(store.db, {
+    const res = await callBills(store.db, {
       jurisdiction: "us-tx",
       days: 7,        // window excludes both bills
       session: "892", // bypass window; filter to session 892
@@ -254,7 +262,7 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
   it("attaches empty_reason diagnostic when results are empty", async () => {
     seedFetchLogFresh("openstates", "/bills",
       { jurisdiction: "us-or", days: 7, chamber: undefined, session: undefined });
-    const res = await handleRecentBills(store.db, { jurisdiction: "us-or", days: 7 });
+    const res = await callBills(store.db, { jurisdiction: "us-or", days: 7 });
     expect(res.results).toHaveLength(0);
     expect(res).toHaveProperty("empty_reason", "no_events_in_window");
     expect(res).toHaveProperty("data_freshness");
@@ -278,7 +286,7 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
 
     seedFetchLogFresh("openstates", "/bills",
       { jurisdiction: "us-tx", days: 7, chamber: "upper", session: undefined, limit: undefined });
-    const res = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7, chamber: "upper" });
+    const res = await callBills(store.db, { jurisdiction: "us-tx", days: 7, chamber: "upper" });
     const identifiers = res.results.map((r) => r.identifier);
     expect(identifiers).toContain("SB 10");
     expect(identifiers).not.toContain("HB 20");
@@ -303,7 +311,7 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
 
     seedFetchLogFresh("openstates", "/bills",
       { jurisdiction: "us-or", days: 7, chamber: "lower", session: undefined, limit: undefined });
-    const res = await handleRecentBills(store.db, { jurisdiction: "us-or", days: 7, chamber: "lower" });
+    const res = await callBills(store.db, { jurisdiction: "us-or", days: 7, chamber: "lower" });
     expect(res.results).toHaveLength(0);
     expect(res.empty_reason).toBe("filter_eliminated_all");
     expect(res).toHaveProperty("hint");
@@ -320,7 +328,7 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
     });
     seedFetchLogFresh("openstates", "/bills",
       { jurisdiction: "us-or", days: 7, chamber: undefined, session: undefined });
-    const res = await handleRecentBills(store.db, { jurisdiction: "us-or", days: 7 });
+    const res = await callBills(store.db, { jurisdiction: "us-or", days: 7 });
     expect(res.results).toHaveLength(1);
     expect(res).not.toHaveProperty("empty_reason");
   });
@@ -345,7 +353,7 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
     }
     seedFetchLogFresh("openstates", "/bills",
       { jurisdiction: "us-tx", days: 7, chamber: undefined, session: undefined });
-    const res = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
+    const res = await callBills(store.db, { jurisdiction: "us-tx", days: 7 });
     const bytes = Buffer.byteLength(JSON.stringify(res), "utf8");
     expect(bytes).toBeLessThan(30 * 1024);
   });
@@ -357,7 +365,7 @@ describe("recent_bills tool — R15 hydration path", () => {
       .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
       .mockImplementation(async () => ({ documentsUpserted: 0 }));
 
-    const res = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
+    const res = await callBills(store.db, { jurisdiction: "us-tx", days: 7 });
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     // Local projection still runs — HB1 fixture is in-window.
@@ -399,7 +407,7 @@ describe("recent_bills tool — R15 hydration path", () => {
       .spyOn(CongressAdapter.prototype, "fetchRecentBills")
       .mockImplementation(async () => ({ documentsUpserted: 0 }));
 
-    const res = await handleRecentBills(store.db, { jurisdiction: "*", days: 7 });
+    const res = await callBills(store.db, { jurisdiction: "*", days: 7 });
 
     expect(openstatesSpy).not.toHaveBeenCalled();
     expect(congressSpy).not.toHaveBeenCalled();
@@ -440,7 +448,7 @@ describe("recent_bills tool — R15 hydration path", () => {
       .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
       .mockRejectedValue(new Error("simulated upstream failure"));
 
-    const res = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
+    const res = await callBills(store.db, { jurisdiction: "us-tx", days: 7 });
 
     expect(res.stale_notice?.reason).toBe("upstream_failure");
     expect(res.results.length).toBeGreaterThan(0);
@@ -469,7 +477,7 @@ describe("recent_bills tool — R15 hydration path", () => {
       .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
       .mockImplementation(async () => ({ documentsUpserted: 0 }));
 
-    const res = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
+    const res = await callBills(store.db, { jurisdiction: "us-tx", days: 7 });
 
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(res.stale_notice?.reason).toBe("upstream_failure");
@@ -509,7 +517,7 @@ describe("recent_bills tool — R15 hydration path", () => {
       .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
       .mockImplementation(async () => ({ documentsUpserted: 10 }));
 
-    const res = await handleRecentBills(store.db, {
+    const res = await callBills(store.db, {
       jurisdiction: "us-tx", days: 7, limit: 5,
     });
 
@@ -585,11 +593,101 @@ describe("recent_bills tool — R15 hydration path", () => {
       .mockRejectedValue(new Error("upstream down"));
 
     // us-or has no bills in store.
-    const res = await handleRecentBills(store.db, { jurisdiction: "us-or", days: 7 });
+    const res = await callBills(store.db, { jurisdiction: "us-or", days: 7 });
     expect(res.results).toHaveLength(0);
     expect(res).toHaveProperty("empty_reason");
     expect(res.stale_notice?.reason).toBe("upstream_failure");
 
     fetchSpy.mockRestore();
+  });
+});
+
+describe("recent_bills tool — high-cost confirmation gate", () => {
+  it("returns confirmation envelope when limit > 500 without acknowledgement", async () => {
+    const fetchMock = vi.fn();
+    vi.spyOn(global, "fetch").mockImplementation(fetchMock);
+
+    const result = await handleRecentBills(store.db, {
+      jurisdiction: "us-ca",
+      days: 7,
+      limit: 1000,
+    });
+
+    expect("requires_confirmation" in result && result.requires_confirmation).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+    if ("requires_confirmation" in result) {
+      expect(result.requested_limit).toBe(1000);
+      expect(result.estimated_cost.upstream_calls).toBe(50);
+      expect(result.estimated_cost.openstates_daily_budget_pct).toBe(10);
+    }
+  });
+
+  it("executes when limit > 500 with acknowledge_high_cost: true", async () => {
+    seedFetchLogFresh("openstates", "/bills", {
+      jurisdiction: "us-ca",
+      days: 7,
+      chamber: undefined,
+      session: undefined,
+      limit: 1000,
+    });
+    const result = await handleRecentBills(store.db, {
+      jurisdiction: "us-ca",
+      days: 7,
+      limit: 1000,
+      acknowledge_high_cost: true,
+    });
+
+    expect("results" in result).toBe(true);
+    expect("requires_confirmation" in result).toBe(false);
+  });
+
+  it("does not gate at limit = 500 (boundary)", async () => {
+    seedFetchLogFresh("openstates", "/bills", {
+      jurisdiction: "us-ca",
+      days: 7,
+      chamber: undefined,
+      session: undefined,
+      limit: 500,
+    });
+    const result = await handleRecentBills(store.db, {
+      jurisdiction: "us-ca",
+      days: 7,
+      limit: 500,
+    });
+
+    expect("requires_confirmation" in result).toBe(false);
+  });
+
+  it("uses congress source costing for us-federal", async () => {
+    const fetchMock = vi.fn();
+    vi.spyOn(global, "fetch").mockImplementation(fetchMock);
+
+    const result = await handleRecentBills(store.db, {
+      jurisdiction: "us-federal",
+      days: 7,
+      limit: 1000,
+    });
+
+    expect("requires_confirmation" in result && result.requires_confirmation).toBe(true);
+    if ("requires_confirmation" in result) {
+      expect(result.estimated_cost.upstream_calls).toBe(4);
+      expect(result.estimated_cost.congress_hourly_budget_pct).toBeCloseTo(0.08, 2);
+      expect(result.estimated_cost.openstates_daily_budget_pct).toBeUndefined();
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not gate wildcard jurisdiction even with limit > 500", async () => {
+    const fetchMock = vi.fn();
+    vi.spyOn(global, "fetch").mockImplementation(fetchMock);
+
+    const result = await handleRecentBills(store.db, {
+      jurisdiction: "*",
+      days: 7,
+      limit: 1000,
+    });
+
+    expect("requires_confirmation" in result).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
