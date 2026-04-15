@@ -327,7 +327,6 @@ export class OpenStatesAdapter implements Adapter {
     url.searchParams.set("sort", mapSort(opts.sort));
     url.searchParams.set("per_page", String(opts.limit));
     if (opts.session) url.searchParams.set("session", opts.session);
-    if (opts.chamber) url.searchParams.set("chamber", opts.chamber);
     if (opts.sponsor) url.searchParams.set("sponsor", opts.sponsor);
     if (opts.classification) url.searchParams.set("classification", opts.classification);
     if (opts.subject) url.searchParams.set("subject", opts.subject);
@@ -336,7 +335,10 @@ export class OpenStatesAdapter implements Adapter {
     for (const inc of ["sponsorships", "abstracts", "actions"]) {
       url.searchParams.append("include", inc);
     }
-    return this.fetchAndUpsertBillsFromUrl(db, url);
+    // chamber is filtered client-side on from_organization.classification
+    // to match fetchRecentBills semantics — OpenStates v3 `/bills` does not
+    // filter by origin chamber server-side.
+    return this.fetchAndUpsertBillsFromUrl(db, url, { chamber: opts.chamber });
   }
 
   /** Shared fetch + write-through loop for the three /bills-shaped
@@ -344,10 +346,9 @@ export class OpenStatesAdapter implements Adapter {
    *  query params; this helper handles rateLimitedFetch, the 200
    *  check, result iteration, and upsertBill telemetry. The optional
    *  `chamber` opt is an in-process filter on
-   *  `from_organization.classification` — used by `fetchRecentBills`
-   *  because OpenStates v3 `/bills` does not filter by origin chamber
-   *  server-side on that endpoint. `listBills` sets `chamber=` as a
-   *  server-side query param and does not need the filter. */
+   *  `from_organization.classification` — OpenStates v3 `/bills` does
+   *  not filter by origin chamber server-side, so both `fetchRecentBills`
+   *  and `listBills` apply this filter client-side. */
   private async fetchAndUpsertBillsFromUrl(
     db: Database.Database,
     url: URL,
@@ -468,6 +469,7 @@ export class OpenStatesAdapter implements Adapter {
       references: refs,
       raw: {
         session: b.session,
+        from_organization: b.from_organization,
         actions: b.actions ?? [],
         abstracts: b.abstracts ?? [],
         subjects: b.subject ?? [],

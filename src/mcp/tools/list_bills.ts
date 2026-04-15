@@ -107,10 +107,9 @@ export async function handleListBills(
         if (s !== input.session) return false;
       }
       if (input.chamber) {
-        const sponsor = d.references.find((r) => r.role === "sponsor");
-        if (!sponsor) return false;
-        const ent = findEntityById(db, sponsor.entity_id);
-        if (ent?.metadata.chamber !== input.chamber) return false;
+        const classification = (d.raw as { from_organization?: { classification?: string } })
+          .from_organization?.classification;
+        if (classification !== input.chamber) return false;
       }
       if (input.sponsor_entity_id) {
         const refs = d.references;

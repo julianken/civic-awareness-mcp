@@ -222,6 +222,56 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
     expect(res.results.map((r) => r.identifier)).toEqual(["HB2", "HB1"]);
   });
 
+  it("filters by chamber via raw.from_organization.classification, not sponsor metadata", async () => {
+    const { entity: upperMember } = upsertEntity(store.db, {
+      kind: "person", name: "Senator One",
+      external_ids: { openstates_person: "ocd-person/u1" },
+      metadata: { chamber: "upper" },
+    });
+    const { entity: lowerMember } = upsertEntity(store.db, {
+      kind: "person", name: "Rep One",
+      external_ids: { openstates_person: "ocd-person/l1" },
+      metadata: { chamber: "lower" },
+    });
+
+    // Convergent case: originating chamber == sponsor chamber (upper/upper).
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "SB1 — upper bill, upper sponsor",
+      occurred_at: "2026-04-10T00:00:00Z",
+      source: { name: "openstates", id: "ch1", url: "https://ex/ch1" },
+      references: [{ entity_id: upperMember.id, role: "sponsor" }],
+      raw: { from_organization: { classification: "upper" }, actions: [] },
+    });
+    // Divergent case: originating upper, but sponsor is a lower-chamber
+    // member (re-introduction / cross-filing pattern). With sponsor-chamber
+    // semantics this would be excluded from a chamber=upper query; with
+    // originating-chamber semantics it must be included.
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "SB2 — upper bill, lower sponsor",
+      occurred_at: "2026-04-10T00:00:00Z",
+      source: { name: "openstates", id: "ch2", url: "https://ex/ch2" },
+      references: [{ entity_id: lowerMember.id, role: "sponsor" }],
+      raw: { from_organization: { classification: "upper" }, actions: [] },
+    });
+    // A lower-origin bill that must be excluded from chamber=upper.
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "HB1 — lower bill",
+      occurred_at: "2026-04-10T00:00:00Z",
+      source: { name: "openstates", id: "ch3", url: "https://ex/ch3" },
+      references: [{ entity_id: lowerMember.id, role: "sponsor" }],
+      raw: { from_organization: { classification: "lower" }, actions: [] },
+    });
+
+    seedFetchLogFresh(defaultArgs({ chamber: "upper" }));
+    const res = await handleListBills(store.db, {
+      jurisdiction: "us-tx",
+      chamber: "upper",
+    });
+
+    const ids = res.results.map((r) => r.identifier).sort();
+    expect(ids).toEqual(["SB1", "SB2"]);
+  });
+
   it("respects limit", async () => {
     for (let i = 0; i < 5; i++) {
       upsertDocument(store.db, {

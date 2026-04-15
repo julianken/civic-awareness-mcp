@@ -822,7 +822,7 @@ describe("OpenStatesAdapter.listBills", () => {
     }
   });
 
-  it("maps jurisdiction, session, chamber, classification, subject to query params", async () => {
+  it("maps jurisdiction, session, classification, subject to query params; chamber is client-side only", async () => {
     let capturedUrl: string | undefined;
     vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
       capturedUrl = String(url);
@@ -851,13 +851,74 @@ describe("OpenStatesAdapter.listBills", () => {
       const params = new URL(capturedUrl!).searchParams;
       expect(params.get("jurisdiction")).toBe("tx");
       expect(params.get("session")).toBe("89R");
-      expect(params.get("chamber")).toBe("upper");
+      // chamber is applied client-side on from_organization.classification
+      // (see the listBills chamber-filter regression test below) and is
+      // deliberately NOT forwarded as a server-side query param.
+      expect(params.has("chamber")).toBe(false);
       expect(params.get("classification")).toBe("bill");
       expect(params.get("subject")).toBe("Vehicles");
       expect(params.get("sort")).toBe("updated_desc");
       expect(params.get("per_page")).toBe("20");
     } finally {
       db.close();
+    }
+  });
+
+  it("client-side filters listBills results by from_organization.classification when chamber is set", async () => {
+    vi.spyOn(global, "fetch").mockImplementation(async () =>
+      new Response(JSON.stringify({
+        results: [
+          {
+            id: "ocd-bill/upper-lb",
+            identifier: "SB1",
+            title: "Senate Bill",
+            session: "89R",
+            updated_at: "2026-04-10T00:00:00Z",
+            openstates_url: "https://openstates.org/tx/bills/89R/SB1",
+            jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
+            from_organization: { classification: "upper" },
+            sponsorships: [],
+            actions: [{ date: "2026-04-10", description: "Introduced" }],
+          },
+          {
+            id: "ocd-bill/lower-lb",
+            identifier: "HB1",
+            title: "House Bill",
+            session: "89R",
+            updated_at: "2026-04-10T00:00:00Z",
+            openstates_url: "https://openstates.org/tx/bills/89R/HB1",
+            jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
+            from_organization: { classification: "lower" },
+            sponsorships: [],
+            actions: [{ date: "2026-04-10", description: "Introduced" }],
+          },
+        ],
+        pagination: { max_page: 1, page: 1 },
+      }), { status: 200 }),
+    );
+
+    const LB_CHAMBER_DB = "./data/test-openstates-lb-chamber.db";
+    if (existsSync(LB_CHAMBER_DB)) rmSync(LB_CHAMBER_DB, { force: true });
+    const db = openStore(LB_CHAMBER_DB);
+    seedJurisdictions(db.db);
+    try {
+      const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+      const result = await adapter.listBills(db.db, {
+        jurisdiction: "us-tx",
+        chamber: "upper",
+        sort: "updated_desc",
+        limit: 20,
+      });
+
+      expect(result.documentsUpserted).toBe(1);
+      const rows = db.db.prepare(
+        "SELECT title FROM documents WHERE source_name='openstates' AND kind='bill'",
+      ).all() as Array<{ title: string }>;
+      expect(rows).toHaveLength(1);
+      expect(rows[0].title).toMatch(/^SB1 — /);
+    } finally {
+      db.close();
+      if (existsSync(LB_CHAMBER_DB)) rmSync(LB_CHAMBER_DB, { force: true });
     }
   });
 
