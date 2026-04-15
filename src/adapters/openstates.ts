@@ -368,7 +368,17 @@ export class OpenStatesAdapter implements Adapter {
         const classification = b.from_organization?.classification;
         if (classification && classification !== opts.chamber) continue;
       }
-      this.upsertBill(db, b);
+      try {
+        this.upsertBill(db, b);
+      } catch (err) {
+        logger.warn("openstates upsertBill threw — skipping record", {
+          endpoint: "fetchAndUpsertBillsFromUrl",
+          billId: b.id,
+          identifier: b.identifier,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        continue;
+      }
       documentsUpserted += 1;
     }
     return { documentsUpserted };
@@ -443,7 +453,15 @@ export class OpenStatesAdapter implements Adapter {
       extractStateAbbr(b.jurisdiction?.id)
       ?? extractStateAbbr(b.sponsorships?.[0]?.person?.jurisdiction?.id);
     if (!billStateAbbr) {
-      throw new Error(`Cannot determine state for bill ${b.id}`);
+      // R15: a single malformed record must not abort the
+      // surrounding write-through transaction (which would lose every
+      // sibling bill in the same batch). Log and skip.
+      logger.warn("openstates bill missing jurisdiction — skipping record", {
+        endpoint: "upsertBill",
+        billId: b.id,
+        identifier: b.identifier,
+      });
+      return;
     }
     const billJurisdiction = `us-${billStateAbbr}`;
 

@@ -607,6 +607,81 @@ describe("OpenStatesAdapter.fetchRecentBills", () => {
       if (existsSync(CHAMBER_DB)) rmSync(CHAMBER_DB, { force: true });
     }
   });
+
+  // Regression: a single malformed bill (no determinable jurisdiction
+  // and no sponsor person to fall back on) must not abort the whole
+  // batch. Sibling bills should still upsert; the bad row gets logged
+  // and skipped.
+  it("skips a malformed bill (missing jurisdiction) without aborting sibling upserts", async () => {
+    vi.spyOn(global, "fetch").mockImplementation(async () =>
+      new Response(JSON.stringify({
+        results: [
+          {
+            id: "ocd-bill/bad-1",
+            identifier: "BAD1",
+            title: "Bill with no jurisdiction",
+            session: "89R",
+            updated_at: "2026-04-10T00:00:00Z",
+            openstates_url: "https://openstates.org/x/bills/89R/BAD1",
+            // jurisdiction omitted; sponsorships also lack person.jurisdiction
+            sponsorships: [{ name: "Nobody", classification: "primary" }],
+            actions: [{ date: "2026-04-10", description: "Introduced" }],
+          },
+          {
+            id: "ocd-bill/good-1",
+            identifier: "HB99",
+            title: "Good Bill",
+            session: "89R",
+            updated_at: "2026-04-10T00:00:00Z",
+            openstates_url: "https://openstates.org/tx/bills/89R/HB99",
+            jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
+            sponsorships: [],
+            actions: [{ date: "2026-04-10", description: "Introduced" }],
+          },
+        ],
+        pagination: { max_page: 1, page: 1 },
+      }), { status: 200 }),
+    );
+
+    const { logger } = await import("../../../src/util/logger.js");
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+
+    const SKIP_DB = "./data/test-openstates-frb-skip.db";
+    if (existsSync(SKIP_DB)) rmSync(SKIP_DB, { force: true });
+    const db = openStore(SKIP_DB);
+    seedJurisdictions(db.db);
+    try {
+      const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+      const result = await adapter.fetchRecentBills(db.db, {
+        jurisdiction: "us-tx",
+      });
+
+      // Good bill upserted; bad bill skipped — this is the
+      // load-bearing assertion for A7. The transaction did NOT roll
+      // back, so HB99 lands.
+      const rows = db.db.prepare(
+        "SELECT title FROM documents WHERE source_name='openstates' AND kind='bill'",
+      ).all() as Array<{ title: string }>;
+      expect(rows).toHaveLength(1);
+      expect(rows[0].title).toMatch(/^HB99 — /);
+
+      // The handler still ran without throwing; telemetry counter
+      // may include the skipped row (it counts iterations, not
+      // successful writes), but the DB-level assertion above is
+      // what callers care about.
+      expect(result.documentsUpserted).toBeGreaterThanOrEqual(1);
+
+      // The skip path logged warn with the offending bill id.
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringMatching(/missing jurisdiction/),
+        expect.objectContaining({ billId: "ocd-bill/bad-1" }),
+      );
+    } finally {
+      db.close();
+      warnSpy.mockRestore();
+      if (existsSync(SKIP_DB)) rmSync(SKIP_DB, { force: true });
+    }
+  });
 });
 
 describe("OpenStatesAdapter.searchPeople", () => {

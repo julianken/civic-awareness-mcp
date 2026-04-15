@@ -464,17 +464,23 @@ describe("CongressAdapter.fetchRecentVotes", () => {
     fetchSpy.mockRestore();
   });
 
-  it("gracefully degrades on 404 (free-tier API limitation)", async () => {
+  it("gracefully degrades on 404 (free-tier API limitation) — logs warn and returns 0", async () => {
     const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
       new Response(JSON.stringify({}), { status: 404 }),
     );
+    const { logger } = await import("../../../src/util/logger.js");
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
     const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
     const result = await adapter.fetchRecentVotes(store.db);
 
     expect(result.documentsUpserted).toBe(0);
-    expect(result.degraded).toBe(true);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/free tier limitation/),
+      expect.objectContaining({ endpoint: "/vote", status: 404 }),
+    );
     fetchSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 
   it("chamber filter selects senate/house votes client-side", async () => {
@@ -558,24 +564,38 @@ describe("CongressAdapter.fetchMember", () => {
     fetchSpy.mockRestore();
   });
 
-  it("returns entitiesUpserted=0 on 404 without throwing", async () => {
+  it("returns entitiesUpserted=0 on 404 without throwing AND logs warn", async () => {
     vi.spyOn(global, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ error: "not found" }), { status: 404 }),
     );
+    const { logger } = await import("../../../src/util/logger.js");
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
     const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
     const result = await adapter.fetchMember(store.db, "Z999999");
     expect(result.entitiesUpserted).toBe(0);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/\/member 404/),
+      expect.objectContaining({ bioguideId: "Z999999", status: 404 }),
+    );
+    warnSpy.mockRestore();
   });
 
-  it("returns 0 when body omits the member field", async () => {
+  it("returns 0 when body omits the member field AND logs warn", async () => {
     vi.spyOn(global, "fetch").mockResolvedValue(
       new Response(JSON.stringify({}), { status: 200 }),
     );
+    const { logger } = await import("../../../src/util/logger.js");
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
     const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
     const result = await adapter.fetchMember(store.db, "S000148");
     expect(result.entitiesUpserted).toBe(0);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/no member field/),
+      expect.objectContaining({ bioguideId: "S000148" }),
+    );
+    warnSpy.mockRestore();
   });
 });
 
@@ -603,14 +623,21 @@ describe("CongressAdapter.fetchMemberSponsoredBills", () => {
     fetchSpy.mockRestore();
   });
 
-  it("returns documentsUpserted=0 on 404 without throwing", async () => {
+  it("returns documentsUpserted=0 on 404 without throwing AND logs warn", async () => {
     vi.spyOn(global, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ error: "not found" }), { status: 404 }),
     );
+    const { logger } = await import("../../../src/util/logger.js");
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
     const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
     const result = await adapter.fetchMemberSponsoredBills(store.db, "Z999999");
     expect(result.documentsUpserted).toBe(0);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/sponsored-legislation 404/),
+      expect.objectContaining({ bioguideId: "Z999999", status: 404 }),
+    );
+    warnSpy.mockRestore();
   });
 });
 
@@ -638,14 +665,21 @@ describe("CongressAdapter.fetchMemberCosponsoredBills", () => {
     fetchSpy.mockRestore();
   });
 
-  it("returns documentsUpserted=0 on 404 without throwing", async () => {
+  it("returns documentsUpserted=0 on 404 without throwing AND logs warn", async () => {
     vi.spyOn(global, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ error: "not found" }), { status: 404 }),
     );
+    const { logger } = await import("../../../src/util/logger.js");
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
     const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
     const result = await adapter.fetchMemberCosponsoredBills(store.db, "Z999999");
     expect(result.documentsUpserted).toBe(0);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/cosponsored-legislation 404/),
+      expect.objectContaining({ bioguideId: "Z999999", status: 404 }),
+    );
+    warnSpy.mockRestore();
   });
 });
 

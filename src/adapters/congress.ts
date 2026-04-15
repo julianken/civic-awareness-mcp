@@ -311,12 +311,26 @@ export class CongressAdapter implements Adapter {
       userAgent: "civic-awareness-mcp/0.1.0 (+github)",
       rateLimiter: this.rateLimiter,
     });
-    if (res.status === 404) return { entitiesUpserted: 0 };
+    if (res.status === 404) {
+      logger.warn("congress /member 404 — bioguide not found upstream", {
+        endpoint: "/member/{bioguideId}",
+        status: 404,
+        bioguideId,
+      });
+      return { entitiesUpserted: 0 };
+    }
     if (!res.ok) {
       throw new Error(`Congress.gov /member/${bioguideId} returned ${res.status}`);
     }
     const body = (await res.json()) as { member?: CongressMember };
-    if (!body.member) return { entitiesUpserted: 0 };
+    if (!body.member) {
+      logger.warn("congress /member returned 200 with no member field — skipping", {
+        endpoint: "/member/{bioguideId}",
+        status: 200,
+        bioguideId,
+      });
+      return { entitiesUpserted: 0 };
+    }
     this.upsertMember(db, body.member);
     return { entitiesUpserted: 1 };
   }
@@ -376,7 +390,14 @@ export class CongressAdapter implements Adapter {
       userAgent: "civic-awareness-mcp/0.1.0 (+github)",
       rateLimiter: this.rateLimiter,
     });
-    if (res.status === 404) return { documentsUpserted: 0 };
+    if (res.status === 404) {
+      logger.warn("congress /member/{bioguideId}/sponsored-legislation 404 — skipping sponsored bills", {
+        endpoint: "/member/{bioguideId}/sponsored-legislation",
+        status: 404,
+        bioguideId,
+      });
+      return { documentsUpserted: 0 };
+    }
     if (!res.ok) {
       throw new Error(`Congress.gov /member/${bioguideId}/sponsored-legislation returned ${res.status}`);
     }
@@ -409,7 +430,14 @@ export class CongressAdapter implements Adapter {
       userAgent: "civic-awareness-mcp/0.1.0 (+github)",
       rateLimiter: this.rateLimiter,
     });
-    if (res.status === 404) return { documentsUpserted: 0 };
+    if (res.status === 404) {
+      logger.warn("congress /member/{bioguideId}/cosponsored-legislation 404 — skipping cosponsored bills", {
+        endpoint: "/member/{bioguideId}/cosponsored-legislation",
+        status: 404,
+        bioguideId,
+      });
+      return { documentsUpserted: 0 };
+    }
     if (!res.ok) {
       throw new Error(`Congress.gov /member/${bioguideId}/cosponsored-legislation returned ${res.status}`);
     }
@@ -425,15 +453,16 @@ export class CongressAdapter implements Adapter {
   /**
    * Narrow per-tool fetch for R15 `recent_votes` — one page of recent
    * roll-call votes for the current Congress with optional chamber
-   * filter. On 404 (free Congress.gov tier does not expose `/vote`),
-   * returns `{ documentsUpserted: 0, degraded: true }` rather than
-   * throwing, matching `refresh()`'s existing graceful-degradation
-   * behavior.
+   * filter. On 404 (the `/vote` listing endpoint is not exposed on
+   * the free Congress.gov API tier), logs a warning and returns
+   * `{ documentsUpserted: 0 }` so callers see an empty federal vote
+   * feed rather than an exception. Operators can grep stderr for the
+   * "free tier limitation" warn line to diagnose missing data.
    */
   async fetchRecentVotes(
     db: Database.Database,
     opts: { chamber?: "upper" | "lower"; limit?: number } = {},
-  ): Promise<{ documentsUpserted: number; degraded?: boolean }> {
+  ): Promise<{ documentsUpserted: number }> {
     const congress = this.congresses[0];
     const url = new URL(`${BASE_URL}/vote`);
     url.searchParams.set("congress", String(congress));
@@ -448,9 +477,11 @@ export class CongressAdapter implements Adapter {
     });
     if (res.status === 404) {
       logger.warn("congress /vote 404 — free tier limitation; skipping", {
-        url: url.toString(),
+        endpoint: "/vote",
+        status: 404,
+        congress,
       });
-      return { documentsUpserted: 0, degraded: true };
+      return { documentsUpserted: 0 };
     }
     if (!res.ok) throw new Error(`Congress.gov /vote returned ${res.status}`);
     const body = (await res.json()) as { votes?: CongressVote[] };
@@ -630,7 +661,15 @@ export class CongressAdapter implements Adapter {
 
   private upsertBill(db: Database.Database, b: CongressBill): void {
     const identifier = billIdentifier(b.type, b.number);
-    const occurredAt = b.updateDate ?? b.introducedDate ?? new Date().toISOString();
+    let occurredAt = b.updateDate ?? b.introducedDate;
+    if (!occurredAt) {
+      logger.warn("congress bill missing both updateDate and introducedDate — stamping occurred_at as now()", {
+        endpoint: "upsertBill",
+        congress: b.congress,
+        billId: identifier,
+      });
+      occurredAt = new Date().toISOString();
+    }
     const humanUrl = billUrl(b.congress, b.type, b.number);
 
     const entityByBioguide = db.prepare(
@@ -696,7 +735,18 @@ export class CongressAdapter implements Adapter {
 
   private upsertVote(db: Database.Database, v: CongressVote): void {
     const occurred = v.date.includes("T") ? v.date : `${v.date}T00:00:00.000Z`;
-    const billId = v.bill ? billIdentifier(v.bill.type, v.bill.number) : "unknown";
+    let billId: string;
+    if (v.bill) {
+      billId = billIdentifier(v.bill.type, v.bill.number);
+    } else {
+      logger.debug("congress vote has no associated bill — likely procedural motion", {
+        endpoint: "upsertVote",
+        congress: v.congress,
+        chamber: v.chamber,
+        rollNumber: v.rollNumber,
+      });
+      billId = "unknown";
+    }
     const title = `Vote ${v.congress}-${v.chamber}-${v.rollNumber}: ${billId} — ${v.question ?? ""}`;
     const humanUrl = voteUrl(v.congress, v.chamber, v.rollNumber);
 
