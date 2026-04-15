@@ -26,9 +26,9 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { openStore, type Store } from "../../src/core/store.js";
-import { seedJurisdictions } from "../../src/core/seeds.js";
-import { handleGetVote } from "../../src/mcp/tools/get_vote.js";
-import { _resetLimitersForTesting } from "../../src/core/limiters.js";
+import { seedJurisdictions } from "../../src/federal/seeds.js";
+import { handleGetVote } from "../../src/federal/tools/get_vote.js";
+import { _resetLimitersForTesting } from "../../src/federal/limiters.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixture = JSON.parse(

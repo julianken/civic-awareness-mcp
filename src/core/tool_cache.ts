@@ -3,13 +3,11 @@ import { hashArgs } from "./args_hash.js";
 import { DailyBudget } from "./budget.js";
 import { getFetchLog, isFetchLogFresh, upsertFetchLog } from "./fetch_log.js";
 import type { FetchLogScope } from "./fetch_log.js";
-import type { HydrationSource } from "./sources.js";
-import { Singleflight } from "./singleflight.js";
-import type { StaleNotice } from "../mcp/shared.js";
+import type { StaleNotice } from "./shared.js";
 import { RATE_LIMIT_WAIT_THRESHOLD_MS } from "../util/http.js";
 
 export interface ShapedFetchKey {
-  source: HydrationSource;
+  source: string;
   endpoint_path: string;
   args: unknown;
   tool: string;
@@ -25,22 +23,19 @@ export interface ShapedFetchResult<T> {
   stale_notice?: StaleNotice;
 }
 
-let sf = new Singleflight<ShapedFetchResult<unknown>>();
 let budget = new DailyBudget(process.env.CIVIC_AWARENESS_DAILY_BUDGET);
 
 export function _resetToolCacheForTesting(): void {
-  sf = new Singleflight<ShapedFetchResult<unknown>>();
   budget = new DailyBudget(process.env.CIVIC_AWARENESS_DAILY_BUDGET);
 }
 
 /**
- * R15 cache-gated upstream fetch. See
- * `docs/superpowers/specs/2026-04-14-shaped-query-hydration-design.md`.
- *
- * Flow: TTL fast-path → singleflight-gated miss path (double-check
- * TTL, daily budget, rate-limit peek, atomic write-through inside
- * a transaction, budget record). Upstream failures with a prior
- * `fetch_log` row fall back to stale cached data plus a
+ * R15 cache-gated upstream fetch. Cache key is
+ * `(source, endpoint_path, args_hash)`; freshness rows live in the
+ * `fetch_log` table. On a TTL miss the adapter's narrow shaped method
+ * is called and writes through to `documents`/`entities` inside one
+ * transaction so partial writes never land. Upstream failures with a
+ * prior `fetch_log` row fall back to stale cached data plus a
  * `stale_notice`; cold failures propagate the error.
  *
  * @param fetchAndWrite Async thunk that (1) issues the narrow
@@ -71,52 +66,46 @@ export async function withShapedFetch<T>(
     return { value: readLocal() };
   }
 
-  const singleflightKey = `${key.source}:${key.endpoint_path}:${args_hash}`;
-  return (await sf.do(singleflightKey, async () => {
-    if (isFetchLogFresh(db, key.source, key.endpoint_path, args_hash, ttl.ms)) {
-      return { value: readLocal() } as ShapedFetchResult<unknown>;
+  try {
+    const b = budget.check(key.source);
+    if (!b.allowed) {
+      throw new Error(`Daily budget for ${key.source} exhausted`);
     }
-    try {
-      const b = budget.check(key.source);
-      if (!b.allowed) {
-        throw new Error(`Daily budget for ${key.source} exhausted`);
-      }
-      const waitMs = peekWaitMs();
-      if (waitMs > RATE_LIMIT_WAIT_THRESHOLD_MS) {
-        throw new Error(
-          `Rate limit for ${key.source} requires ${Math.ceil(waitMs / 1000)}s wait`,
-        );
-      }
-      const result = await fetchAndWrite();
-      // upsertFetchLog is the only write that needs to be atomic with
-      // itself (ON CONFLICT upsert); individual document/entity writes
-      // inside fetchAndWrite each use their own sync db.transaction().
-      db.transaction(() => {
-        upsertFetchLog(db, {
-          source: key.source,
-          endpoint_path: key.endpoint_path,
-          args_hash,
-          scope: ttl.scope,
-          fetched_at: new Date().toISOString(),
-          last_rowcount: result.primary_rows_written,
-        });
-      })();
-      budget.record(key.source);
-      return { value: readLocal() } as ShapedFetchResult<unknown>;
-    } catch (err) {
-      const prior = getFetchLog(db, key.source, key.endpoint_path, args_hash);
-      if (prior) {
-        const msg = err instanceof Error ? err.message : String(err);
-        return {
-          value: readLocal(),
-          stale_notice: {
-            as_of: prior.fetched_at,
-            reason: "upstream_failure",
-            message: `Upstream ${key.source} fetch failed; serving stale cached data. ${msg}`,
-          },
-        } as ShapedFetchResult<unknown>;
-      }
-      throw err;
+    const waitMs = peekWaitMs();
+    if (waitMs > RATE_LIMIT_WAIT_THRESHOLD_MS) {
+      throw new Error(
+        `Rate limit for ${key.source} requires ${Math.ceil(waitMs / 1000)}s wait`,
+      );
     }
-  })) as ShapedFetchResult<T>;
+    const result = await fetchAndWrite();
+    // upsertFetchLog is the only write that needs to be atomic with
+    // itself (ON CONFLICT upsert); individual document/entity writes
+    // inside fetchAndWrite each use their own sync db.transaction().
+    db.transaction(() => {
+      upsertFetchLog(db, {
+        source: key.source,
+        endpoint_path: key.endpoint_path,
+        args_hash,
+        scope: ttl.scope,
+        fetched_at: new Date().toISOString(),
+        last_rowcount: result.primary_rows_written,
+      });
+    })();
+    budget.record(key.source);
+    return { value: readLocal() };
+  } catch (err) {
+    const prior = getFetchLog(db, key.source, key.endpoint_path, args_hash);
+    if (prior) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        value: readLocal(),
+        stale_notice: {
+          as_of: prior.fetched_at,
+          reason: "upstream_failure",
+          message: `Upstream ${key.source} fetch failed; serving stale cached data. ${msg}`,
+        },
+      };
+    }
+    throw err;
+  }
 }

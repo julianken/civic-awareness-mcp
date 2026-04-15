@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { rmSync, existsSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { openStore, type Store } from "../../../src/core/store.js";
-import { seedJurisdictions } from "../../../src/core/seeds.js";
-import { OpenStatesAdapter, BillNotFoundError, type OpenStatesBillDetail } from "../../../src/adapters/openstates.js";
+import { seedJurisdictions } from "../../../src/federal/seeds.js";
+import { OpenStatesAdapter, BillNotFoundError, type OpenStatesBillDetail } from "../../../src/state/adapters/openstates.js";
 
 const TEST_DB = "./data/test-openstates.db";
 let store: Store;

@@ -4,7 +4,7 @@ import { Entity, type EntityKind } from "./types.js";
 import { fuzzyPick, normalizeName, type FuzzyCandidate, type UpstreamSignals } from "../resolution/fuzzy.js";
 
 // Canonical JSON-path literals for entities.external_ids lookups.
-// MUST match the path expressions used in migrations 007/008/009 byte-for-byte;
+// MUST match src/federal/schema.sql and src/state/schema.sql byte-for-byte;
 // SQLite's planner only uses an expression index when the call-site
 // expression text matches the indexed expression exactly. Bind values, never
 // the path itself — a parameterized path defeats the index.
@@ -130,8 +130,8 @@ function findByExternalIds(db: Database.Database, ids: Record<string, string>): 
   // Per-source prepared statements with literal JSON paths (see
   // stmtForSource above) so SQLite can use the matching expression index
   // (007 bioguide / 008 openstates_person / 009 fec_committee). A
-  // parameterized path silently regresses to a full table scan.
-  // Matches the canonical algorithm in docs/04-entity-schema.md step 1.
+  // parameterized path regresses to a full table scan because SQLite
+  // cannot evaluate a runtime-supplied path against a stored expression.
   for (const [source, id] of Object.entries(ids)) {
     if (!(source in EXTERNAL_ID_PATHS)) continue;
     const found = findEntityByExternalId(db, source as ExternalIdSource, id);

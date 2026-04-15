@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { rmSync, existsSync } from "node:fs";
 import { openStore, type Store } from "../../../src/core/store.js";
-import { seedJurisdictions } from "../../../src/core/seeds.js";
-import { CongressAdapter } from "../../../src/adapters/congress.js";
+import { seedJurisdictions } from "../../../src/federal/seeds.js";
+import { CongressAdapter } from "../../../src/federal/adapters/congress.js";
 
 const TEST_DB = "./data/test-refresh-congress.db";
 let store: Store;
@@ -81,7 +81,7 @@ describe("refresh CLI — openfec source", () => {
       return new Response("not found", { status: 404 });
     });
 
-    const { OpenFecAdapter } = await import("../../../src/adapters/openfec.js");
+    const { OpenFecAdapter } = await import("../../../src/federal/adapters/openfec.js");
     const adapter = new OpenFecAdapter({ apiKey: "test-key", cycles: [2026] });
     const result = await adapter.refresh({ db: store.db, maxPages: 1 });
     expect(result.source).toBe("openfec");
@@ -101,7 +101,7 @@ describe("refresh CLI — openfec source", () => {
       return new Response("not found", { status: 404 });
     });
     const mockFetch = vi.mocked(global.fetch);
-    const { OpenFecAdapter } = await import("../../../src/adapters/openfec.js");
+    const { OpenFecAdapter } = await import("../../../src/federal/adapters/openfec.js");
     const adapter = new OpenFecAdapter({ apiKey: "test-key", cycles: [2026] });
     await adapter.refresh({ db: store.db, maxPages: 1 });
     const urls = mockFetch.mock.calls.map((c) => String(c[0]));

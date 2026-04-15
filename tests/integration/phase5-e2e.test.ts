@@ -8,16 +8,16 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { rmSync, existsSync } from "node:fs";
 import { openStore, type Store } from "../../src/core/store.js";
-import { seedJurisdictions } from "../../src/core/seeds.js";
+import { seedJurisdictions } from "../../src/federal/seeds.js";
 import { upsertEntity } from "../../src/core/entities.js";
 import { upsertDocument } from "../../src/core/documents.js";
 import { _resetToolCacheForTesting } from "../../src/core/tool_cache.js";
-import { _resetLimitersForTesting } from "../../src/core/limiters.js";
-import { OpenStatesAdapter } from "../../src/adapters/openstates.js";
-import { CongressAdapter } from "../../src/adapters/congress.js";
-import { OpenFecAdapter } from "../../src/adapters/openfec.js";
-import { handleEntityConnections } from "../../src/mcp/tools/entity_connections.js";
-import { handleResolvePerson } from "../../src/mcp/tools/resolve_person.js";
+import { _resetLimitersForTesting } from "../../src/federal/limiters.js";
+import { OpenStatesAdapter } from "../../src/state/adapters/openstates.js";
+import { CongressAdapter } from "../../src/federal/adapters/congress.js";
+import { OpenFecAdapter } from "../../src/federal/adapters/openfec.js";
+import { handleEntityConnections } from "../../src/federal/tools/entity_connections.js";
+import { handleResolvePerson } from "../../src/federal/tools/resolve_person.js";
 
 const TEST_DB = "./data/test-phase5-e2e.db";
 let store: Store;

@@ -19,7 +19,7 @@ This MCP server runs locally as a subprocess of an MCP client
 not handle user credentials, and reads only public civic data. The
 security surface is small:
 
-- **Input validation** on the 8 MCP tool handlers (zod-validated)
+- **Input validation** on 17 MCP tool handlers (9 in federal-mcp, 8 in state-mcp) — all zod-validated
 - **SQLite query construction** — all user input is bound as parameters
   with `LIKE ... ESCAPE '\'` on wildcard-bearing queries
 - **Outbound HTTP** to three fixed base URLs (`v3.openstates.org`,
@@ -35,9 +35,9 @@ security surface is small:
   drift workflow catches it; if they return bad data, it flows through.
 - **Claude Desktop client.** The host process manages the tool invocation
   lifecycle; reports about it belong with Anthropic.
-- **Operator responsibility.** Your `CIVIC_AWARENESS_DB_PATH`,
-  `OPENSTATES_API_KEY`, and `API_DATA_GOV_KEY` are yours to
-  protect.
+- **Operator responsibility.** Your `CIVIC_FEDERAL_DB_PATH`,
+  `CIVIC_STATE_DB_PATH`, `OPENSTATES_API_KEY`, and `API_DATA_GOV_KEY`
+  are yours to protect.
 
 ## Pre-public security audit
 

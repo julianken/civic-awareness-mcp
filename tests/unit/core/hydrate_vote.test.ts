@@ -2,10 +2,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { existsSync, rmSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { openStore, type Store } from "../../../src/core/store.js";
-import { seedJurisdictions } from "../../../src/core/seeds.js";
+import { seedJurisdictions } from "../../../src/federal/seeds.js";
 import { upsertDocument } from "../../../src/core/documents.js";
-import { ensureVoteFresh } from "../../../src/core/hydrate_vote.js";
-import { CongressAdapter, VoteNotFoundError } from "../../../src/adapters/congress.js";
+import { ensureVoteFresh } from "../../../src/federal/hydrate_vote.js";
+import { CongressAdapter, VoteNotFoundError } from "../../../src/federal/adapters/congress.js";
 
 const TEST_DB = "./data/test-hydrate-vote.db";
 let store: Store;

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { rmSync, existsSync } from "node:fs";
-import { bootstrap } from "../../../src/cli/bootstrap.js";
+import { bootstrap } from "../../../src/federal/cli/bootstrap.js";
 import { openStore } from "../../../src/core/store.js";
 
 const TEST_DB = "./data/test-bootstrap.db";

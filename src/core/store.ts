@@ -10,19 +10,7 @@ export interface Store {
   close(): void;
 }
 
-const MIGRATIONS = [
-  { version: 1, file: "001-init.sql" },
-  { version: 2, file: "002-normalize-occurred-at.sql" },
-  { version: 3, file: "003-occurred-at-from-actions.sql" },
-  { version: 4, file: "004-hydrations-table.sql" },
-  { version: 5, file: "005-fetch-log-table.sql" },
-  { version: 6, file: "006-drop-hydrations.sql" },
-  { version: 7, file: "007-entities-bioguide-index.sql" },
-  { version: 8, file: "008-entities-openstates-person-index.sql" },
-  { version: 9, file: "009-entities-fec-committee-index.sql" },
-] as const;
-
-export function openStore(path: string): Store {
+export function openStore(path: string, ...schemaPaths: string[]): Store {
   mkdirSync(dirname(resolve(path)), { recursive: true });
   const db = new Database(path);
   db.pragma("journal_mode = WAL");
@@ -35,30 +23,16 @@ export function openStore(path: string): Store {
   // the entity-resolution hot loops that repeatedly scan the entities and
   // documents tables during a refresh.
   db.pragma("cache_size = -64000");
-  applyMigrations(db);
-  return { db, close: () => db.close() };
-}
 
-function applyMigrations(db: Database.Database): void {
-  const tableExists = db
-    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'")
-    .get();
+  // Apply core schema by default (always included when no paths given).
+  const paths =
+    schemaPaths.length > 0
+      ? schemaPaths
+      : [resolve(__dirname, "schema.sql")];
 
-  const applied = tableExists
-    ? new Set(
-        db.prepare("SELECT version FROM schema_migrations").all().map((r: any) => r.version),
-      )
-    : new Set<number>();
-
-  for (const migration of MIGRATIONS) {
-    if (applied.has(migration.version)) continue;
-    const sql = readFileSync(resolve(__dirname, "migrations", migration.file), "utf-8");
-    // Wrap schema change + version record in one transaction so a crash
-    // between them can't leave schema_migrations out of sync with actual schema.
-    db.transaction(() => {
-      db.exec(sql);
-      db.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
-        .run(migration.version, new Date().toISOString());
-    })();
+  for (const sp of paths) {
+    db.exec(readFileSync(sp, "utf-8"));
   }
+
+  return { db, close: () => db.close() };
 }

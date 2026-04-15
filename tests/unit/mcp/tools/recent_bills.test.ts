@@ -1,37 +1,29 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { rmSync, existsSync } from "node:fs";
 import { openStore, type Store } from "../../../../src/core/store.js";
-import { seedJurisdictions } from "../../../../src/core/seeds.js";
+import { seedJurisdictions } from "../../../../src/federal/seeds.js";
 import { upsertEntity } from "../../../../src/core/entities.js";
 import { upsertDocument } from "../../../../src/core/documents.js";
 import { upsertFetchLog } from "../../../../src/core/fetch_log.js";
 import { hashArgs } from "../../../../src/core/args_hash.js";
 import { _resetToolCacheForTesting } from "../../../../src/core/tool_cache.js";
-import { _resetLimitersForTesting, _setLimiterForTesting } from "../../../../src/core/limiters.js";
+import { _resetLimitersForTesting, _setLimiterForTesting } from "../../../../src/federal/limiters.js";
 import { RateLimiter } from "../../../../src/util/http.js";
-import { OpenStatesAdapter } from "../../../../src/adapters/openstates.js";
-import { CongressAdapter } from "../../../../src/adapters/congress.js";
-import { handleRecentBills } from "../../../../src/mcp/tools/recent_bills.js";
-import { RecentBillsInput } from "../../../../src/mcp/schemas.js";
+import { CongressAdapter } from "../../../../src/federal/adapters/congress.js";
+import { handleRecentBills } from "../../../../src/federal/tools/recent_bills.js";
+import { RecentBillsInput } from "../../../../src/federal/schemas.js";
 import { callBills } from "../../../helpers/bill-response-casts.js";
 
 const TEST_DB = "./data/test-tool-recent-bills.db";
 let store: Store;
 
-/**
- * Pre-seeds a fetch_log row for (source, endpoint_path, args) so
- * `withShapedFetch` takes the TTL-hit path — the adapter method is
- * NOT called, and the handler runs the SQL projection directly. Used
- * for tests that focus on projection behaviour rather than hydration.
- */
+/** Pre-seeds a fetch_log row so withShapedFetch takes the TTL-hit path. */
 function seedFetchLogFresh(
-  source: "openstates" | "congress",
-  endpoint_path: string,
   args: Record<string, unknown>,
 ): void {
   upsertFetchLog(store.db, {
-    source,
-    endpoint_path,
+    source: "congress",
+    endpoint_path: "/bill",
     args_hash: hashArgs("recent_bills", args),
     scope: "recent",
     fetched_at: new Date().toISOString(),
@@ -42,7 +34,6 @@ function seedFetchLogFresh(
 beforeEach(() => {
   _resetToolCacheForTesting();
   _resetLimitersForTesting();
-  process.env.OPENSTATES_API_KEY = "test-key";
   process.env.API_DATA_GOV_KEY = "test-key";
 
   if (existsSync(TEST_DB)) rmSync(TEST_DB);
@@ -53,7 +44,7 @@ beforeEach(() => {
     kind: "person", name: "Jane Doe", jurisdiction: undefined,
     metadata: {
       party: "Democratic", district: "15", chamber: "lower",
-      roles: [{ jurisdiction: "us-tx", role: "state_legislator",
+      roles: [{ jurisdiction: "us-federal", role: "representative",
                 from: new Date().toISOString(), to: null }],
     },
   });
@@ -61,51 +52,34 @@ beforeEach(() => {
   const now = new Date().toISOString();
   const old = new Date(Date.now() - 40 * 86400 * 1000).toISOString();
   upsertDocument(store.db, {
-    kind: "bill", jurisdiction: "us-tx",
+    kind: "bill", jurisdiction: "us-federal",
     title: "HB1 — recent bill", occurred_at: now,
-    source: { name: "openstates", id: "1", url: "https://openstates.org/tx/bills/HB1" },
+    source: { name: "congress", id: "1", url: "https://congress.gov/bill/119/house-bill/1" },
     references: [{ entity_id: entity.id, role: "sponsor" }],
   });
   upsertDocument(store.db, {
-    kind: "bill", jurisdiction: "us-tx",
+    kind: "bill", jurisdiction: "us-federal",
     title: "HB2 — old bill", occurred_at: old,
-    source: { name: "openstates", id: "2", url: "https://openstates.org/tx/bills/HB2" },
-  });
-  upsertDocument(store.db, {
-    kind: "bill", jurisdiction: "us-ca",
-    title: "AB123 — california bill", occurred_at: now,
-    source: { name: "openstates", id: "3", url: "https://openstates.org/ca/bills/AB123" },
+    source: { name: "congress", id: "2", url: "https://congress.gov/bill/119/house-bill/2" },
   });
 });
 afterEach(() => {
   store.close();
-  delete process.env.OPENSTATES_API_KEY;
   delete process.env.API_DATA_GOV_KEY;
 });
 
 describe("recent_bills tool — projection (TTL-hit path)", () => {
-  it("returns only bills within the window for the specified state", async () => {
-    seedFetchLogFresh("openstates", "/bills",
-      { jurisdiction: "us-tx", days: 7, chamber: undefined, session: undefined });
-    const result = await callBills(store.db, { days: 7, jurisdiction: "us-tx" });
+  it("returns only bills within the window", async () => {
+    seedFetchLogFresh({ jurisdiction: "us-federal", days: 7, chamber: undefined, session: undefined, limit: undefined });
+    const result = await callBills(store.db, { days: 7 });
     expect(result.results).toHaveLength(1);
     expect(result.results[0].identifier).toBe("HB1");
     expect(result.results[0].title).toBe("recent bill");
   });
 
-  it("scopes to the requested jurisdiction (TX vs CA)", async () => {
-    seedFetchLogFresh("openstates", "/bills",
-      { jurisdiction: "us-ca", days: 7, chamber: undefined, session: undefined });
-    const ca = await callBills(store.db, { days: 7, jurisdiction: "us-ca" });
-    expect(ca.results).toHaveLength(1);
-    expect(ca.results[0].identifier).toBe("AB123");
-    expect(ca.results[0].title).toBe("california bill");
-  });
-
   it("includes sponsor info via sponsor_summary", async () => {
-    seedFetchLogFresh("openstates", "/bills",
-      { jurisdiction: "us-tx", days: 7, chamber: undefined, session: undefined });
-    const result = await callBills(store.db, { days: 7, jurisdiction: "us-tx" });
+    seedFetchLogFresh({ jurisdiction: "us-federal", days: 7, chamber: undefined, session: undefined, limit: undefined });
+    const result = await callBills(store.db, { days: 7 });
     const r = result.results[0];
     expect(r).toHaveProperty("sponsor_summary");
     expect(r).not.toHaveProperty("sponsors");
@@ -117,9 +91,9 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
   it("projects latest_action to {date, description} only, dropping upstream extras", async () => {
     const now = new Date().toISOString();
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-or",
+      kind: "bill", jurisdiction: "us-federal",
       title: "HB42 — shape pin", occurred_at: now,
-      source: { name: "openstates", id: "shape-pin", url: "https://openstates.org/or/bills/HB42" },
+      source: { name: "congress", id: "shape-pin", url: "https://congress.gov/bill/119/house-bill/42" },
       raw: {
         actions: [
           {
@@ -134,29 +108,24 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
         ],
       },
     });
-    seedFetchLogFresh("openstates", "/bills",
-      { jurisdiction: "us-or", days: 7, chamber: undefined, session: undefined });
-    const result = await callBills(store.db, { days: 7, jurisdiction: "us-or" });
-    const la = result.results[0].latest_action;
+    seedFetchLogFresh({ jurisdiction: "us-federal", days: 7, chamber: undefined, session: undefined, limit: undefined });
+    const result = await callBills(store.db, { days: 7 });
+    // Find the shape-pin bill
+    const target = result.results.find((r) => r.identifier === "HB42");
+    expect(target).toBeDefined();
+    const la = target!.latest_action;
     expect(la).not.toBeNull();
     expect(Object.keys(la!).sort()).toEqual(["date", "description"]);
     expect(la).toEqual({ date: "2026-04-13", description: "Passed the House." });
   });
 
-  it("includes source provenance with a jurisdiction-aware URL", async () => {
-    seedFetchLogFresh("openstates", "/bills",
-      { jurisdiction: "us-tx", days: 7, chamber: undefined, session: undefined });
-    const result = await callBills(store.db, { days: 7, jurisdiction: "us-tx" });
+  it("includes source provenance URL", async () => {
+    seedFetchLogFresh({ jurisdiction: "us-federal", days: 7, chamber: undefined, session: undefined, limit: undefined });
+    const result = await callBills(store.db, { days: 7 });
     expect(result.sources).toContainEqual({
-      name: "openstates",
-      url: expect.stringContaining("/tx/"),
+      name: "congress",
+      url: expect.stringContaining("congress.gov"),
     });
-  });
-
-  it("rejects input with no jurisdiction", async () => {
-    await expect(
-      handleRecentBills(store.db, { days: 7 }),
-    ).rejects.toThrow();
   });
 
   it("returns sponsor_summary (count + by_party + top-5), not full sponsors[]", async () => {
@@ -169,9 +138,9 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
       sponsorIds.push(entity.id);
     }
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "SB 1 — Test",
+      kind: "bill", jurisdiction: "us-federal", title: "SB 1 — Test",
       occurred_at: new Date().toISOString(),
-      source: { name: "openstates", id: "1b", url: "https://ex" },
+      source: { name: "congress", id: "1b", url: "https://congress.gov/bill/119/senate-bill/1" },
       references: sponsorIds.map((id, i) => ({
         entity_id: id,
         role: (i === 0 ? "sponsor" : "cosponsor") as "sponsor" | "cosponsor",
@@ -179,9 +148,8 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
       raw: { actions: [] },
     });
 
-    seedFetchLogFresh("openstates", "/bills",
-      { jurisdiction: "us-tx", days: 7, chamber: undefined, session: undefined });
-    const res = await callBills(store.db, { jurisdiction: "us-tx", days: 7 });
+    seedFetchLogFresh({ jurisdiction: "us-federal", days: 7, chamber: undefined, session: undefined, limit: undefined });
+    const res = await callBills(store.db, { days: 7 });
     const billWithSummary = res.results.find((r) => r.identifier === "SB 1");
     expect(billWithSummary).toBeDefined();
     const r = billWithSummary!;
@@ -198,25 +166,24 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
   it("falls back to by_party.unknown when a sponsor lacks party metadata", async () => {
     const { entity: withParty } = upsertEntity(store.db, {
       kind: "person", name: "HasParty",
-      external_ids: { openstates_person: "hp" },
+      external_ids: { bioguide: "B000001" },
       metadata: { party: "Republican" },
     });
     const { entity: noParty } = upsertEntity(store.db, {
       kind: "person", name: "NoPartyPerson",
     });
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "SB X — Test",
+      kind: "bill", jurisdiction: "us-federal", title: "SB X — Test",
       occurred_at: new Date().toISOString(),
-      source: { name: "openstates", id: "x", url: "https://ex" },
+      source: { name: "congress", id: "x", url: "https://congress.gov/bill/119/senate-bill/x" },
       references: [
         { entity_id: withParty.id, role: "sponsor" },
         { entity_id: noParty.id,   role: "cosponsor" },
       ],
       raw: { actions: [] },
     });
-    seedFetchLogFresh("openstates", "/bills",
-      { jurisdiction: "us-tx", days: 7, chamber: undefined, session: undefined });
-    const res = await callBills(store.db, { jurisdiction: "us-tx", days: 7 });
+    seedFetchLogFresh({ jurisdiction: "us-federal", days: 7, chamber: undefined, session: undefined, limit: undefined });
+    const res = await callBills(store.db, { days: 7 });
     const target = res.results.find((r) => r.identifier === "SB X");
     expect(target).toBeDefined();
     expect(target!.sponsor_summary.by_party).toMatchObject({
@@ -226,89 +193,106 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
   });
 
   it("accepts days up to 365", async () => {
-    seedFetchLogFresh("openstates", "/bills",
-      { jurisdiction: "us-or", days: 365, chamber: undefined, session: undefined });
-    const res = await callBills(store.db, { jurisdiction: "us-or", days: 365 });
+    seedFetchLogFresh({ jurisdiction: "us-federal", days: 365, chamber: undefined, session: undefined, limit: undefined });
+    const res = await callBills(store.db, { days: 365 });
     expect(res.window.from).toBeDefined();
   });
 
   it("rejects days above 365", async () => {
     await expect(
-      handleRecentBills(store.db, { jurisdiction: "us-or", days: 366 }),
+      handleRecentBills(store.db, { days: 366 }),
     ).rejects.toThrow();
   });
 
   it("accepts a small positive limit", () => {
     expect(() =>
-      RecentBillsInput.parse({ jurisdiction: "us-tx", days: 7, limit: 5 }),
+      RecentBillsInput.parse({ days: 7, limit: 5 }),
     ).not.toThrow();
   });
 
-  it("accepts a high limit (cap removed; handler gates via R18)", () => {
+  it("accepts limit up to 500", () => {
     expect(() =>
-      RecentBillsInput.parse({ jurisdiction: "us-tx", days: 7, limit: 1000 }),
+      RecentBillsInput.parse({ days: 7, limit: 500 }),
     ).not.toThrow();
+  });
+
+  it("rejects limit > 500", () => {
+    expect(() =>
+      RecentBillsInput.parse({ days: 7, limit: 501 }),
+    ).toThrow();
   });
 
   it("rejects limit=0", async () => {
     await expect(
-      handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7, limit: 0 }),
+      handleRecentBills(store.db, { days: 7, limit: 0 }),
     ).rejects.toThrow();
   });
 
   it("filters by session when session parameter is provided", async () => {
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "SB 1 — Eight-Ninety-Two",
+      kind: "bill", jurisdiction: "us-federal", title: "SB 1 — Eight-Ninety-Two",
       occurred_at: "2025-09-18T00:00:00Z",
-      source: { name: "openstates", id: "892-1", url: "https://ex" },
-      references: [], raw: { session: "892", actions: [] },
+      source: { name: "congress", id: "892-1", url: "https://congress.gov/bill/119/senate-bill/1" },
+      references: [], raw: { session: "119", actions: [] },
     });
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "SB 99 — Eight-Ninety-One",
+      kind: "bill", jurisdiction: "us-federal", title: "SB 99 — Eight-Ninety-One",
       occurred_at: "2024-06-01T00:00:00Z",
-      source: { name: "openstates", id: "891-99", url: "https://ex" },
-      references: [], raw: { session: "891", actions: [] },
+      source: { name: "congress", id: "891-99", url: "https://congress.gov/bill/118/senate-bill/99" },
+      references: [], raw: { session: "118", actions: [] },
     });
 
-    seedFetchLogFresh("openstates", "/bills",
-      { jurisdiction: "us-tx", days: 7, chamber: undefined, session: "892" });
+    seedFetchLogFresh({ jurisdiction: "us-federal", days: 7, chamber: undefined, session: "119", limit: undefined });
     const res = await callBills(store.db, {
-      jurisdiction: "us-tx",
       days: 7,        // window excludes both bills
-      session: "892", // bypass window; filter to session 892
+      session: "119", // bypass window; filter to session 119
     });
     expect(res.results).toHaveLength(1);
     expect(res.results[0].title).toBe("Eight-Ninety-Two");
   });
 
   it("attaches empty_reason diagnostic when results are empty", async () => {
-    seedFetchLogFresh("openstates", "/bills",
-      { jurisdiction: "us-or", days: 7, chamber: undefined, session: undefined });
-    const res = await callBills(store.db, { jurisdiction: "us-or", days: 7 });
+    // Use an isolated store with no bills so the projection returns empty.
+    const emptyStore = openStore("./data/test-recent-bills-diag.db");
+    seedJurisdictions(emptyStore.db);
+    upsertFetchLog(emptyStore.db, {
+      source: "congress",
+      endpoint_path: "/bill",
+      args_hash: hashArgs("recent_bills", {
+        jurisdiction: "us-federal", days: 7, chamber: undefined, session: undefined, limit: undefined,
+      }),
+      scope: "recent",
+      fetched_at: new Date().toISOString(),
+      last_rowcount: 1,
+    });
+
+    const res = await callBills(emptyStore.db, { days: 7 });
     expect(res.results).toHaveLength(0);
     expect(res).toHaveProperty("empty_reason", "no_events_in_window");
     expect(res).toHaveProperty("data_freshness");
     expect(res).toHaveProperty("hint");
+
+    emptyStore.close();
+    if (existsSync("./data/test-recent-bills-diag.db")) rmSync("./data/test-recent-bills-diag.db");
   });
 
   it("chamber=upper returns only upper-chamber bills (from_organization.classification)", async () => {
     const now = new Date().toISOString();
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "SB 10 — upper bill",
+      kind: "bill", jurisdiction: "us-federal", title: "SB 10 — upper bill",
       occurred_at: now,
-      source: { name: "openstates", id: "upper-1", url: "https://openstates.org/tx/bills/SB10" },
+      source: { name: "congress", id: "upper-1", url: "https://congress.gov/bill/119/senate-bill/10" },
       references: [], raw: { from_organization: { classification: "upper" }, actions: [] },
     });
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HB 20 — lower bill",
+      kind: "bill", jurisdiction: "us-federal", title: "HB 20 — lower bill",
       occurred_at: now,
-      source: { name: "openstates", id: "lower-1", url: "https://openstates.org/tx/bills/HB20" },
+      source: { name: "congress", id: "lower-1", url: "https://congress.gov/bill/119/house-bill/20" },
       references: [], raw: { from_organization: { classification: "lower" }, actions: [] },
     });
 
-    seedFetchLogFresh("openstates", "/bills",
-      { jurisdiction: "us-tx", days: 7, chamber: "upper", session: undefined, limit: undefined });
-    const res = await callBills(store.db, { jurisdiction: "us-tx", days: 7, chamber: "upper" });
+    seedFetchLogFresh({ jurisdiction: "us-federal", days: 7, chamber: "upper", session: undefined, limit: undefined });
+    const res = await callBills(store.db, { days: 7, chamber: "upper" });
     const identifiers = res.results.map((r) => r.identifier);
     expect(identifiers).toContain("SB 10");
     expect(identifiers).not.toContain("HB 20");
@@ -319,38 +303,59 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
   it("chamber=lower with all-upper bills returns empty + empty_reason=filter_eliminated_all", async () => {
     const now = new Date().toISOString();
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-or", title: "SB 1 — upper only",
+      kind: "bill", jurisdiction: "us-federal", title: "SB 1 — upper only",
       occurred_at: now,
-      source: { name: "openstates", id: "or-upper-1", url: "https://openstates.org/or/bills/SB1" },
-      references: [], raw: { from_organization: { classification: "upper" }, actions: [] },
-    });
-    upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-or", title: "SB 2 — upper only",
-      occurred_at: now,
-      source: { name: "openstates", id: "or-upper-2", url: "https://openstates.org/or/bills/SB2" },
+      source: { name: "congress", id: "fed-upper-1", url: "https://congress.gov/bill/119/senate-bill/1b" },
       references: [], raw: { from_organization: { classification: "upper" }, actions: [] },
     });
 
-    seedFetchLogFresh("openstates", "/bills",
-      { jurisdiction: "us-or", days: 7, chamber: "lower", session: undefined, limit: undefined });
-    const res = await callBills(store.db, { jurisdiction: "us-or", days: 7, chamber: "lower" });
+    // Seed a fresh fetch_log so the handler uses local projection only.
+    upsertFetchLog(store.db, {
+      source: "congress",
+      endpoint_path: "/bill",
+      args_hash: hashArgs("recent_bills", {
+        jurisdiction: "us-federal", days: 7, chamber: "lower", session: undefined, limit: undefined,
+      }),
+      scope: "recent",
+      fetched_at: new Date().toISOString(),
+      last_rowcount: 1,
+    });
+
+    // Remove the in-window HB1 so only upper bills remain for this test.
+    // We can't easily remove docs, so seed a fresh DB for isolation:
+    const isolatedStore = openStore("./data/test-recent-bills-upper-only.db");
+    seedJurisdictions(isolatedStore.db);
+    upsertDocument(isolatedStore.db, {
+      kind: "bill", jurisdiction: "us-federal", title: "SB 1 — upper only",
+      occurred_at: now,
+      source: { name: "congress", id: "up-1", url: "https://congress.gov/bill/119/senate-bill/1c" },
+      references: [], raw: { from_organization: { classification: "upper" }, actions: [] },
+    });
+    upsertFetchLog(isolatedStore.db, {
+      source: "congress",
+      endpoint_path: "/bill",
+      args_hash: hashArgs("recent_bills", {
+        jurisdiction: "us-federal", days: 7, chamber: "lower", session: undefined, limit: undefined,
+      }),
+      scope: "recent",
+      fetched_at: new Date().toISOString(),
+      last_rowcount: 1,
+    });
+
+    const res = await callBills(isolatedStore.db, { days: 7, chamber: "lower" });
     expect(res.results).toHaveLength(0);
     expect(res.empty_reason).toBe("filter_eliminated_all");
     expect(res).toHaveProperty("hint");
-    // filters_applied must name chamber
     expect(res.hint).toMatch(/chamber/);
+    isolatedStore.close();
+    if (existsSync("./data/test-recent-bills-upper-only.db")) {
+      rmSync("./data/test-recent-bills-upper-only.db");
+    }
   });
 
   it("omits empty_reason on non-empty responses", async () => {
-    upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-or", title: "SB 1 — Test",
-      occurred_at: new Date().toISOString(),
-      source: { name: "openstates", id: "or-1", url: "https://ex" },
-      references: [], raw: { actions: [] },
-    });
-    seedFetchLogFresh("openstates", "/bills",
-      { jurisdiction: "us-or", days: 7, chamber: undefined, session: undefined });
-    const res = await callBills(store.db, { jurisdiction: "us-or", days: 7 });
+    seedFetchLogFresh({ jurisdiction: "us-federal", days: 7, chamber: undefined, session: undefined, limit: undefined });
+    const res = await callBills(store.db, { days: 7 });
     expect(res.results).toHaveLength(1);
     expect(res).not.toHaveProperty("empty_reason");
   });
@@ -366,28 +371,27 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
         refs.push({ entity_id: entity.id, role: s === 0 ? "sponsor" : "cosponsor" });
       }
       upsertDocument(store.db, {
-        kind: "bill", jurisdiction: "us-tx", title: `B${b} — Test`,
+        kind: "bill", jurisdiction: "us-federal", title: `B${b} — Test`,
         occurred_at: new Date().toISOString(),
-        source: { name: "openstates", id: `b${b}bulk`, url: "https://ex" },
+        source: { name: "congress", id: `b${b}bulk`, url: "https://congress.gov" },
         references: refs,
         raw: { actions: [] },
       });
     }
-    seedFetchLogFresh("openstates", "/bills",
-      { jurisdiction: "us-tx", days: 7, chamber: undefined, session: undefined });
-    const res = await callBills(store.db, { jurisdiction: "us-tx", days: 7 });
+    seedFetchLogFresh({ jurisdiction: "us-federal", days: 7, chamber: undefined, session: undefined, limit: undefined });
+    const res = await callBills(store.db, { days: 7 });
     const bytes = Buffer.byteLength(JSON.stringify(res), "utf8");
     expect(bytes).toBeLessThan(30 * 1024);
   });
 });
 
 describe("recent_bills tool — R15 hydration path", () => {
-  it("state jurisdiction: invokes OpenStates fetchRecentBills on cache miss", async () => {
+  it("invokes Congress fetchRecentBills on cache miss", async () => {
     const fetchSpy = vi
-      .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
+      .spyOn(CongressAdapter.prototype, "fetchRecentBills")
       .mockImplementation(async () => ({ documentsUpserted: 0 }));
 
-    const res = await callBills(store.db, { jurisdiction: "us-tx", days: 7 });
+    const res = await callBills(store.db, { days: 7 });
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     // Local projection still runs — HB1 fixture is in-window.
@@ -398,68 +402,36 @@ describe("recent_bills tool — R15 hydration path", () => {
     fetchSpy.mockRestore();
   });
 
-  it("us-federal: invokes Congress fetchRecentBills", async () => {
-    const fetchSpy = vi
-      .spyOn(CongressAdapter.prototype, "fetchRecentBills")
-      .mockImplementation(async () => ({ documentsUpserted: 0 }));
-
-    await handleRecentBills(store.db, { jurisdiction: "us-federal", days: 7 });
-
-    expect(fetchSpy).toHaveBeenCalledOnce();
-    fetchSpy.mockRestore();
-  });
-
   it("cache hit: does NOT call the adapter on the second call within TTL", async () => {
     const fetchSpy = vi
-      .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
-      .mockImplementation(async () => ({ documentsUpserted: 0 }));
-
-    await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
-    await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
-
-    expect(fetchSpy).toHaveBeenCalledOnce();
-    fetchSpy.mockRestore();
-  });
-
-  it("wildcard jurisdiction `*` is local-only — no adapter call", async () => {
-    const openstatesSpy = vi
-      .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
-      .mockImplementation(async () => ({ documentsUpserted: 0 }));
-    const congressSpy = vi
       .spyOn(CongressAdapter.prototype, "fetchRecentBills")
       .mockImplementation(async () => ({ documentsUpserted: 0 }));
 
-    const res = await callBills(store.db, { jurisdiction: "*", days: 7 });
+    await handleRecentBills(store.db, { days: 7 });
+    await handleRecentBills(store.db, { days: 7 });
 
-    expect(openstatesSpy).not.toHaveBeenCalled();
-    expect(congressSpy).not.toHaveBeenCalled();
-    // TX and CA fixtures both land in the "*" window.
-    expect(res.results.length).toBeGreaterThanOrEqual(2);
-
-    openstatesSpy.mockRestore();
-    congressSpy.mockRestore();
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    fetchSpy.mockRestore();
   });
 
   it("upstream failure with no cached data propagates the error", async () => {
     const fetchSpy = vi
-      .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
+      .spyOn(CongressAdapter.prototype, "fetchRecentBills")
       .mockRejectedValue(new Error("network down"));
 
     await expect(
-      handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 }),
+      handleRecentBills(store.db, { days: 7 }),
     ).rejects.toThrow(/network down/);
 
     fetchSpy.mockRestore();
   });
 
   it("upstream failure with stale cached data surfaces stale_notice and still serves local data", async () => {
-    // Seed a stale fetch_log row so withShapedFetch chooses the stale
-    // fallback branch instead of propagating the upstream error.
     upsertFetchLog(store.db, {
-      source: "openstates",
-      endpoint_path: "/bills",
+      source: "congress",
+      endpoint_path: "/bill",
       args_hash: hashArgs("recent_bills", {
-        jurisdiction: "us-tx", days: 7, chamber: undefined, session: undefined,
+        jurisdiction: "us-federal", days: 7, chamber: undefined, session: undefined, limit: undefined,
       }),
       scope: "recent",
       fetched_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
@@ -467,10 +439,10 @@ describe("recent_bills tool — R15 hydration path", () => {
     });
 
     const fetchSpy = vi
-      .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
+      .spyOn(CongressAdapter.prototype, "fetchRecentBills")
       .mockRejectedValue(new Error("simulated upstream failure"));
 
-    const res = await callBills(store.db, { jurisdiction: "us-tx", days: 7 });
+    const res = await callBills(store.db, { days: 7 });
 
     expect(res.stale_notice?.reason).toBe("upstream_failure");
     expect(res.results.length).toBeGreaterThan(0);
@@ -480,26 +452,26 @@ describe("recent_bills tool — R15 hydration path", () => {
 
   it("rate-limited: stale cached data returns stale_notice without hitting upstream", async () => {
     upsertFetchLog(store.db, {
-      source: "openstates",
-      endpoint_path: "/bills",
+      source: "congress",
+      endpoint_path: "/bill",
       args_hash: hashArgs("recent_bills", {
-        jurisdiction: "us-tx", days: 7, chamber: undefined, session: undefined,
+        jurisdiction: "us-federal", days: 7, chamber: undefined, session: undefined, limit: undefined,
       }),
       scope: "recent",
       fetched_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
       last_rowcount: 1,
     });
 
-    // Drain the openstates limiter so peekWaitMs() > 2.5s threshold.
+    // Drain the congress limiter so peekWaitMs() > 2.5s threshold.
     const drained = new RateLimiter({ tokensPerInterval: 1, intervalMs: 60_000 });
     await drained.acquire();
-    _setLimiterForTesting("openstates", drained);
+    _setLimiterForTesting("congress", drained);
 
     const fetchSpy = vi
-      .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
+      .spyOn(CongressAdapter.prototype, "fetchRecentBills")
       .mockImplementation(async () => ({ documentsUpserted: 0 }));
 
-    const res = await callBills(store.db, { jurisdiction: "us-tx", days: 7 });
+    const res = await callBills(store.db, { days: 7 });
 
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(res.stale_notice?.reason).toBe("upstream_failure");
@@ -509,39 +481,37 @@ describe("recent_bills tool — R15 hydration path", () => {
     fetchSpy.mockRestore();
   });
 
-  it("cold fetch with limit=5: calls OpenStates fetchRecentBills WITHOUT updated_since", async () => {
+  it("cold fetch with limit=5: calls Congress fetchRecentBills with limit", async () => {
     const fetchSpy = vi
-      .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
+      .spyOn(CongressAdapter.prototype, "fetchRecentBills")
       .mockImplementation(async () => ({ documentsUpserted: 0 }));
 
-    await handleRecentBills(store.db, { jurisdiction: "us-mt", days: 7, limit: 5 });
+    await handleRecentBills(store.db, { days: 7, limit: 5 });
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const callOpts = fetchSpy.mock.calls[0][1];
-    expect(callOpts).toMatchObject({ jurisdiction: "us-mt", limit: 5 });
-    expect(callOpts.updated_since).toBeUndefined();
+    expect(callOpts.limit).toBe(5);
+    // When limit is set, fromDateTime is widened to 365d — defined but not same as 7d
+    expect(callOpts.fromDateTime).toBeDefined();
 
     fetchSpy.mockRestore();
   });
 
   it("cold fetch with limit=5: caps the local projection at 5 results", async () => {
-    // Seed 10 bills for us-tx so the projection has plenty to cap.
     for (let i = 0; i < 10; i++) {
       upsertDocument(store.db, {
-        kind: "bill", jurisdiction: "us-tx",
+        kind: "bill", jurisdiction: "us-federal",
         title: `SB ${100 + i} — Bulk ${i}`,
         occurred_at: new Date(Date.now() - i * 86400 * 1000).toISOString(),
-        source: { name: "openstates", id: `bulk-${i}`, url: `https://ex/${i}` },
+        source: { name: "congress", id: `bulk-${i}`, url: `https://congress.gov/${i}` },
         references: [], raw: { actions: [] },
       });
     }
     const fetchSpy = vi
-      .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
+      .spyOn(CongressAdapter.prototype, "fetchRecentBills")
       .mockImplementation(async () => ({ documentsUpserted: 10 }));
 
-    const res = await callBills(store.db, {
-      jurisdiction: "us-tx", days: 7, limit: 5,
-    });
+    const res = await callBills(store.db, { days: 7, limit: 5 });
 
     expect(res.results).toHaveLength(5);
     fetchSpy.mockRestore();
@@ -549,19 +519,19 @@ describe("recent_bills tool — R15 hydration path", () => {
 
   it("distinct limit values produce distinct fetch_log rows", async () => {
     const fetchSpy = vi
-      .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
+      .spyOn(CongressAdapter.prototype, "fetchRecentBills")
       .mockImplementation(async () => ({ documentsUpserted: 0 }));
 
-    await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7, limit: 5 });
-    await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7, limit: 10 });
-    await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
+    await handleRecentBills(store.db, { days: 7, limit: 5 });
+    await handleRecentBills(store.db, { days: 7, limit: 10 });
+    await handleRecentBills(store.db, { days: 7 });
 
     expect(fetchSpy).toHaveBeenCalledTimes(3);
 
     const rows = store.db
       .prepare(
         `SELECT DISTINCT args_hash FROM fetch_log
-         WHERE source='openstates' AND endpoint_path='/bills'`,
+         WHERE source='congress' AND endpoint_path='/bill'`,
       )
       .all() as Array<{ args_hash: string }>;
     expect(rows.length).toBe(3);
@@ -569,26 +539,26 @@ describe("recent_bills tool — R15 hydration path", () => {
     fetchSpy.mockRestore();
   });
 
-  it("limit unset: still passes updated_since (existing behaviour)", async () => {
+  it("limit unset: passes fromDateTime from the days window", async () => {
     const fetchSpy = vi
-      .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
+      .spyOn(CongressAdapter.prototype, "fetchRecentBills")
       .mockImplementation(async () => ({ documentsUpserted: 0 }));
 
-    await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
+    await handleRecentBills(store.db, { days: 7 });
 
     const callOpts = fetchSpy.mock.calls[0][1];
-    expect(callOpts.updated_since).toBeDefined();
+    expect(callOpts.fromDateTime).toBeDefined();
     expect(callOpts.limit).toBeUndefined();
 
     fetchSpy.mockRestore();
   });
 
-  it("us-federal with limit: threads limit into Congress adapter", async () => {
+  it("with limit: threads limit into Congress adapter", async () => {
     const fetchSpy = vi
       .spyOn(CongressAdapter.prototype, "fetchRecentBills")
       .mockImplementation(async () => ({ documentsUpserted: 0 }));
 
-    await handleRecentBills(store.db, { jurisdiction: "us-federal", days: 7, limit: 5 });
+    await handleRecentBills(store.db, { days: 7, limit: 5 });
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const callOpts = fetchSpy.mock.calls[0][1];
@@ -599,11 +569,15 @@ describe("recent_bills tool — R15 hydration path", () => {
   });
 
   it("stale_notice propagates into empty-results diagnostic response", async () => {
-    upsertFetchLog(store.db, {
-      source: "openstates",
-      endpoint_path: "/bills",
+    // Use isolated store with no bills so results are empty
+    const emptyStore = openStore("./data/test-recent-bills-empty.db");
+    seedJurisdictions(emptyStore.db);
+
+    upsertFetchLog(emptyStore.db, {
+      source: "congress",
+      endpoint_path: "/bill",
       args_hash: hashArgs("recent_bills", {
-        jurisdiction: "us-or", days: 7, chamber: undefined, session: undefined,
+        jurisdiction: "us-federal", days: 7, chamber: undefined, session: undefined, limit: undefined,
       }),
       scope: "recent",
       fetched_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
@@ -611,105 +585,18 @@ describe("recent_bills tool — R15 hydration path", () => {
     });
 
     const fetchSpy = vi
-      .spyOn(OpenStatesAdapter.prototype, "fetchRecentBills")
+      .spyOn(CongressAdapter.prototype, "fetchRecentBills")
       .mockRejectedValue(new Error("upstream down"));
 
-    // us-or has no bills in store.
-    const res = await callBills(store.db, { jurisdiction: "us-or", days: 7 });
+    const res = await callBills(emptyStore.db, { days: 7 });
     expect(res.results).toHaveLength(0);
     expect(res).toHaveProperty("empty_reason");
     expect(res.stale_notice?.reason).toBe("upstream_failure");
 
     fetchSpy.mockRestore();
-  });
-});
-
-describe("recent_bills tool — high-cost confirmation gate", () => {
-  it("returns confirmation envelope when limit > 500 without acknowledgement", async () => {
-    const fetchMock = vi.fn();
-    vi.spyOn(global, "fetch").mockImplementation(fetchMock);
-
-    const result = await handleRecentBills(store.db, {
-      jurisdiction: "us-ca",
-      days: 7,
-      limit: 1000,
-    });
-
-    expect("requires_confirmation" in result && result.requires_confirmation).toBe(true);
-    expect(fetchMock).not.toHaveBeenCalled();
-    if ("requires_confirmation" in result) {
-      expect(result.requested_limit).toBe(1000);
-      expect(result.estimated_cost.upstream_calls).toBe(50);
-      expect(result.estimated_cost.openstates_daily_budget_pct).toBe(10);
+    emptyStore.close();
+    if (existsSync("./data/test-recent-bills-empty.db")) {
+      rmSync("./data/test-recent-bills-empty.db");
     }
-  });
-
-  it("executes when limit > 500 with acknowledge_high_cost: true", async () => {
-    seedFetchLogFresh("openstates", "/bills", {
-      jurisdiction: "us-ca",
-      days: 7,
-      chamber: undefined,
-      session: undefined,
-      limit: 1000,
-    });
-    const result = await handleRecentBills(store.db, {
-      jurisdiction: "us-ca",
-      days: 7,
-      limit: 1000,
-      acknowledge_high_cost: true,
-    });
-
-    expect("results" in result).toBe(true);
-    expect("requires_confirmation" in result).toBe(false);
-  });
-
-  it("does not gate at limit = 500 (boundary)", async () => {
-    seedFetchLogFresh("openstates", "/bills", {
-      jurisdiction: "us-ca",
-      days: 7,
-      chamber: undefined,
-      session: undefined,
-      limit: 500,
-    });
-    const result = await handleRecentBills(store.db, {
-      jurisdiction: "us-ca",
-      days: 7,
-      limit: 500,
-    });
-
-    expect("requires_confirmation" in result).toBe(false);
-  });
-
-  it("uses congress source costing for us-federal", async () => {
-    const fetchMock = vi.fn();
-    vi.spyOn(global, "fetch").mockImplementation(fetchMock);
-
-    const result = await handleRecentBills(store.db, {
-      jurisdiction: "us-federal",
-      days: 7,
-      limit: 1000,
-    });
-
-    expect("requires_confirmation" in result && result.requires_confirmation).toBe(true);
-    if ("requires_confirmation" in result) {
-      expect(result.estimated_cost.upstream_calls).toBe(4);
-      expect(result.estimated_cost.congress_hourly_budget_pct).toBeCloseTo(0.08, 2);
-      expect(result.estimated_cost.openstates_daily_budget_pct).toBeUndefined();
-    }
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("does not gate wildcard jurisdiction even with limit > 500", async () => {
-    const fetchMock = vi.fn();
-    vi.spyOn(global, "fetch").mockImplementation(fetchMock);
-
-    const result = await handleRecentBills(store.db, {
-      jurisdiction: "*",
-      days: 7,
-      limit: 1000,
-    });
-
-    expect("requires_confirmation" in result).toBe(false);
-    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { rmSync, existsSync } from "node:fs";
 import { openStore, type Store } from "../../../../src/core/store.js";
-import { seedJurisdictions } from "../../../../src/core/seeds.js";
+import { seedJurisdictions } from "../../../../src/federal/seeds.js";
 import { upsertDocument } from "../../../../src/core/documents.js";
-import { handleSearchDocuments } from "../../../../src/mcp/tools/search_civic_documents.js";
+import { handleSearchDocuments } from "../../../../src/federal/tools/search_civic_documents.js";
 
 const TEST_DB = "./data/test-tool-search-docs.db";
 let store: Store;
