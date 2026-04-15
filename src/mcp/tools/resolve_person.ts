@@ -294,7 +294,8 @@ export async function handleResolvePerson(
       disambiguators: buildDisambiguators(row),
     }));
 
-  const response: ResolvePersonResponse = { matches };
-  if (stale_notice) response.stale_notice = stale_notice;
-  return response;
+  return {
+    matches,
+    ...(stale_notice ? { stale_notice } : {}),
+  };
 }

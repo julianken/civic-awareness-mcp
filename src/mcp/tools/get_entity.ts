@@ -174,11 +174,10 @@ export async function handleGetEntity(
     });
   }
 
-  const response: GetEntityResponse = {
+  return {
     entity: refreshedEntity,
     recent_documents: simplified,
     sources,
+    ...(stale_notice ? { stale_notice } : {}),
   };
-  if (stale_notice) response.stale_notice = stale_notice;
-  return response;
 }

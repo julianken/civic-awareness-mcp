@@ -188,7 +188,8 @@ export async function handleSearchEntities(
     if (r.stale_notice && !stale_notice) stale_notice = r.stale_notice;
   }
 
-  const response = projectLocal();
-  if (stale_notice) response.stale_notice = stale_notice;
-  return response;
+  return {
+    ...projectLocal(),
+    ...(stale_notice ? { stale_notice } : {}),
+  };
 }

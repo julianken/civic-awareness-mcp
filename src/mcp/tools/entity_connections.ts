@@ -396,7 +396,12 @@ export async function handleEntityConnections(
   }
   const sources = Array.from(sourcesSeen.values());
 
-  const response: EntityConnectionsResponse = { root, edges, nodes, sources, truncated };
-  if (stale_notice) response.stale_notice = stale_notice;
-  return response;
+  return {
+    root,
+    edges,
+    nodes,
+    sources,
+    truncated,
+    ...(stale_notice ? { stale_notice } : {}),
+  };
 }
