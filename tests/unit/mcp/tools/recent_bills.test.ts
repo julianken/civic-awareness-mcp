@@ -261,6 +261,56 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
     expect(res).toHaveProperty("hint");
   });
 
+  it("chamber=upper returns only upper-chamber bills (from_organization.classification)", async () => {
+    const now = new Date().toISOString();
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "SB 10 — upper bill",
+      occurred_at: now,
+      source: { name: "openstates", id: "upper-1", url: "https://openstates.org/tx/bills/SB10" },
+      references: [], raw: { from_organization: { classification: "upper" }, actions: [] },
+    });
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "HB 20 — lower bill",
+      occurred_at: now,
+      source: { name: "openstates", id: "lower-1", url: "https://openstates.org/tx/bills/HB20" },
+      references: [], raw: { from_organization: { classification: "lower" }, actions: [] },
+    });
+
+    seedFetchLogFresh("openstates", "/bills",
+      { jurisdiction: "us-tx", days: 7, chamber: "upper", session: undefined, limit: undefined });
+    const res = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7, chamber: "upper" });
+    const identifiers = res.results.map((r) => r.identifier);
+    expect(identifiers).toContain("SB 10");
+    expect(identifiers).not.toContain("HB 20");
+    // HB1 from beforeEach has no from_organization — excluded when chamber filter is active
+    expect(identifiers).not.toContain("HB1");
+  });
+
+  it("chamber=lower with all-upper bills returns empty + empty_reason=filter_eliminated_all", async () => {
+    const now = new Date().toISOString();
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-or", title: "SB 1 — upper only",
+      occurred_at: now,
+      source: { name: "openstates", id: "or-upper-1", url: "https://openstates.org/or/bills/SB1" },
+      references: [], raw: { from_organization: { classification: "upper" }, actions: [] },
+    });
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-or", title: "SB 2 — upper only",
+      occurred_at: now,
+      source: { name: "openstates", id: "or-upper-2", url: "https://openstates.org/or/bills/SB2" },
+      references: [], raw: { from_organization: { classification: "upper" }, actions: [] },
+    });
+
+    seedFetchLogFresh("openstates", "/bills",
+      { jurisdiction: "us-or", days: 7, chamber: "lower", session: undefined, limit: undefined });
+    const res = await handleRecentBills(store.db, { jurisdiction: "us-or", days: 7, chamber: "lower" });
+    expect(res.results).toHaveLength(0);
+    expect(res.empty_reason).toBe("filter_eliminated_all");
+    expect(res).toHaveProperty("hint");
+    // filters_applied must name chamber
+    expect(res.hint).toMatch(/chamber/);
+  });
+
   it("omits empty_reason on non-empty responses", async () => {
     upsertDocument(store.db, {
       kind: "bill", jurisdiction: "us-or", title: "SB 1 — Test",

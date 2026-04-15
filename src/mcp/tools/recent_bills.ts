@@ -2,7 +2,6 @@ import type Database from "better-sqlite3";
 import { OpenStatesAdapter } from "../../adapters/openstates.js";
 import { CongressAdapter } from "../../adapters/congress.js";
 import { queryDocuments } from "../../core/documents.js";
-import { findEntityById } from "../../core/entities.js";
 import { getLimiter } from "../../core/limiters.js";
 import { withShapedFetch } from "../../core/tool_cache.js";
 import type { EntityReference } from "../../core/types.js";
@@ -41,6 +40,7 @@ export interface RecentBillsResponse {
   empty_reason?: EmptyFeedDiagnostic["empty_reason"];
   data_freshness?: EmptyFeedDiagnostic["data_freshness"];
   hint?: string;
+  filters_applied?: EmptyFeedDiagnostic["filters_applied"];
   stale_notice?: StaleNotice;
 }
 
@@ -152,10 +152,8 @@ export async function handleRecentBills(
 
     const filtered = input.chamber
       ? sessionFiltered.filter((d) => {
-          const sponsor = d.references.find((r) => r.role === "sponsor");
-          if (!sponsor) return false;
-          const ent = findEntityById(db, sponsor.entity_id);
-          return ent?.metadata.chamber === input.chamber;
+          const raw = d.raw as { from_organization?: { classification?: string } };
+          return raw.from_organization?.classification === input.chamber;
         })
       : sessionFiltered;
 
@@ -216,7 +214,15 @@ export async function handleRecentBills(
       window: { from: from.toISOString(), to: to.toISOString() },
     };
     if (capped.length === 0) {
-      const diag = emptyFeedDiagnostic(db, { jurisdiction: input.jurisdiction, kind: "bill" });
+      const filtersApplied: string[] = [];
+      if (input.session) filtersApplied.push("session");
+      if (input.chamber) filtersApplied.push("chamber");
+      const diag = emptyFeedDiagnostic(db, {
+        jurisdiction: input.jurisdiction,
+        kind: "bill",
+        preFilterCount: docs.length,
+        filtersApplied,
+      });
       return { ...base, ...diag };
     }
     return base;

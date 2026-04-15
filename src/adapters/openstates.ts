@@ -370,7 +370,15 @@ export class OpenStatesAdapter implements Adapter {
     for (const b of body.results ?? []) {
       if (opts?.chamber) {
         const classification = b.from_organization?.classification;
-        if (classification && classification !== opts.chamber) continue;
+        if (classification && classification !== opts.chamber) {
+          logger.debug("openstates chamber filter: skipping bill", {
+            billId: b.id,
+            identifier: b.identifier,
+            from_organization: classification,
+            requested: opts.chamber,
+          });
+          continue;
+        }
       }
       try {
         this.upsertBill(db, b);
@@ -475,8 +483,10 @@ export class OpenStatesAdapter implements Adapter {
         : upsertEntity(db, { kind: "person", name: s.name, jurisdiction: undefined }).entity.id;
       return {
         entity_id: personId,
-        role: (s.classification === "primary" ? "sponsor" : "cosponsor") as
-          | "sponsor" | "cosponsor",
+        // CA uses "author" for primary sponsor; treat both as "sponsor".
+      role: (s.classification === "primary" || s.classification === "author"
+        ? "sponsor"
+        : "cosponsor") as "sponsor" | "cosponsor",
       };
     });
 

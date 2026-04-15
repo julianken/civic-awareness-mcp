@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { DocumentKind } from "../core/types.js";
 
-export type EmptyReason = "no_events_in_window" | "unknown_jurisdiction";
+export type EmptyReason = "no_events_in_window" | "unknown_jurisdiction" | "filter_eliminated_all";
 
 export interface DataFreshness {
   last_refreshed_at: string | null;
@@ -12,11 +12,14 @@ export interface EmptyFeedDiagnostic {
   empty_reason: EmptyReason;
   data_freshness: DataFreshness;
   hint: string;
+  filters_applied?: string[];
 }
 
 export interface EmptyFeedContext {
   jurisdiction: string;
   kind: DocumentKind;
+  preFilterCount?: number;
+  filtersApplied?: string[];
 }
 
 // Narrowed under R15 (docs/00-rationale.md:455). Retired members:
@@ -41,6 +44,16 @@ export function emptyFeedDiagnostic(
   db: Database.Database,
   ctx: EmptyFeedContext,
 ): EmptyFeedDiagnostic {
+  if (ctx.preFilterCount !== undefined && ctx.preFilterCount > 0) {
+    const filters = ctx.filtersApplied ?? [];
+    return {
+      empty_reason: "filter_eliminated_all",
+      data_freshness: { last_refreshed_at: null, source: null },
+      hint: `${ctx.preFilterCount} ${ctx.kind}(s) matched the window but were removed by filter(s): ${filters.join(", ")}.`,
+      filters_applied: filters,
+    };
+  }
+
   // Unknown jurisdiction check first — "*" is a valid wildcard per D3b.
   if (ctx.jurisdiction !== "*") {
     const juris = db
