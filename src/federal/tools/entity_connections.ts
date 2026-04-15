@@ -187,11 +187,10 @@ export async function handleEntityConnections(
     last_seen_at: rootEntity.last_seen_at,
   };
 
-  // Cold-path short-circuit per phase-8a Decision 9: an entity with no
-  // external IDs cannot be fanned out to any upstream, so entity_connections
-  // returns an empty graph with a diagnostic reason rather than silently
-  // computing a projection over whatever stale documents happen to be
-  // local.
+  // An entity with no external IDs cannot be fanned out to any upstream,
+  // so entity_connections returns an empty graph with a diagnostic reason
+  // rather than silently computing a projection over whatever stale
+  // documents happen to be local.
   if (Object.keys(rootEntity.external_ids).length === 0) {
     return {
       root,
