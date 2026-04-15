@@ -126,10 +126,15 @@ export async function handleListBills(
   }
 
   const projectLocal = (): ListBillsResponse => {
+    // Headroom for predicate filters (sponsor / subject /
+    // classification / date) before the final cap. Mirrors the
+    // pattern in recent_bills.ts so an acknowledged high-limit
+    // call doesn't silently truncate at 500.
+    const ceiling = Math.max(500, input.limit * 3);
     const docs = queryDocuments(db, {
       kind: "bill",
       jurisdiction: input.jurisdiction,
-      limit: 500,
+      limit: ceiling,
     });
 
     const filtered = docs.filter((d) => {

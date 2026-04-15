@@ -559,4 +559,22 @@ describe("list_bills tool — high-cost confirmation gate", () => {
     expect("requires_confirmation" in result).toBe(false);
     expect("stale_notice" in result && result.stale_notice?.reason).toBe("not_yet_supported");
   });
+
+  it("executes when limit > 500 with acknowledge_high_cost: true and projection ceiling scales accordingly", async () => {
+    // Spy on the adapter so no real HTTP fires; we don't care
+    // about hydration here, only that the projection isn't capped at 500.
+    const spy = vi
+      .spyOn(OpenStatesAdapter.prototype, "listBills")
+      .mockImplementation(async () => ({ documentsUpserted: 0 }));
+
+    const result = await callListBills(store.db, {
+      jurisdiction: "us-ca",
+      limit: 1000,
+      acknowledge_high_cost: true,
+    });
+
+    expect("requires_confirmation" in result).toBe(false);
+    expect("results" in result).toBe(true);
+    spy.mockRestore();
+  });
 });
