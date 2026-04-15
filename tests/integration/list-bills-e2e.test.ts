@@ -21,6 +21,7 @@ import { seedJurisdictions } from "../../src/core/seeds.js";
 import { handleListBills } from "../../src/mcp/tools/list_bills.js";
 import { _resetToolCacheForTesting } from "../../src/core/tool_cache.js";
 import { _resetLimitersForTesting } from "../../src/core/limiters.js";
+import { seedStaleCache } from "../helpers/seed_stale_cache.js";
 
 vi.stubEnv("OPENSTATES_API_KEY", "test-key");
 
@@ -137,5 +138,63 @@ describe("list_bills — R15 shaped e2e", () => {
     await expect(
       handleListBills(store.db, { jurisdiction: "us-ca" }),
     ).rejects.toThrow();
+  });
+
+  it("upstream failure with stale cache returns stale + upstream_failure notice", async () => {
+    seedStaleCache({
+      db: store.db,
+      source: "openstates",
+      endpoint_path: "/bills/list",
+      scope: "recent",
+      tool: "list_bills",
+      args: {
+        jurisdiction: "us-ca",
+        session: undefined,
+        chamber: undefined,
+        sponsor_entity_id: undefined,
+        classification: undefined,
+        subject: "Vehicles",
+        introduced_since: undefined,
+        introduced_until: undefined,
+        updated_since: undefined,
+        updated_until: undefined,
+        sort: "updated_desc",
+        limit: 20,
+      },
+      documents: [
+        {
+          kind: "bill",
+          jurisdiction: "us-ca",
+          title: "SB1338 — Vehicles: repossession.",
+          occurred_at: "2026-04-10T00:00:00Z",
+          source: {
+            name: "openstates",
+            id: "ocd-bill/ca/stale-1",
+            url: "https://openstates.org/ca/bills/20252026/SB1338",
+          },
+          raw: {
+            subjects: ["Vehicles"],
+            actions: [{ date: "2026-02-20", description: "Introduced" }],
+          },
+        },
+      ],
+    });
+
+    vi.spyOn(global, "fetch").mockImplementation(async (input) => {
+      const url = urlOf(input);
+      if (!url.includes("openstates.org/bills")) {
+        return new Response("", { status: 404 });
+      }
+      throw new Error("network down");
+    });
+
+    const result = await handleListBills(store.db, {
+      jurisdiction: "us-ca",
+      subject: "Vehicles",
+    });
+
+    expect(result.stale_notice?.reason).toBe("upstream_failure");
+    expect(result.results.length).toBeGreaterThan(0);
+    expect(result.results[0].identifier).toBe("SB1338");
   });
 });
