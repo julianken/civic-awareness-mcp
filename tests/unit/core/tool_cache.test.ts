@@ -291,3 +291,38 @@ describe("withShapedFetch — rate-limit peek", () => {
     expect(result.stale_notice?.message).toMatch(/rate.?limit/i);
   });
 });
+
+describe("withShapedFetch — parallel concurrency", () => {
+  it("runs HTTP fetches for different cache keys concurrently, not serially", async () => {
+    // Each fetch waits DELAY_MS before resolving. If the two calls run
+    // serially (old txMutex behaviour) total time ≥ 2 × DELAY_MS.
+    // Concurrent execution keeps total time < 2 × DELAY_MS.
+    const DELAY_MS = 100;
+
+    const makeFetch = (tag: string) => async (): Promise<{ primary_rows_written: number }> => {
+      await new Promise<void>((r) => setTimeout(r, DELAY_MS));
+      return { primary_rows_written: 1 };
+    };
+
+    const ttl = { scope: "full" as const, ms: 24 * 60 * 60 * 1000 };
+
+    const start = Date.now();
+    await Promise.all([
+      withShapedFetch(
+        db,
+        { source: "openstates", endpoint_path: "/bills", args: { jurisdiction: "us-or" }, tool: "__concurrency__" },
+        ttl, makeFetch("or"), () => [], () => 0,
+      ),
+      withShapedFetch(
+        db,
+        { source: "openstates", endpoint_path: "/bills", args: { jurisdiction: "us-mi" }, tool: "__concurrency__" },
+        ttl, makeFetch("mi"), () => [], () => 0,
+      ),
+    ]);
+    const elapsed = Date.now() - start;
+
+    // Both fetches overlap; total should be well under 2 × DELAY_MS.
+    // Allow generous headroom (1.8×) for CI scheduler jitter.
+    expect(elapsed).toBeLessThan(DELAY_MS * 1.8);
+  });
+});

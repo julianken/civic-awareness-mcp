@@ -26,36 +26,11 @@ export interface ShapedFetchResult<T> {
 }
 
 let sf = new Singleflight<ShapedFetchResult<unknown>>();
-let txMutex: Promise<void> = Promise.resolve();
 let budget = new DailyBudget(process.env.CIVIC_AWARENESS_DAILY_BUDGET);
 
 export function _resetToolCacheForTesting(): void {
   sf = new Singleflight<ShapedFetchResult<unknown>>();
-  txMutex = Promise.resolve();
   budget = new DailyBudget(process.env.CIVIC_AWARENESS_DAILY_BUDGET);
-}
-
-async function runInTransaction<R>(
-  db: Database.Database,
-  fn: () => Promise<R>,
-): Promise<R> {
-  const prev = txMutex;
-  let release!: () => void;
-  txMutex = new Promise<void>((r) => { release = r; });
-  await prev;
-  try {
-    db.prepare("BEGIN IMMEDIATE").run();
-    try {
-      const result = await fn();
-      db.prepare("COMMIT").run();
-      return result;
-    } catch (err) {
-      db.prepare("ROLLBACK").run();
-      throw err;
-    }
-  } finally {
-    release();
-  }
 }
 
 /**
@@ -70,9 +45,9 @@ async function runInTransaction<R>(
  *
  * @param fetchAndWrite Async thunk that (1) issues the narrow
  *   upstream request and (2) upserts results into `documents` /
- *   `entities`. Runs inside a transaction — the caller must NOT
- *   commit/rollback itself. Returns `{ primary_rows_written }`
- *   telemetry stored in `fetch_log.last_rowcount`.
+ *   `entities`. Each adapter write uses its own sync transaction
+ *   internally. Returns `{ primary_rows_written }` telemetry
+ *   stored in `fetch_log.last_rowcount`.
  * @param readLocal Sync thunk that SELECTs the tool's projection
  *   from the local store. Invoked after a successful fetch AND in
  *   the stale-fallback path — must tolerate empty-store state
@@ -112,8 +87,11 @@ export async function withShapedFetch<T>(
           `Rate limit for ${key.source} requires ${Math.ceil(waitMs / 1000)}s wait`,
         );
       }
-      await runInTransaction(db, async () => {
-        const result = await fetchAndWrite();
+      const result = await fetchAndWrite();
+      // upsertFetchLog is the only write that needs to be atomic with
+      // itself (ON CONFLICT upsert); individual document/entity writes
+      // inside fetchAndWrite each use their own sync db.transaction().
+      db.transaction(() => {
         upsertFetchLog(db, {
           source: key.source,
           endpoint_path: key.endpoint_path,
@@ -122,8 +100,7 @@ export async function withShapedFetch<T>(
           fetched_at: new Date().toISOString(),
           last_rowcount: result.primary_rows_written,
         });
-        return result;
-      });
+      })();
       budget.record(key.source);
       return { value: readLocal() } as ShapedFetchResult<unknown>;
     } catch (err) {
