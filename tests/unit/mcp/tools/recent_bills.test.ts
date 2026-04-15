@@ -216,21 +216,21 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
     ).rejects.toThrow();
   });
 
-  it("accepts limit between 1 and 20", () => {
+  it("accepts a small positive limit", () => {
     expect(() =>
       RecentBillsInput.parse({ jurisdiction: "us-tx", days: 7, limit: 5 }),
+    ).not.toThrow();
+  });
+
+  it("accepts a high limit (cap removed; handler gates via R18)", () => {
+    expect(() =>
+      RecentBillsInput.parse({ jurisdiction: "us-tx", days: 7, limit: 1000 }),
     ).not.toThrow();
   });
 
   it("rejects limit=0", async () => {
     await expect(
       handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7, limit: 0 }),
-    ).rejects.toThrow();
-  });
-
-  it("rejects limit above 20", async () => {
-    await expect(
-      handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7, limit: 21 }),
     ).rejects.toThrow();
   });
 
