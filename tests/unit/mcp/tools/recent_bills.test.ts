@@ -114,6 +114,35 @@ describe("recent_bills tool — projection (TTL-hit path)", () => {
     expect(r.sponsor_summary.top[0].role).toBe("sponsor");
   });
 
+  it("projects latest_action to {date, description} only, dropping upstream extras", async () => {
+    const now = new Date().toISOString();
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-or",
+      title: "HB42 — shape pin", occurred_at: now,
+      source: { name: "openstates", id: "shape-pin", url: "https://openstates.org/or/bills/HB42" },
+      raw: {
+        actions: [
+          {
+            id: "ocd-action-uuid",
+            organization: { id: "ocd-org-uuid", name: "House", classification: "lower" },
+            description: "Passed the House.",
+            date: "2026-04-13",
+            classification: ["passage"],
+            order: 7,
+            related_entities: [{ name: "Floor", entity_type: "organization" }],
+          },
+        ],
+      },
+    });
+    seedFetchLogFresh("openstates", "/bills",
+      { jurisdiction: "us-or", days: 7, chamber: undefined, session: undefined });
+    const result = await callBills(store.db, { days: 7, jurisdiction: "us-or" });
+    const la = result.results[0].latest_action;
+    expect(la).not.toBeNull();
+    expect(Object.keys(la!).sort()).toEqual(["date", "description"]);
+    expect(la).toEqual({ date: "2026-04-13", description: "Passed the House." });
+  });
+
   it("includes source provenance with a jurisdiction-aware URL", async () => {
     seedFetchLogFresh("openstates", "/bills",
       { jurisdiction: "us-tx", days: 7, chamber: undefined, session: undefined });

@@ -15,6 +15,7 @@ import {
 } from "../cost_estimate.js";
 import {
   buildSponsorSummary,
+  projectLatestAction,
   type BillSummary,
 } from "./recent_bills.js";
 
@@ -186,14 +187,11 @@ export async function handleListBills(
 
     const results: BillSummary[] = limited.map(({ doc: d }) => {
       const [identifier, ...titleParts] = d.title.split(" — ");
-      const actions =
-        (d.raw.actions as Array<{ date: string; description: string }> | undefined) ?? [];
-      const latest = actions.length ? actions[actions.length - 1] : null;
       return {
         id: d.id,
         identifier: identifier?.trim() ?? d.title,
         title: titleParts.join(" — ").trim() || d.title,
-        latest_action: latest,
+        latest_action: projectLatestAction(d.raw),
         sponsor_summary: buildSponsorSummary(db, d.references),
         source_url: d.source.url,
       };

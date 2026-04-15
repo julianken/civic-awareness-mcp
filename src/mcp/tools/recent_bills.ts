@@ -49,6 +49,18 @@ export interface RecentBillsResponse {
   stale_notice?: StaleNotice;
 }
 
+export function projectLatestAction(
+  raw: Record<string, unknown>,
+): { date: string; description: string } | null {
+  const actions = raw.actions as Array<Record<string, unknown>> | undefined;
+  if (!actions?.length) return null;
+  const last = actions[actions.length - 1];
+  const date = typeof last.date === "string" ? last.date : null;
+  const description = typeof last.description === "string" ? last.description : null;
+  if (date === null || description === null) return null;
+  return { date, description };
+}
+
 export function buildSponsorSummary(
   db: Database.Database,
   refs: EntityReference[],
@@ -177,8 +189,6 @@ export async function handleRecentBills(
     let titleSplitWarns = 0;
     const results: BillSummary[] = filtered.map((d) => {
       const [identifier, ...titleParts] = d.title.split(" — ");
-      const actions = (d.raw.actions as Array<{ date: string; description: string }> | undefined) ?? [];
-      const latest = actions.length ? actions[actions.length - 1] : null;
       if (titleParts.length === 0 && titleSplitWarns < MAX_WARN_PER_CALL) {
         logger.warn("recent_bills: title missing ' — ' separator; identifier and title duplicated", {
           document_id: d.id,
@@ -190,7 +200,7 @@ export async function handleRecentBills(
         id: d.id,
         identifier: identifier?.trim() ?? d.title,
         title: titleParts.join(" — ").trim() || d.title,
-        latest_action: latest,
+        latest_action: projectLatestAction(d.raw),
         sponsor_summary: buildSponsorSummary(db, d.references),
         source_url: d.source.url,
       };
