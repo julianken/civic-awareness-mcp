@@ -761,6 +761,33 @@ describe("OpenStatesAdapter.searchPeople", () => {
       db.close();
     }
   });
+
+  it("translates opts.limit to per_page query param", async () => {
+    let capturedUrl: string | undefined;
+    vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
+      capturedUrl = String(url);
+      return new Response(
+        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
+        { status: 200 },
+      );
+    });
+
+    if (existsSync(SP_EMPTY_DB)) rmSync(SP_EMPTY_DB, { force: true });
+    const db = openStore(SP_EMPTY_DB);
+    seedJurisdictions(db.db);
+    try {
+      const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+      await adapter.searchPeople(db.db, {
+        jurisdiction: "us-tx",
+        name: "Jane",
+        limit: 47,
+      });
+      const u = new URL(capturedUrl!);
+      expect(u.searchParams.get("per_page")).toBe("47");
+    } finally {
+      db.close();
+    }
+  });
 });
 
 describe("OpenStatesAdapter.fetchBillsBySponsor", () => {
@@ -815,6 +842,32 @@ describe("OpenStatesAdapter.fetchBillsBySponsor", () => {
         "SELECT id, title FROM documents WHERE source_name='openstates' AND kind='bill'",
       ).all() as Array<{ id: string; title: string }>;
       expect(bills).toHaveLength(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("translates opts.limit to per_page query param", async () => {
+    let capturedUrl: string | undefined;
+    vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
+      capturedUrl = String(url);
+      return new Response(
+        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
+        { status: 200 },
+      );
+    });
+
+    if (existsSync(FBS_DB)) rmSync(FBS_DB, { force: true });
+    const db = openStore(FBS_DB);
+    seedJurisdictions(db.db);
+    try {
+      const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+      await adapter.fetchBillsBySponsor(db.db, {
+        sponsor: "ocd-person/tx-1",
+        limit: 50,
+      });
+      const u = new URL(capturedUrl!);
+      expect(u.searchParams.get("per_page")).toBe("50");
     } finally {
       db.close();
     }

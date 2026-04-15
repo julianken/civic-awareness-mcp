@@ -302,7 +302,10 @@ describe("handleEntityConnections — R15 fanout", () => {
     await handleEntityConnections(store.db, { id: e.id, depth: 1, min_co_occurrences: 1 });
 
     expect(openstatesSpy).toHaveBeenCalledOnce();
-    expect(openstatesSpy).toHaveBeenCalledWith(store.db, { sponsor: "ocd-person/tx-1" });
+    expect(openstatesSpy).toHaveBeenCalledWith(store.db, {
+      sponsor: "ocd-person/tx-1",
+      limit: 50,
+    });
     expect(sponsoredSpy).not.toHaveBeenCalled();
     expect(cosponsoredSpy).not.toHaveBeenCalled();
     expect(fecSpy).not.toHaveBeenCalled();
@@ -326,6 +329,18 @@ describe("handleEntityConnections — R15 fanout", () => {
     expect(sponsoredSpy).not.toHaveBeenCalled();
     expect(cosponsoredSpy).not.toHaveBeenCalled();
     expect(openstatesSpy).not.toHaveBeenCalled();
+  });
+
+  it("passes a non-default fanout limit to fetchBillsBySponsor (>20)", async () => {
+    const openstatesSpy = vi.spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor")
+      .mockResolvedValue({ documentsUpserted: 0 });
+
+    const e = makeEntity("Sponsor Person", { openstates_person: "ocd-person/tx-2" });
+    await handleEntityConnections(store.db, { id: e.id, depth: 1, min_co_occurrences: 1 });
+
+    expect(openstatesSpy).toHaveBeenCalledOnce();
+    const call = openstatesSpy.mock.calls[0][1] as { sponsor: string; limit?: number };
+    expect(call.limit).toBeGreaterThan(20);
   });
 
   it("all three external IDs → 4 adapter methods invoked exactly once each", async () => {

@@ -114,6 +114,14 @@ function sourceUrl(sourceName: string, jurisdiction: string): string {
   return "";
 }
 
+// Per-source bill fanout cap for the connections graph. EntityConnections
+// has no caller `limit` (the request is "show me this person's edges"),
+// so we pick a value high enough to give findConnections plenty of
+// raw documents to detect co-occurrences against — the adapter's own
+// 20-default truncates too aggressively for a graph that's bounded at
+// MAX_EDGES=100 downstream.
+const CONNECTIONS_FANOUT_LIMIT = 50;
+
 // Severity ordering used when merging stale_notices from multiple
 // parallel adapter calls. `upstream_failure` outranks `not_found`
 // (which outranks `not_yet_supported`) because an unreachable
@@ -270,7 +278,10 @@ export async function handleEntityConnections(
             apiKey: requireEnv("OPENSTATES_API_KEY"),
             rateLimiter: getLimiter("openstates"),
           });
-          const r = await adapter.fetchBillsBySponsor(db, { sponsor: ocdId });
+          const r = await adapter.fetchBillsBySponsor(db, {
+            sponsor: ocdId,
+            limit: CONNECTIONS_FANOUT_LIMIT,
+          });
           return { primary_rows_written: r.documentsUpserted };
         },
         noop,

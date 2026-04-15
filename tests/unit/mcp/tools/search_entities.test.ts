@@ -91,6 +91,7 @@ describe("search_entities tool — R15 hydration path", () => {
     expect(spy).toHaveBeenCalledWith(store.db, {
       jurisdiction: "us-tx",
       name: "doe",
+      limit: 20,
     });
     expect(res.stale_notice).toBeUndefined();
     spy.mockRestore();
@@ -108,7 +109,8 @@ describe("search_entities tool — R15 hydration path", () => {
 
     expect(cgSpy).toHaveBeenCalledOnce();
     expect(fecSpy).toHaveBeenCalledOnce();
-    expect(fecSpy).toHaveBeenCalledWith(store.db, { q: "smith" });
+    expect(cgSpy).toHaveBeenCalledWith(store.db, { limit: 20 });
+    expect(fecSpy).toHaveBeenCalledWith(store.db, { q: "smith", limit: 20 });
     cgSpy.mockRestore();
     fecSpy.mockRestore();
   });
@@ -147,6 +149,37 @@ describe("search_entities tool — R15 hydration path", () => {
     expect(res.stale_notice?.reason).toBe("upstream_failure");
     expect(res.results.length).toBeGreaterThan(0);
     spy.mockRestore();
+  });
+
+  it("threads caller's limit to OpenStates searchPeople", async () => {
+    const spy = vi
+      .spyOn(OpenStatesAdapter.prototype, "searchPeople")
+      .mockImplementation(async () => ({ entitiesUpserted: 0 }));
+
+    await handleSearchEntities(store.db, { q: "doe", jurisdiction: "us-tx", limit: 50 });
+
+    expect(spy).toHaveBeenCalledWith(store.db, {
+      jurisdiction: "us-tx",
+      name: "doe",
+      limit: 50,
+    });
+    spy.mockRestore();
+  });
+
+  it("threads caller's limit to Congress + OpenFEC fanout", async () => {
+    const cgSpy = vi
+      .spyOn(CongressAdapter.prototype, "searchMembers")
+      .mockImplementation(async () => ({ entitiesUpserted: 0 }));
+    const fecSpy = vi
+      .spyOn(OpenFecAdapter.prototype, "searchCandidates")
+      .mockImplementation(async () => ({ entitiesUpserted: 0 }));
+
+    await handleSearchEntities(store.db, { q: "smith", jurisdiction: "us-federal", limit: 47 });
+
+    expect(cgSpy).toHaveBeenCalledWith(store.db, { limit: 47 });
+    expect(fecSpy).toHaveBeenCalledWith(store.db, { q: "smith", limit: 47 });
+    cgSpy.mockRestore();
+    fecSpy.mockRestore();
   });
 
   it("upstream failure with no cache propagates", async () => {

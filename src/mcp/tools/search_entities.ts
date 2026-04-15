@@ -126,7 +126,7 @@ export async function handleSearchEntities(
             apiKey: requireEnv("API_DATA_GOV_KEY"),
             rateLimiter: getLimiter("congress"),
           });
-          const r = await adapter.searchMembers(db);
+          const r = await adapter.searchMembers(db, { limit: input.limit });
           return { primary_rows_written: r.entitiesUpserted };
         },
         noop,
@@ -146,7 +146,7 @@ export async function handleSearchEntities(
             apiKey: requireEnv("API_DATA_GOV_KEY"),
             rateLimiter: getLimiter("openfec"),
           });
-          const r = await adapter.searchCandidates(db, { q: input.q });
+          const r = await adapter.searchCandidates(db, { q: input.q, limit: input.limit });
           return { primary_rows_written: r.entitiesUpserted };
         },
         noop,
@@ -173,6 +173,7 @@ export async function handleSearchEntities(
           const r = await adapter.searchPeople(db, {
             jurisdiction: juris,
             name: input.q,
+            limit: input.limit,
           });
           return { primary_rows_written: r.entitiesUpserted };
         },

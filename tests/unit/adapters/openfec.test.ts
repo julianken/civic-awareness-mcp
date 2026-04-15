@@ -646,6 +646,17 @@ describe("OpenFecAdapter.searchCandidates", () => {
     const result = await adapter.searchCandidates(store.db, { q: "Nonexistent" });
     expect(result.entitiesUpserted).toBe(0);
   });
+
+  it("translates opts.limit to per_page query param", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ results: [], pagination: { per_page: 47 } }), { status: 200 }),
+    );
+    const adapter = new OpenFecAdapter({ apiKey: "test-key" });
+    await adapter.searchCandidates(store.db, { q: "Smith", limit: 47 });
+    const url = fetchSpy.mock.calls[0][0] as string;
+    expect(url).toMatch(/per_page=47/);
+    fetchSpy.mockRestore();
+  });
 });
 
 describe("OpenFecAdapter.fetchContributionsToCandidate", () => {

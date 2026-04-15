@@ -539,6 +539,17 @@ describe("CongressAdapter.searchMembers", () => {
     const result = await adapter.searchMembers(store.db);
     expect(result.entitiesUpserted).toBe(0);
   });
+
+  it("translates opts.limit to upstream limit query param", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ members: [], pagination: { count: 0 } }), { status: 200 }),
+    );
+    const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
+    await adapter.searchMembers(store.db, { limit: 47 });
+    const url = fetchSpy.mock.calls[0][0] as string;
+    expect(url).toMatch(/limit=47/);
+    fetchSpy.mockRestore();
+  });
 });
 
 describe("CongressAdapter.fetchMember", () => {
