@@ -1,3 +1,5 @@
+import { logger } from "./logger.js";
+
 export const RATE_LIMIT_WAIT_THRESHOLD_MS = 2500;
 
 export interface RateLimiterOptions {
@@ -58,6 +60,9 @@ export async function rateLimitedFetch(url: string, opts: FetchOptions): Promise
   const headers = new Headers(init.headers ?? {});
   headers.set("User-Agent", userAgent);
 
+  const parsed = new URL(url);
+  const host = parsed.hostname;
+
   let attempt = 0;
   while (true) {
     if (rateLimiter) await rateLimiter.acquire();
@@ -68,8 +73,28 @@ export async function rateLimitedFetch(url: string, opts: FetchOptions): Promise
     // provider outage redirecting to a status page). Surfacing it loudly
     // is safer than silently following a redirect that could leak the
     // request's timing or the User-Agent to an unintended destination.
-    const res = await fetch(url, { ...init, headers, redirect: "error" });
-    if (res.status === 429 || res.status >= 500) {
+    const t0 = performance.now();
+    let res: Response;
+    let status: number | "network_error";
+    try {
+      res = await fetch(url, { ...init, headers, redirect: "error" });
+      status = res.status;
+    } catch (err) {
+      const duration_ms = Math.round(performance.now() - t0);
+      logger.warn("upstream fetch network error", {
+        url,
+        method: init.method ?? "GET",
+        status: "network_error",
+        duration_ms,
+        attempt: attempt + 1,
+        host,
+      });
+      throw err;
+    }
+    const duration_ms = Math.round(performance.now() - t0);
+    const meta = { url, method: init.method ?? "GET", status, duration_ms, attempt: attempt + 1, host };
+    if (status === 429 || status >= 500) {
+      logger.warn("upstream fetch failed", meta);
       if (attempt >= retries) return res;
       const retryAfter = Number(res.headers.get("Retry-After") ?? 0) * 1000;
       const backoff = retryAfter || Math.min(30000, 1000 * Math.pow(2, attempt));
@@ -77,6 +102,7 @@ export async function rateLimitedFetch(url: string, opts: FetchOptions): Promise
       attempt += 1;
       continue;
     }
+    logger.info("upstream fetch ok", meta);
     return res;
   }
 }
