@@ -903,10 +903,12 @@ describe("OpenStatesAdapter.fetchBillsBySponsor", () => {
       const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
       const result = await adapter.fetchBillsBySponsor(db.db, {
         sponsor: "ocd-person/tx-1",
+        jurisdiction: "tx",
       });
 
       expect(capturedUrl).toBeDefined();
       const u = new URL(capturedUrl!);
+      expect(u.searchParams.get("jurisdiction")).toBe("tx");
       expect(u.searchParams.get("sponsor")).toBe("ocd-person/tx-1");
       expect(u.searchParams.get("sort")).toBe("updated_desc");
       for (const inc of ["sponsorships", "abstracts", "actions"]) {
@@ -940,6 +942,7 @@ describe("OpenStatesAdapter.fetchBillsBySponsor", () => {
       const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
       await adapter.fetchBillsBySponsor(db.db, {
         sponsor: "ocd-person/tx-1",
+        jurisdiction: "tx",
         limit: 50,
       });
       const u = new URL(capturedUrl!);
@@ -976,6 +979,7 @@ describe("OpenStatesAdapter.fetchBillsBySponsor", () => {
       const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
       const result = await adapter.fetchBillsBySponsor(db.db, {
         sponsor: "ocd-person/abc",
+        jurisdiction: "tx",
         limit: 50,
       });
 

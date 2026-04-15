@@ -129,9 +129,9 @@ describe("recent_contributions tool — projection (TTL-hit path)", () => {
     const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
     const now = new Date().toISOString();
     const window = { from: oneWeekAgo, to: now };
-    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: undefined, contributor_entity_id: undefined, side: "either" });
+    seedFetchLogFresh({ window, candidate_or_committee: "Smith for Congress", min_amount: undefined, contributor_entity_id: undefined, side: "recipient" });
 
-    const result = await handleRecentContributions(store.db, { window });
+    const result = await handleRecentContributions(store.db, { window, candidate_or_committee: "Smith for Congress" });
     expect(result.results).toHaveLength(1);
     expect(result.results[0].amount).toBe(2800.0);
   });
@@ -140,10 +140,11 @@ describe("recent_contributions tool — projection (TTL-hit path)", () => {
     const oneYearAgo = new Date(Date.now() - 365 * 86400 * 1000).toISOString();
     const now = new Date().toISOString();
     const window = { from: oneYearAgo, to: now };
-    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: 1000, contributor_entity_id: undefined, side: "either" });
+    seedFetchLogFresh({ window, candidate_or_committee: "Smith for Congress", min_amount: 1000, contributor_entity_id: undefined, side: "recipient" });
 
     const result = await handleRecentContributions(store.db, {
       window,
+      candidate_or_committee: "Smith for Congress",
       min_amount: 1000,
     });
     expect(result.results).toHaveLength(1);
@@ -169,9 +170,9 @@ describe("recent_contributions tool — projection (TTL-hit path)", () => {
     const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
     const now = new Date().toISOString();
     const window = { from: oneWeekAgo, to: now };
-    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: undefined, contributor_entity_id: undefined, side: "either" });
+    seedFetchLogFresh({ window, candidate_or_committee: "Smith for Congress", min_amount: undefined, contributor_entity_id: undefined, side: "recipient" });
 
-    const result = await handleRecentContributions(store.db, { window });
+    const result = await handleRecentContributions(store.db, { window, candidate_or_committee: "Smith for Congress" });
     expect(result.results).toHaveLength(1);
     const contrib = result.results[0];
 
@@ -189,9 +190,9 @@ describe("recent_contributions tool — projection (TTL-hit path)", () => {
     const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
     const now = new Date().toISOString();
     const window = { from: oneWeekAgo, to: now };
-    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: undefined, contributor_entity_id: undefined, side: "either" });
+    seedFetchLogFresh({ window, candidate_or_committee: "Smith for Congress", min_amount: undefined, contributor_entity_id: undefined, side: "recipient" });
 
-    const result = await handleRecentContributions(store.db, { window });
+    const result = await handleRecentContributions(store.db, { window, candidate_or_committee: "Smith for Congress" });
     expect(result.results[0].contributor.entity_id).toBe(contributorEntityId);
   });
 
@@ -199,9 +200,9 @@ describe("recent_contributions tool — projection (TTL-hit path)", () => {
     const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
     const now = new Date().toISOString();
     const window = { from: oneWeekAgo, to: now };
-    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: undefined, contributor_entity_id: undefined, side: "either" });
+    seedFetchLogFresh({ window, candidate_or_committee: "Smith for Congress", min_amount: undefined, contributor_entity_id: undefined, side: "recipient" });
 
-    const result = await handleRecentContributions(store.db, { window });
+    const result = await handleRecentContributions(store.db, { window, candidate_or_committee: "Smith for Congress" });
     expect(result.sources).toContainEqual(
       expect.objectContaining({ name: "openfec" }),
     );
@@ -248,9 +249,9 @@ describe("recent_contributions tool — projection (TTL-hit path)", () => {
     const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
     const now = new Date().toISOString();
     const window = { from: oneWeekAgo, to: now };
-    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: undefined, contributor_entity_id: undefined, side: "either" });
+    seedFetchLogFresh({ window, candidate_or_committee: "Smith for Congress", min_amount: undefined, contributor_entity_id: undefined, side: "recipient" });
 
-    const result = await handleRecentContributions(store.db, { window });
+    const result = await handleRecentContributions(store.db, { window, candidate_or_committee: "Smith for Congress" });
     // Pre-seeded $2800 record survives; the malformed one without amount is excluded.
     expect(result.results).toHaveLength(1);
     expect(result.results[0].id).not.toBe("SA17.NOAMOUNT");
@@ -261,16 +262,16 @@ describe("recent_contributions tool — projection (TTL-hit path)", () => {
     const farPast = new Date(Date.now() - 1000 * 86400 * 1000).toISOString();
     const almostFarPast = new Date(Date.now() - 999 * 86400 * 1000).toISOString();
     const window = { from: farPast, to: almostFarPast };
-    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: undefined, contributor_entity_id: undefined, side: "either" });
+    seedFetchLogFresh({ window, candidate_or_committee: "Smith for Congress", min_amount: undefined, contributor_entity_id: undefined, side: "recipient" });
 
-    const res = await handleRecentContributions(store.db, { window });
+    const res = await handleRecentContributions(store.db, { window, candidate_or_committee: "Smith for Congress" });
     expect(res.results).toHaveLength(0);
     expect(res).toHaveProperty("empty_reason");
   });
 });
 
 describe("recent_contributions tool — R15 hydration path", () => {
-  it("invokes OpenFEC fetchRecentContributions on cache miss", async () => {
+  it("invokes OpenFEC fetchRecentContributions on cache miss (with narrowing filter)", async () => {
     const fetchSpy = vi
       .spyOn(OpenFecAdapter.prototype, "fetchRecentContributions")
       .mockImplementation(async () => ({ documentsUpserted: 0 }));
@@ -279,6 +280,7 @@ describe("recent_contributions tool — R15 hydration path", () => {
     const now = new Date().toISOString();
     const res = await handleRecentContributions(store.db, {
       window: { from: oneWeekAgo, to: now },
+      candidate_or_committee: "Smith for Congress",
     });
 
     expect(fetchSpy).toHaveBeenCalledOnce();
@@ -299,6 +301,7 @@ describe("recent_contributions tool — R15 hydration path", () => {
         from: "2026-04-01T00:00:00.000Z",
         to: "2026-04-30T00:00:00.000Z",
       },
+      candidate_or_committee: "Smith for Congress",
     });
 
     expect(fetchSpy).toHaveBeenCalledWith(
@@ -321,8 +324,8 @@ describe("recent_contributions tool — R15 hydration path", () => {
     const now = new Date().toISOString();
     const window = { from: oneWeekAgo, to: now };
 
-    await handleRecentContributions(store.db, { window });
-    await handleRecentContributions(store.db, { window });
+    await handleRecentContributions(store.db, { window, candidate_or_committee: "Smith for Congress" });
+    await handleRecentContributions(store.db, { window, candidate_or_committee: "Smith for Congress" });
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     fetchSpy.mockRestore();
@@ -339,6 +342,7 @@ describe("recent_contributions tool — R15 hydration path", () => {
     await expect(
       handleRecentContributions(store.db, {
         window: { from: oneWeekAgo, to: now },
+        candidate_or_committee: "Smith for Congress",
       }),
     ).rejects.toThrow(/network down/);
 
@@ -354,8 +358,8 @@ describe("recent_contributions tool — R15 hydration path", () => {
       source: "openfec",
       endpoint_path: "/schedules/schedule_a",
       args_hash: hashArgs("recent_contributions", {
-        window, candidate_or_committee: undefined, min_amount: undefined,
-        contributor_entity_id: undefined, side: "either",
+        window, candidate_or_committee: "Smith for Congress", min_amount: undefined,
+        contributor_entity_id: undefined, side: "recipient",
       }),
       scope: "recent",
       fetched_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
@@ -366,7 +370,7 @@ describe("recent_contributions tool — R15 hydration path", () => {
       .spyOn(OpenFecAdapter.prototype, "fetchRecentContributions")
       .mockRejectedValue(new Error("simulated upstream failure"));
 
-    const res = await handleRecentContributions(store.db, { window });
+    const res = await handleRecentContributions(store.db, { window, candidate_or_committee: "Smith for Congress" });
 
     expect(res.stale_notice?.reason).toBe("upstream_failure");
     expect(res.results.length).toBeGreaterThan(0);
@@ -387,8 +391,8 @@ describe("recent_contributions tool — R15 hydration path", () => {
       source: "openfec",
       endpoint_path: "/schedules/schedule_a",
       args_hash: hashArgs("recent_contributions", {
-        window, candidate_or_committee: undefined, min_amount: undefined,
-        contributor_entity_id: undefined, side: "either",
+        window, candidate_or_committee: "Smith for Congress", min_amount: undefined,
+        contributor_entity_id: undefined, side: "recipient",
       }),
       scope: "recent",
       fetched_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
@@ -399,10 +403,29 @@ describe("recent_contributions tool — R15 hydration path", () => {
       .spyOn(OpenFecAdapter.prototype, "fetchRecentContributions")
       .mockRejectedValue(new Error("upstream down"));
 
-    const res = await handleRecentContributions(store.db, { window });
+    const res = await handleRecentContributions(store.db, { window, candidate_or_committee: "Smith for Congress" });
     expect(res.results).toHaveLength(0);
     expect(res).toHaveProperty("empty_reason");
     expect(res.stale_notice?.reason).toBe("upstream_failure");
+
+    fetchSpy.mockRestore();
+  });
+
+  it("unfiltered query (no entity filter) returns empty_reason without calling adapter (Bug 3 guard)", async () => {
+    const fetchSpy = vi
+      .spyOn(OpenFecAdapter.prototype, "fetchRecentContributions")
+      .mockImplementation(async () => ({ documentsUpserted: 0 }));
+
+    const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
+    const now = new Date().toISOString();
+    const res = await handleRecentContributions(store.db, {
+      window: { from: oneWeekAgo, to: now },
+    });
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(res.results).toHaveLength(0);
+    expect(res.empty_reason).toBe("filter_eliminated_all");
+    expect(res.hint).toMatch(/narrowing filter/);
 
     fetchSpy.mockRestore();
   });

@@ -183,32 +183,49 @@ export async function handleEntityConnections(
 
   if (rootEntity.external_ids.openstates_person) {
     const ocdId = rootEntity.external_ids.openstates_person;
-    calls.push({
-      label: "openstates bills-by-sponsor",
-      promise: withShapedFetch(
-        db,
-        {
-          source: "openstates",
-          endpoint_path: "/bills/by-sponsor",
-          args: { sponsor: ocdId },
-          tool: "fetchBillsBySponsor",
-        },
-        ttl,
-        async () => {
-          const adapter = new OpenStatesAdapter({
-            apiKey: requireEnv("OPENSTATES_API_KEY"),
-            rateLimiter: getLimiter("openstates"),
-          });
-          const r = await adapter.fetchBillsBySponsor(db, {
-            sponsor: ocdId,
-            limit: CONNECTIONS_FANOUT_LIMIT,
-          });
-          return { primary_rows_written: r.documentsUpserted };
-        },
-        noop,
-        () => getLimiter("openstates").peekWaitMs(),
-      ),
-    });
+    const jurisdiction = rootEntity.jurisdiction;
+    if (!jurisdiction) {
+      // Cross-jurisdiction Person (D3b) — no single state to query. Skip fanout.
+      calls.push({
+        label: "openstates bills-by-sponsor",
+        promise: Promise.resolve({
+          stale_notice: {
+            as_of: new Date().toISOString(),
+            reason: "not_yet_supported" as const,
+            message: "entity_connections sponsor fanout requires a jurisdiction; cross-jurisdiction persons are not yet supported",
+          },
+        }),
+      });
+    } else {
+      const stateAbbr = jurisdiction.replace(/^us-/, "").toLowerCase();
+      calls.push({
+        label: "openstates bills-by-sponsor",
+        promise: withShapedFetch(
+          db,
+          {
+            source: "openstates",
+            endpoint_path: "/bills/by-sponsor",
+            args: { sponsor: ocdId, jurisdiction: stateAbbr },
+            tool: "fetchBillsBySponsor",
+          },
+          ttl,
+          async () => {
+            const adapter = new OpenStatesAdapter({
+              apiKey: requireEnv("OPENSTATES_API_KEY"),
+              rateLimiter: getLimiter("openstates"),
+            });
+            const r = await adapter.fetchBillsBySponsor(db, {
+              sponsor: ocdId,
+              jurisdiction: stateAbbr,
+              limit: CONNECTIONS_FANOUT_LIMIT,
+            });
+            return { primary_rows_written: r.documentsUpserted };
+          },
+          noop,
+          () => getLimiter("openstates").peekWaitMs(),
+        ),
+      });
+    }
   }
 
   const callResults = await Promise.all(

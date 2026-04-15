@@ -258,9 +258,10 @@ export class OpenStatesAdapter implements Adapter {
    *  the OCD person ID directly; no two-step lookup is needed. */
   async fetchBillsBySponsor(
     db: Database.Database,
-    opts: { sponsor: string; limit?: number },
+    opts: { sponsor: string; jurisdiction: string; limit?: number },
   ): Promise<{ documentsUpserted: number }> {
     const url = new URL(`${BASE_URL}/bills`);
+    url.searchParams.set("jurisdiction", opts.jurisdiction);
     url.searchParams.set("sponsor", opts.sponsor);
     url.searchParams.set("sort", "updated_desc");
     url.searchParams.set("per_page", String(opts.limit ?? 20));

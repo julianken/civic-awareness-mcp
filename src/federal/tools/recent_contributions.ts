@@ -79,6 +79,24 @@ export async function handleRecentContributions(
     contributorEntity = { id: row.id, name: row.name };
   }
 
+  // OpenFEC /schedules/schedule_a rejects requests that have only date-range
+  // filters — it requires at least one of: committee_id, contributor_id,
+  // contributor_name, contributor_city, contributor_zip, etc. Guard here so we
+  // never hit that 400 path; return an empty diagnostic instead.
+  const hasNarrowingFilter =
+    input.contributor_entity_id !== undefined ||
+    input.candidate_or_committee !== undefined;
+  if (!hasNarrowingFilter) {
+    return {
+      results: [],
+      total: 0,
+      sources: [],
+      window: input.window,
+      empty_reason: "filter_eliminated_all",
+      hint: "OpenFEC requires at least one narrowing filter. Pass contributor_entity_id or candidate_or_committee.",
+    };
+  }
+
   const toMMDDYYYY = (iso: string): string => {
     const d = new Date(iso);
     return `${String(d.getUTCMonth() + 1).padStart(2, "0")}/${String(d.getUTCDate()).padStart(2, "0")}/${d.getUTCFullYear()}`;

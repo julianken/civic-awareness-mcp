@@ -205,8 +205,8 @@ export async function handleRecentBills(
     });
     const stateAbbr = jurisdiction.replace(/^us-/, "");
     const fromDateTime = input.limit !== undefined
-      ? new Date(to.getTime() - 365 * 86400 * 1000).toISOString()
-      : from.toISOString();
+      ? new Date(to.getTime() - 365 * 86400 * 1000).toISOString().slice(0, 19)
+      : from.toISOString().slice(0, 19);
     const { documentsUpserted } = await adapter.fetchRecentBills(db, {
       jurisdiction: stateAbbr,
       updated_since: fromDateTime,
