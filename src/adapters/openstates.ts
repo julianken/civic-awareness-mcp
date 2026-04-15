@@ -316,7 +316,9 @@ export class OpenStatesAdapter implements Adapter {
       classification?: string;
       subject?: string;
       introduced_since?: string;
+      introduced_until?: string;
       updated_since?: string;
+      updated_until?: string;
       sort: "updated_desc" | "updated_asc" | "introduced_desc" | "introduced_asc";
       limit: number;
     },
@@ -331,7 +333,9 @@ export class OpenStatesAdapter implements Adapter {
     if (opts.classification) url.searchParams.set("classification", opts.classification);
     if (opts.subject) url.searchParams.set("subject", opts.subject);
     if (opts.introduced_since) url.searchParams.set("created_since", opts.introduced_since);
+    if (opts.introduced_until) url.searchParams.set("created_before", opts.introduced_until);
     if (opts.updated_since) url.searchParams.set("updated_since", opts.updated_since);
+    if (opts.updated_until) url.searchParams.set("updated_before", opts.updated_until);
     for (const inc of ["sponsorships", "abstracts", "actions"]) {
       url.searchParams.append("include", inc);
     }

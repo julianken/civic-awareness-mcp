@@ -5,6 +5,7 @@ import { findEntityById } from "../../core/entities.js";
 import { getLimiter } from "../../core/limiters.js";
 import { withShapedFetch } from "../../core/tool_cache.js";
 import { requireEnv } from "../../util/env.js";
+import { logger } from "../../util/logger.js";
 import { ListBillsInput } from "../schemas.js";
 import type { StaleNotice } from "../shared.js";
 import {
@@ -17,6 +18,8 @@ export interface ListBillsResponse {
   total: number;
   sources: Array<{ name: string; url: string }>;
   stale_notice?: StaleNotice;
+  empty_reason?: string;
+  hint?: string;
 }
 
 function introducedDate(raw: Record<string, unknown>): string | undefined {
@@ -87,7 +90,13 @@ export async function handleListBills(
   let sponsorOcd: string | undefined;
   if (input.sponsor_entity_id) {
     const ent = findEntityById(db, input.sponsor_entity_id);
-    const xids = (ent?.external_ids ?? {}) as Record<string, string>;
+    if (!ent) {
+      logger.warn("list_bills: sponsor entity not found", {
+        id: input.sponsor_entity_id,
+      });
+      throw new Error(`sponsor entity not found: ${input.sponsor_entity_id}`);
+    }
+    const xids = (ent.external_ids ?? {}) as Record<string, string>;
     sponsorOcd = xids.openstates_person;
     if (!sponsorOcd) {
       const stateAbbr = input.jurisdiction.replace(/^us-/, "");
@@ -97,6 +106,10 @@ export async function handleListBills(
         sources: [
           { name: "openstates", url: `https://openstates.org/${stateAbbr}/` },
         ],
+        empty_reason: "sponsor_not_linked_to_openstates",
+        hint:
+          "This entity has no OpenStates person link; no bills can be found " +
+          "via this sponsor filter.",
       };
     }
   }
@@ -196,7 +209,9 @@ export async function handleListBills(
       classification: input.classification,
       subject: input.subject,
       introduced_since: input.introduced_since,
+      introduced_until: input.introduced_until,
       updated_since: input.updated_since,
+      updated_until: input.updated_until,
       sort: input.sort,
       limit: input.limit,
     });

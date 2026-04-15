@@ -1031,6 +1031,40 @@ describe("OpenStatesAdapter.listBills", () => {
     }
   });
 
+  it("maps introduced_until to created_before and updated_until to updated_before", async () => {
+    let capturedUrl: string | undefined;
+    vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
+      capturedUrl = String(url);
+      return new Response(
+        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
+        { status: 200 },
+      );
+    });
+
+    if (existsSync(LB_DATES_DB)) rmSync(LB_DATES_DB, { force: true });
+    const db = openStore(LB_DATES_DB);
+    seedJurisdictions(db.db);
+    try {
+      const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+      await adapter.listBills(db.db, {
+        jurisdiction: "us-tx",
+        introduced_until: "2026-01-01",
+        updated_until: "2026-04-01",
+        sort: "updated_desc",
+        limit: 20,
+      });
+
+      expect(capturedUrl).toBeDefined();
+      const params = new URL(capturedUrl!).searchParams;
+      expect(params.get("created_before")).toBe("2026-01-01");
+      expect(params.get("updated_before")).toBe("2026-04-01");
+      expect(params.has("created_since")).toBe(false);
+      expect(params.has("updated_since")).toBe(false);
+    } finally {
+      db.close();
+    }
+  });
+
   it("maps introduced_desc sort to first_action_desc", async () => {
     let capturedUrl: string | undefined;
     vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {

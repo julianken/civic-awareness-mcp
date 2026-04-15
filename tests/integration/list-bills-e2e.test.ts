@@ -140,6 +140,62 @@ describe("list_bills — R15 shaped e2e", () => {
     ).rejects.toThrow();
   });
 
+  it("projects upstream sponsorships through to sponsor_summary.top", async () => {
+    vi.spyOn(global, "fetch").mockImplementation(async (input) => {
+      const url = urlOf(input);
+      if (!url.includes("openstates.org/bills")) {
+        return new Response("", { status: 404 });
+      }
+      return new Response(
+        JSON.stringify({
+          results: [
+            {
+              id: "ocd-bill/ca/sp1",
+              identifier: "AB100",
+              title: "Sponsor projection bill.",
+              session: "20252026",
+              updated_at: "2026-04-10T00:00:00Z",
+              openstates_url: "https://openstates.org/ca/bills/20252026/AB100",
+              jurisdiction: {
+                id: "ocd-jurisdiction/country:us/state:ca/government",
+              },
+              from_organization: { classification: "lower" },
+              subject: ["Test Subject"],
+              sponsorships: [
+                {
+                  name: "Test Senator",
+                  classification: "primary",
+                  person: {
+                    id: "ocd-person/abc",
+                    name: "Test Senator",
+                    party: "Democratic",
+                    current_role: {
+                      title: "Senator",
+                      district: "1",
+                      org_classification: "upper",
+                    },
+                    jurisdiction: {
+                      id: "ocd-jurisdiction/country:us/state:ca/government",
+                    },
+                  },
+                },
+              ],
+              actions: [{ date: "2026-02-20", description: "Introduced" }],
+            },
+          ],
+          pagination: { max_page: 1 },
+        }),
+        { status: 200 },
+      );
+    });
+
+    const res = await handleListBills(store.db, { jurisdiction: "us-ca" });
+    expect(res.results).toHaveLength(1);
+    const top = res.results[0].sponsor_summary?.top ?? [];
+    expect(top.length).toBeGreaterThan(0);
+    expect(top[0].name).toBe("Test Senator");
+  });
+
   it("upstream failure with stale cache returns stale + upstream_failure notice", async () => {
     seedStaleCache({
       db: store.db,

@@ -10,6 +10,8 @@
       "jurisdiction": {
         "id": "ocd-jurisdiction/country:us/state:tx/government"
       },
+      "from_organization": { "classification": "lower" },
+      "subject": ["Government Operations", "Transparency"],
       "sponsorships": [
         {
           "name": "Alice Johnson",
@@ -21,6 +23,23 @@
             "current_role": {
               "title": "Representative",
               "district": "10",
+              "org_classification": "lower"
+            },
+            "jurisdiction": {
+              "id": "ocd-jurisdiction/country:us/state:tx/government"
+            }
+          }
+        },
+        {
+          "name": "Diana Lee",
+          "classification": "cosponsor",
+          "person": {
+            "id": "ocd-person/44444444-4444-4444-4444-444444444444",
+            "name": "Diana Lee",
+            "party": "Democratic",
+            "current_role": {
+              "title": "Representative",
+              "district": "11",
               "org_classification": "lower"
             },
             "jurisdiction": {
@@ -51,6 +70,8 @@
       "jurisdiction": {
         "id": "ocd-jurisdiction/country:us/state:tx/government"
       },
+      "from_organization": { "classification": "upper" },
+      "subject": ["Public Contracts"],
       "sponsorships": [
         {
           "name": "Bob Martinez",
@@ -87,6 +108,8 @@
       "jurisdiction": {
         "id": "ocd-jurisdiction/country:us/state:tx/government"
       },
+      "from_organization": { "classification": "lower" },
+      "subject": ["Public Records"],
       "sponsorships": [
         {
           "name": "Carol Davis",
