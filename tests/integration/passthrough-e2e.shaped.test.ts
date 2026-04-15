@@ -234,7 +234,7 @@ describe("passthrough shaped e2e — recent_votes (federal)", () => {
 });
 
 describe("passthrough shaped e2e — recent_contributions", () => {
-  it("cold fetch → warm hit", async () => {
+  it("cold fetch → warm hit (with narrowing filter)", async () => {
     let upstreamHits = 0;
     const fetchSpy = vi.spyOn(global, "fetch").mockImplementation(async () => {
       upstreamHits += 1;
@@ -245,8 +245,9 @@ describe("passthrough shaped e2e — recent_contributions", () => {
       from: "2026-04-01T00:00:00.000Z",
       to: "2026-04-14T00:00:00.000Z",
     };
-    await handleRecentContributions(store.db, { window });
-    await handleRecentContributions(store.db, { window });
+    // Narrowing filter required — OpenFEC rejects date-only queries (Bug 3 guard).
+    await handleRecentContributions(store.db, { window, candidate_or_committee: "Warren Campaign" });
+    await handleRecentContributions(store.db, { window, candidate_or_committee: "Warren Campaign" });
 
     expect(upstreamHits).toBe(1);
     fetchSpy.mockRestore();
@@ -254,13 +255,15 @@ describe("passthrough shaped e2e — recent_contributions", () => {
 
   it("upstream failure with stale cache returns stale + notice", async () => {
     const window = { from: "2026-04-01T00:00:00.000Z", to: "2026-04-14T00:00:00.000Z" };
+    // Narrowing filter required — OpenFEC rejects date-only queries (Bug 3 guard).
+    const candidate_or_committee = "Warren Campaign";
     seedStaleCache({
       db: store.db,
       source: "openfec",
       endpoint_path: "/schedules/schedule_a",
       scope: "recent",
       tool: "recent_contributions",
-      args: { window, candidate_or_committee: undefined, min_amount: undefined, contributor_entity_id: undefined, side: "either" },
+      args: { window, candidate_or_committee, min_amount: undefined, contributor_entity_id: undefined, side: "recipient" },
       documents: [{
         kind: "contribution",
         jurisdiction: "us-federal",
@@ -278,7 +281,7 @@ describe("passthrough shaped e2e — recent_contributions", () => {
 
     const fetchSpy = vi.spyOn(global, "fetch").mockRejectedValue(new Error("network down"));
 
-    const result = await handleRecentContributions(store.db, { window });
+    const result = await handleRecentContributions(store.db, { window, candidate_or_committee });
     expect(result.stale_notice?.reason).toBe("upstream_failure");
     fetchSpy.mockRestore();
   });
