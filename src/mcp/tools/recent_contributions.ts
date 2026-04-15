@@ -5,9 +5,12 @@ import { findEntityById } from "../../core/entities.js";
 import { getLimiter } from "../../core/limiters.js";
 import { withShapedFetch } from "../../core/tool_cache.js";
 import { requireEnv } from "../../util/env.js";
+import { logger } from "../../util/logger.js";
 import { escapeLike } from "../../util/sql.js";
 import { RecentContributionsInput } from "../schemas.js";
 import { emptyFeedDiagnostic, type EmptyFeedDiagnostic, type StaleNotice } from "../shared.js";
+
+const MAX_WARN_PER_CALL = 3;
 
 export interface ContributorRef {
   name: string;
@@ -68,6 +71,9 @@ export async function handleRecentContributions(
   if (input.contributor_entity_id) {
     const row = findEntityById(db, input.contributor_entity_id);
     if (!row) {
+      logger.warn("recent_contributions: contributor entity not found", {
+        id: input.contributor_entity_id,
+      });
       throw new Error(`Entity not found: ${input.contributor_entity_id}`);
     }
     contributorEntity = { id: row.id, name: row.name };
@@ -109,6 +115,9 @@ export async function handleRecentContributions(
     });
 
     const results: ContributionSummary[] = [];
+    let missingAmountWarns = 0;
+    let malformedDocWarns = 0;
+    let danglingFkWarns = 0;
 
     for (const doc of docs) {
       const raw = doc.raw as {
@@ -117,7 +126,16 @@ export async function handleRecentContributions(
         contributor_name?: string;
       };
 
-      const amount = raw.amount ?? 0;
+      if (raw.amount == null) {
+        if (missingAmountWarns < MAX_WARN_PER_CALL) {
+          logger.warn("recent_contributions: contribution missing amount, skipping", {
+            document_id: doc.id,
+          });
+          missingAmountWarns++;
+        }
+        continue;
+      }
+      const amount = raw.amount;
 
       // min_amount filter.
       if (input.min_amount !== undefined && amount < input.min_amount) continue;
@@ -125,7 +143,15 @@ export async function handleRecentContributions(
       const contribRef = doc.references.find((r) => r.role === "contributor");
       const recipientRef = doc.references.find((r) => r.role === "recipient");
 
-      if (!recipientRef) continue;  // malformed document — skip
+      if (!recipientRef) {
+        if (malformedDocWarns < MAX_WARN_PER_CALL) {
+          logger.warn("recent_contributions: contribution document missing recipient ref", {
+            document_id: doc.id,
+          });
+          malformedDocWarns++;
+        }
+        continue;
+      }
 
       // contributor_entity_id filter — always contributor side.
       if (contributorEntity && contribRef?.entity_id !== contributorEntity.id) {
@@ -149,6 +175,14 @@ export async function handleRecentContributions(
       const recipientRow = db
         .prepare("SELECT name FROM entities WHERE id = ?")
         .get(recipientRef.entity_id) as { name: string } | undefined;
+
+      if (!recipientRow && danglingFkWarns < MAX_WARN_PER_CALL) {
+        logger.warn("recent_contributions: dangling recipient FK, rendering as Unknown", {
+          document_id: doc.id,
+          recipient_entity_id: recipientRef.entity_id,
+        });
+        danglingFkWarns++;
+      }
 
       let contributorName = raw.contributor_name ?? "Unknown";
       let contributorEntityId: string | undefined;

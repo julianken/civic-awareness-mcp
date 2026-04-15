@@ -7,8 +7,11 @@ import { getLimiter } from "../../core/limiters.js";
 import { withShapedFetch } from "../../core/tool_cache.js";
 import type { EntityReference } from "../../core/types.js";
 import { requireEnv } from "../../util/env.js";
+import { logger } from "../../util/logger.js";
 import { RecentBillsInput } from "../schemas.js";
 import { emptyFeedDiagnostic, type EmptyFeedDiagnostic, type StaleNotice } from "../shared.js";
+
+const MAX_WARN_PER_CALL = 3;
 
 export interface SponsorSummary {
   count: number;
@@ -156,10 +159,18 @@ export async function handleRecentBills(
         })
       : sessionFiltered;
 
+    let titleSplitWarns = 0;
     const results: BillSummary[] = filtered.map((d) => {
       const [identifier, ...titleParts] = d.title.split(" — ");
       const actions = (d.raw.actions as Array<{ date: string; description: string }> | undefined) ?? [];
       const latest = actions.length ? actions[actions.length - 1] : null;
+      if (titleParts.length === 0 && titleSplitWarns < MAX_WARN_PER_CALL) {
+        logger.warn("recent_bills: title missing ' — ' separator; identifier and title duplicated", {
+          document_id: d.id,
+          title: d.title,
+        });
+        titleSplitWarns++;
+      }
       return {
         id: d.id,
         identifier: identifier?.trim() ?? d.title,
@@ -178,6 +189,7 @@ export async function handleRecentBills(
     // openstates for state bills, congress for federal, etc. Matches
     // the pattern in get_entity.ts.
     const sourceByName = new Map<string, string>();
+    let unknownSourceWarns = 0;
     for (const d of filtered) {
       if (sourceByName.has(d.source.name)) continue;
       if (d.source.name === "openstates") {
@@ -189,6 +201,10 @@ export async function handleRecentBills(
       } else if (d.source.name === "congress") {
         sourceByName.set(d.source.name, "https://www.congress.gov/");
       } else {
+        if (unknownSourceWarns < MAX_WARN_PER_CALL) {
+          logger.warn("recent_bills: unknown source name", { source: d.source.name });
+          unknownSourceWarns++;
+        }
         sourceByName.set(d.source.name, "");
       }
     }

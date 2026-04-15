@@ -221,6 +221,42 @@ describe("recent_contributions tool — projection (TTL-hit path)", () => {
     ).rejects.toThrow();
   });
 
+  it("skips contribution records with a missing amount", async () => {
+    const occurredAt = new Date().toISOString();
+    upsertDocument(store.db, {
+      kind: "contribution",
+      jurisdiction: "us-federal",
+      title: "Contribution: Malformed → C00123456 (no amount)",
+      occurred_at: occurredAt,
+      source: {
+        name: "openfec",
+        id: "SA17.NOAMOUNT",
+        url: "https://www.fec.gov/data/committee/C00123456/",
+      },
+      references: [
+        { entity_id: contributorEntityId, role: "contributor" },
+        { entity_id: committeeEntityId, role: "recipient" },
+      ],
+      raw: {
+        transaction_id: "SA17.NOAMOUNT",
+        date: occurredAt.slice(0, 10),
+        contributor_name: "Malformed Donor",
+        committee_id: "C00123456",
+      },
+    });
+
+    const oneWeekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString();
+    const now = new Date().toISOString();
+    const window = { from: oneWeekAgo, to: now };
+    seedFetchLogFresh({ window, candidate_or_committee: undefined, min_amount: undefined, contributor_entity_id: undefined, side: "either" });
+
+    const result = await handleRecentContributions(store.db, { window });
+    // Pre-seeded $2800 record survives; the malformed one without amount is excluded.
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0].id).not.toBe("SA17.NOAMOUNT");
+    expect(result.results.every((r) => r.amount > 0)).toBe(true);
+  });
+
   it("attaches empty_reason diagnostic when results are empty", async () => {
     const farPast = new Date(Date.now() - 1000 * 86400 * 1000).toISOString();
     const almostFarPast = new Date(Date.now() - 999 * 86400 * 1000).toISOString();
