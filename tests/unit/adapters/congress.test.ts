@@ -410,7 +410,7 @@ describe("CongressAdapter.fetchRecentBills", () => {
     expect(titles[0].title).toMatch(/Senate Bill/);
   });
 
-  it("passes opts.limit through as the upstream `limit` query param", async () => {
+  it("always uses page size 250 regardless of opts.limit (target count)", async () => {
     let capturedUrl: string | null = null;
     vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
       capturedUrl = String(url);
@@ -428,7 +428,61 @@ describe("CongressAdapter.fetchRecentBills", () => {
 
     expect(capturedUrl).toBeTruthy();
     const u = new URL(capturedUrl!);
-    expect(u.searchParams.get("limit")).toBe("5");
+    expect(u.searchParams.get("limit")).toBe("250");
+  });
+
+  it("paginates via offset when limit > 250", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: any) => {
+      const u = new URL(String(url));
+      const offset = parseInt(u.searchParams.get("offset") ?? "0", 10);
+      const bills = Array.from({ length: 250 }, (_, i) => ({
+        ...SAMPLE_BILL,
+        number: `${offset + i + 1}`,
+        updateDate: "2026-04-01",
+      }));
+      return new Response(JSON.stringify({ bills }), { status: 200 });
+    });
+    vi.spyOn(global, "fetch").mockImplementation(fetchMock);
+
+    const adapter = new CongressAdapter({
+      apiKey: "test-key",
+      congresses: [119],
+    });
+    const result = await adapter.fetchRecentBills(store.db, {
+      fromDateTime: "2026-04-01T00:00:00Z",
+      limit: 600,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(result.documentsUpserted).toBe(750);
+  });
+
+  it("stops on empty page even when target not met", async () => {
+    let calls = 0;
+    const fetchMock = vi.fn().mockImplementation(async () => {
+      calls += 1;
+      const bills = calls === 1
+        ? Array.from({ length: 250 }, (_, i) => ({
+            ...SAMPLE_BILL,
+            number: String(i + 1),
+            updateDate: "2026-04-01",
+          }))
+        : [];
+      return new Response(JSON.stringify({ bills }), { status: 200 });
+    });
+    vi.spyOn(global, "fetch").mockImplementation(fetchMock);
+
+    const adapter = new CongressAdapter({
+      apiKey: "test-key",
+      congresses: [119],
+    });
+    const result = await adapter.fetchRecentBills(store.db, {
+      fromDateTime: "2026-04-01T00:00:00Z",
+      limit: 600,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.documentsUpserted).toBe(250);
   });
 });
 

@@ -263,20 +263,8 @@ export class CongressAdapter implements Adapter {
     opts: { fromDateTime: string; chamber?: "upper" | "lower"; limit?: number },
   ): Promise<{ documentsUpserted: number }> {
     const congress = this.congresses[0];
-    const url = new URL(`${BASE_URL}/bill`);
-    url.searchParams.set("congress", String(congress));
-    url.searchParams.set("fromDateTime", opts.fromDateTime.replace(/\.\d{3}Z$/, "Z"));
-    url.searchParams.set("sort", "updateDate+desc");
-    url.searchParams.set("limit", String(opts.limit ?? 250));
-    url.searchParams.set("api_key", this.opts.apiKey);
-    url.searchParams.set("format", "json");
-
-    const res = await rateLimitedFetch(url.toString(), {
-      userAgent: "civic-awareness-mcp/0.1.0 (+github)",
-      rateLimiter: this.rateLimiter,
-    });
-    if (!res.ok) throw new Error(`Congress.gov /bill returned ${res.status}`);
-    const body = (await res.json()) as { bills?: CongressBill[] };
+    const target = opts.limit;
+    const pageSize = 250;
 
     const chamberMatch = (billType: string): boolean => {
       if (!opts.chamber) return true;
@@ -285,10 +273,35 @@ export class CongressAdapter implements Adapter {
     };
 
     let documentsUpserted = 0;
-    for (const b of body.bills ?? []) {
-      if (!chamberMatch(b.type)) continue;
-      this.upsertBill(db, b);
-      documentsUpserted += 1;
+    let offset = 0;
+    while (true) {
+      const url = new URL(`${BASE_URL}/bill`);
+      url.searchParams.set("congress", String(congress));
+      url.searchParams.set("fromDateTime", opts.fromDateTime.replace(/\.\d{3}Z$/, "Z"));
+      url.searchParams.set("sort", "updateDate+desc");
+      url.searchParams.set("limit", String(pageSize));
+      url.searchParams.set("offset", String(offset));
+      url.searchParams.set("api_key", this.opts.apiKey);
+      url.searchParams.set("format", "json");
+
+      const res = await rateLimitedFetch(url.toString(), {
+        userAgent: "civic-awareness-mcp/0.1.0 (+github)",
+        rateLimiter: this.rateLimiter,
+      });
+      if (!res.ok) throw new Error(`Congress.gov /bill returned ${res.status}`);
+      const body = (await res.json()) as { bills?: CongressBill[] };
+      const bills = body.bills ?? [];
+      if (bills.length === 0) break;
+
+      for (const b of bills) {
+        if (!chamberMatch(b.type)) continue;
+        this.upsertBill(db, b);
+        documentsUpserted += 1;
+      }
+
+      if (target === undefined) break;
+      if (documentsUpserted >= target) break;
+      offset += pageSize;
     }
     return { documentsUpserted };
   }
