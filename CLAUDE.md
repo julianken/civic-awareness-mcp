@@ -17,8 +17,11 @@ When a human opens this repo in Claude Code for the first time:
    - `docs/01-vision.md`
    - `docs/02-architecture.md`
    - `docs/05-tool-surface.md`
-   - `docs/06-open-decisions.md` — all 10 decisions are locked
-     (D1–D10), but read for the rationale and constraints
+   - `docs/06-open-decisions.md` — all 13 decisions are locked
+     (D1–D13), but read for the rationale and constraints. D11
+     (per-document TTL for detail tools), D12 (`limit` on feed
+     tools), and D13 (`list_bills` as a distinct tool) shipped
+     2026-04-13/14 alongside Phase 9.
 
 2. **Verify your understanding with the human.** Briefly summarize:
    - V1 scope: OpenStates (50 states) + Congress.gov (federal) +
@@ -95,6 +98,13 @@ event stream (11 tools total as of Phase 9d):
   resource. Uses per-document TTL (R14 / D11) tracked in
   documents.fetched_at, independent of the endpoint-level
   fetch_log cache used by feed and entity tools.
+
+`list_bills` lives in the (B) bucket but is **predicate-first**
+(filter by sponsor / subject / classification / date range) rather
+than time-first like the `recent_*` feeds. It still returns
+`BillSummary[]` so consumers can swap it in for `recent_bills`
+without code changes; the difference is purely in how the caller
+chooses what to ask for.
 - **Shaped-query hydration (R15):** Tools gate their upstream
   fetches on a `fetch_log` row keyed by
   `(source, endpoint_path, args_hash)`. On a miss they call

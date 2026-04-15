@@ -59,11 +59,24 @@ BillSummary = {
   id: string                        // entity-graph ID of the Bill document
   identifier: string                // "HR1234", "HB2345", "SB89", etc.
   title: string
-  latest_action: { date: string; description: string }
-  sponsors: { name: string; party?: string; district?: string }[]
+  latest_action: { date: string; description: string } | null
+  sponsor_summary: SponsorSummary
   source_url: string
 }
+
+SponsorSummary = {
+  count: number                     // total sponsors + cosponsors
+  by_party: Record<string, number>  // party label → count (e.g. {"D": 3, "R": 1})
+  top: Array<{                      // primaries first, capped at 5 total
+    entity_id: string
+    name: string
+    party?: string
+    role: "sponsor" | "cosponsor"
+  }>
+}
 ```
+
+`sponsor_summary` replaces the original full-sponsor inline array (Phase 2.5 / T4): a 20-bill response now fits in <30 KB instead of ~170 KB. Full sponsor lists are reachable via `get_entity(bill_id)` or `entity_connections`.
 
 Results are sorted by **last-updated**, not introduced date — a re-touched older bill with recent committee activity can rank above a freshly introduced one.
 
@@ -196,11 +209,15 @@ EntityMatch = {
   id: string
   kind: EntityKind
   name: string
-  roles_seen: string[]              // e.g. ["sponsor","voter","contributor"]
-  jurisdictions_active_in: string[] // for Persons, derived from metadata.roles[]
+  jurisdiction?: string             // Organization.jurisdiction; absent for Persons
+                                    // (Persons are cross-jurisdiction under D3b)
+  roles_seen: string[]              // distinct EntityReference roles observed on
+                                    // documents (e.g. ["sponsor","voter","contributor"])
   last_seen_at: string
 }
 ```
+
+`jurisdictions_active_in` (a derived list across `metadata.roles[]`) is not currently emitted; query `get_entity` and read `metadata.roles[].jurisdiction` if you need the Person's jurisdiction history.
 
 ### `get_entity`
 
@@ -219,17 +236,16 @@ sitting Senator returns their full career — state legislature roles,
 federal committee assignments, campaign-finance candidacies — as a
 single record with a roles[] history.
 
-### `entity_activity`
-
-```
-input:
-  id: string
-  window: { from: string; to: string } | undefined
-  kinds: DocumentKind[] | undefined
-  jurisdiction: string | undefined  // filter activity to one jurisdiction
-
-output: ToolResponse<DocumentMatch>
-```
+> **`entity_activity` (future, not implemented).** Originally specced as a separate tool with shape:
+> ```
+> input:
+>   id: string
+>   window: { from: string; to: string } | undefined
+>   kinds: DocumentKind[] | undefined
+>   jurisdiction: string | undefined
+> output: ToolResponse<DocumentMatch>
+> ```
+> The surface is currently covered by `get_entity.recent_documents` plus `search_civic_documents` (which accepts a `kinds` filter); see the note below the phase-to-tool mapping. Not registered with the MCP server today.
 
 ### `entity_connections` (Phase 5)
 
@@ -251,6 +267,13 @@ output: {
   }>,
   nodes: EntityMatch[],
   sources: { name: string; url: string }[];
+  truncated: boolean;                 // edges are capped at 100 sorted by
+                                      // co_occurrence_count desc; true when
+                                      // the cap was hit
+  empty_reason?: "no_external_ids";   // emitted when the root entity has no
+                                      // external IDs to drive shaped hydration
+                                      // (purely-local entity with no upstream
+                                      // anchor); edges/nodes will be empty
 }
 ```
 
@@ -378,6 +401,16 @@ Freshness: per-document TTL of 1h keyed on `documents.fetched_at`
 `CongressAdapter.fetchVote` (`/senate-vote/{c}/{s}/{r}` or
 `/house-vote/...`), upserts, then projects. Upstream failures serve
 the last-known row with a `stale_notice`.
+
+A `positions[i].entity_id` of `null` means the legislator could not
+be resolved against the local entity store via their bioguide ID
+(e.g., a member ingested for the first time on this vote, or a
+bioguide that doesn't yet have an `entities.external_ids` entry).
+It does **NOT** mean "did not vote" — the per-row `vote` field
+already encodes that as `"not_voting"`. Callers wanting to chain
+into `get_entity` or `entity_connections` should expect occasional
+nulls and skip those rows rather than treating them as missing
+ballots.
 
 Federal (Congress.gov) only in V2. State-jurisdiction votes are
 not ingested; a `vote_id` unknown to the local store returns

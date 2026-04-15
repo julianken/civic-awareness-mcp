@@ -15,9 +15,14 @@ store in two projections — time-first (feeds) and identity-first
 │                                                             │
 │  Feed tools (B)              Entity tools (A)               │
 │  ─ recent_bills              ─ search_entities              │
-│  ─ recent_votes              ─ get_entity                   │
-│  ─ recent_contributions      ─ entity_connections           │
-│  ─ search_civic_documents    ─ resolve_person               │
+│  ─ list_bills                ─ get_entity                   │
+│  ─ recent_votes              ─ entity_connections           │
+│  ─ recent_contributions      ─ resolve_person               │
+│  ─ search_civic_documents                                   │
+│                                                             │
+│  Detail tools (C)                                           │
+│  ─ get_bill                                                 │
+│  ─ get_vote                                                 │
 └──────────────────────┬──────────────────────────────────────┘
                        │  reads (via withShapedFetch)
                        ▼
@@ -137,12 +142,14 @@ src/
 │   ├── shared.ts              # StaleNotice, shared response types
 │   ├── tools/
 │   │   ├── recent_bills.ts
+│   │   ├── list_bills.ts
 │   │   ├── recent_votes.ts
 │   │   ├── recent_contributions.ts
 │   │   ├── search_civic_documents.ts
 │   │   ├── search_entities.ts
 │   │   ├── get_entity.ts
 │   │   ├── get_bill.ts
+│   │   ├── get_vote.ts
 │   │   ├── entity_connections.ts
 │   │   └── resolve_person.ts
 │   └── schemas.ts             # zod schemas for tool inputs/outputs
@@ -226,5 +233,7 @@ Read tool handlers do not query the store directly. They call `src/core/tool_cac
 4. On upstream failure → if stale cached data exists, returns it with `stale_notice{reason:"upstream_failure"}`; otherwise propagates the error (or returns `stale_notice{reason:"not_found"}` when the endpoint correctly signals empty).
 
 The key sits at the real deduplication boundary — the upstream request — so tools that hit the same endpoint with the same args (e.g., `resolve_person` and `search_entities` both calling OpenStates `/people`) share warm cache rows. R14's per-document TTL (`documents.fetched_at`, used by `get_bill`) coexists with R15: R14 for single-resource tools where freshness is inherent to the row; R15 for listing/search endpoints where per-endpoint tracking is needed.
+
+**Singleflight is per-process.** The in-flight coalescing map lives in `src/core/tool_cache.ts` as a module-scoped `Map`, so two tool calls in the *same* server process collapse to one upstream request, but two *separate* processes (e.g., a long-running MCP server plus a `pnpm refresh` cron) can race on the same `(source, endpoint_path, args_hash)` key and each issue an upstream fetch. SQLite serializes the write-through at `BEGIN IMMEDIATE`, so the local store stays consistent and `fetch_log` ends up with the later writer's `fetched_at`; the cost is that the per-host rate-limit budget is paid twice for that key. We accept this trade — cross-process locking would add operational complexity disproportionate to the bounded duplication it would prevent.
 
 Writes remain batch-normalized (same code path as the CLI `pnpm refresh`) so entity resolution produces the same graph regardless of trigger.

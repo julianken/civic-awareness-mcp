@@ -33,6 +33,30 @@ this file. Format loosely follows [Keep a Changelog](https://keepachangelog.com/
   is set and `side` is omitted, `side` defaults to `"recipient"` —
   preserves back-compat so pre-9d calls hit the same cache row as
   before. (phase-9d)
+- `list_bills`: chamber filter now matches the bill's originating
+  chamber; OpenStates `from_organization` is persisted into
+  `documents.raw` so the filter survives subsequent re-projections.
+  (4d10c78)
+- `list_bills`: short-circuits when a sponsor filter resolves to
+  an entity with no upstream sponsor link (instead of returning a
+  full unfiltered list); inlines OpenStates `updatedDate` and fills
+  legislator coverage gaps so sponsor-side queries don't miss bills
+  whose only signal was a sponsorship-only legislator row. (77e2507)
+- `openstates`: extracted a shared fetch-and-upsert-bills helper
+  used by both `recent_bills` and `list_bills` so the two tools
+  share one normalization path. (29c21d2, refactor only)
+- `get_vote`: hoisted the bioguide-resolution prepared statement
+  out of the per-position loop and added an expression index on
+  `external_ids.bioguide` (migration 007). Cuts per-vote projection
+  cost on large roll calls. (a6f48b9)
+- `get_vote`: narrowed `VotePosition.vote` from `string` to the
+  literal union `"yea" | "nay" | "present" | "not_voting"` — the
+  four values the handler actually emits. (b6a5fb6)
+
+### Tests
+- `list_bills`: new integration test covering the
+  `upstream_failure` path — a fetch error after warm cache exists
+  serves stale rows with the documented `stale_notice`. (561a34b)
 
 ## 0.3.0 (2026-04-14)
 

@@ -11,6 +11,7 @@ An [MCP](https://modelcontextprotocol.io) server that gives an LLM first-class a
 | Tool | Kind | What it answers |
 |------|------|-----------------|
 | [`recent_bills`](./docs/05-tool-surface.md#recent_bills) | feed | Bills introduced or acted on in the last N days, filterable by jurisdiction / chamber / session |
+| [`list_bills`](./docs/05-tool-surface.md#list_bills) | feed | Predicate-first bill listing by sponsor / subject / classification / session / date range (state bills; federal deferred) |
 | [`recent_votes`](./docs/05-tool-surface.md#recent_votes-phase-3) | feed | Roll-call votes in the last N days, with yea/nay/present/absent tallies |
 | [`recent_contributions`](./docs/05-tool-surface.md#recent_contributions-phase-4) | feed | Federal campaign contributions in a window, optionally filtered to a candidate or committee |
 | [`search_civic_documents`](./docs/05-tool-surface.md#search_civic_documents) | feed | Full-text search across bills / votes / contributions |
@@ -19,6 +20,7 @@ An [MCP](https://modelcontextprotocol.io) server that gives an LLM first-class a
 | [`entity_connections`](./docs/05-tool-surface.md#entity_connections-phase-5) | entity | Graph of co-occurrence edges (via bills / votes / contributions) out to depth 2 |
 | [`resolve_person`](./docs/05-tool-surface.md#resolve_person-phase-5) | entity | Disambiguate a name into one or more Person entity IDs using role / jurisdiction / context hints |
 | [`get_bill`](./docs/05-tool-surface.md#get_bill-phase-7) | detail | Full projection of a single bill by `(jurisdiction, identifier)` with per-document TTL |
+| [`get_vote`](./docs/05-tool-surface.md#get_vote-phase-9c) | detail | Full projection of a single roll-call vote, including per-legislator positions (federal only in V2) |
 
 Every response includes a `sources: { name, url }[]` array so the LLM can cite provenance. No tool synthesizes summaries — that's the LLM's job.
 
@@ -42,9 +44,14 @@ Every response includes a `sources: { name, url }[]` array so the LLM can cite p
         "date": "2026-04-09",
         "description": "Placed on Senate Legislative Calendar"
       },
-      "sponsors": [
-        { "name": "Jane Doe", "party": "D", "district": "WA" }
-      ],
+      "sponsor_summary": {
+        "count": 4,
+        "by_party": { "D": 3, "R": 1 },
+        "top": [
+          { "entity_id": "person-7a4b...", "name": "Jane Doe", "party": "D", "role": "sponsor" },
+          { "entity_id": "person-9c1d...", "name": "John Roe", "party": "D", "role": "cosponsor" }
+        ]
+      },
       "source_url": "https://www.congress.gov/bill/119th-congress/senate-bill/1234"
     }
   ],
@@ -186,7 +193,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 }
 ```
 
-Then restart Claude Desktop; the 9 tools will appear in the tool picker.
+Then restart Claude Desktop; the 11 tools will appear in the tool picker.
 
 ### Environment variables
 
@@ -208,7 +215,7 @@ to your user-level `settings.json` (or the project-level
 }
 ```
 
-After that, calls to any of the 9 tools run without prompts. To approve
+After that, calls to any of the 11 tools run without prompts. To approve
 individual tools rather than the whole server:
 
 ```json
@@ -216,6 +223,7 @@ individual tools rather than the whole server:
   "permissions": {
     "allow": [
       "mcp__civic_awareness__recent_bills",
+      "mcp__civic_awareness__list_bills",
       "mcp__civic_awareness__recent_votes",
       "mcp__civic_awareness__recent_contributions",
       "mcp__civic_awareness__search_entities",
@@ -223,7 +231,8 @@ individual tools rather than the whole server:
       "mcp__civic_awareness__search_civic_documents",
       "mcp__civic_awareness__entity_connections",
       "mcp__civic_awareness__resolve_person",
-      "mcp__civic_awareness__get_bill"
+      "mcp__civic_awareness__get_bill",
+      "mcp__civic_awareness__get_vote"
     ]
   }
 }

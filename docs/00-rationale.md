@@ -537,4 +537,5 @@ LLM-selection ceiling (R5). Terminal count after Phase 9 is 11,
 still well inside the ceiling.
 
 Cross-references: R14 (per-document freshness for detail tools),
-D11 (detail-tool hydration scope locked).
+D11 (detail-tool hydration scope locked),
+`docs/plans/phase-9c-get-vote.md` (implementation plan).
