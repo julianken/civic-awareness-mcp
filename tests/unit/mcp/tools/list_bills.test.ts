@@ -16,14 +16,7 @@ import { _resetToolCacheForTesting } from "../../../../src/core/tool_cache.js";
 import { _resetLimitersForTesting } from "../../../../src/core/limiters.js";
 import { OpenStatesAdapter } from "../../../../src/adapters/openstates.js";
 import { handleListBills, type ListBillsResponse } from "../../../../src/mcp/tools/list_bills.js";
-
-/** Cast for existing tests that are provably outside the gate path (limit ≤ 500). */
-async function callListBills(
-  db: Parameters<typeof handleListBills>[0],
-  input: Parameters<typeof handleListBills>[1],
-): Promise<ListBillsResponse> {
-  return handleListBills(db, input) as Promise<ListBillsResponse>;
-}
+import { callListBills } from "../../../helpers/bill-response-casts.js";
 
 const TEST_DB = "./data/test-tool-list-bills.db";
 let store: Store;

@@ -13,14 +13,7 @@ import { OpenStatesAdapter } from "../../../../src/adapters/openstates.js";
 import { CongressAdapter } from "../../../../src/adapters/congress.js";
 import { handleRecentBills, type RecentBillsResponse } from "../../../../src/mcp/tools/recent_bills.js";
 import { RecentBillsInput } from "../../../../src/mcp/schemas.js";
-
-/** Cast for existing tests that are provably outside the gate path (limit ≤ 500). */
-async function callBills(
-  db: Parameters<typeof handleRecentBills>[0],
-  input: Parameters<typeof handleRecentBills>[1],
-): Promise<RecentBillsResponse> {
-  return handleRecentBills(db, input) as Promise<RecentBillsResponse>;
-}
+import { callBills } from "../../../helpers/bill-response-casts.js";
 
 const TEST_DB = "./data/test-tool-recent-bills.db";
 let store: Store;

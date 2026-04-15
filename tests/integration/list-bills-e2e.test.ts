@@ -18,15 +18,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { openStore, type Store } from "../../src/core/store.js";
 import { seedJurisdictions } from "../../src/core/seeds.js";
-import { handleListBills, type ListBillsResponse } from "../../src/mcp/tools/list_bills.js";
-
-/** Cast for e2e tests that are provably outside the gate path (all use default/low limits). */
-async function callListBills(
-  db: Parameters<typeof handleListBills>[0],
-  input: Parameters<typeof handleListBills>[1],
-): Promise<ListBillsResponse> {
-  return handleListBills(db, input) as Promise<ListBillsResponse>;
-}
+import { handleListBills } from "../../src/mcp/tools/list_bills.js";
+import { callListBills } from "../helpers/bill-response-casts.js";
 import { _resetToolCacheForTesting } from "../../src/core/tool_cache.js";
 import { _resetLimitersForTesting } from "../../src/core/limiters.js";
 import { seedStaleCache } from "../helpers/seed_stale_cache.js";
