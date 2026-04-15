@@ -86,7 +86,7 @@ SponsorSummary = {
 
 Results are sorted by **last-updated**, not introduced date — a re-touched older bill with recent committee activity can rank above a freshly introduced one.
 
-**Confirmation envelope (R18).** When `limit > 500` and `acknowledge_high_cost` is not set to `true`, the tool returns a structured `requires_confirmation` envelope (instead of bills) with fields: `requires_confirmation: true`, `requested_limit`, `estimated_cost { upstream_calls, openstates_daily_budget_pct?, congress_hourly_budget_pct?, response_tokens_estimate }`, and a `message`. No upstream fetch happens. Re-call with `acknowledge_high_cost: true` to execute.
+**Confirmation envelope (R18).** When `limit > 500` and `acknowledge_high_cost` is not set to `true`, the tool returns a structured `requires_confirmation` envelope (instead of bills) with fields: `requires_confirmation: true`, `requested_limit`, `estimated_cost { upstream_calls, openstates_daily_budget_pct?, congress_hourly_budget_pct?, response_tokens_estimate }`, and a `message`. No upstream fetch happens. The caller should surface `estimated_cost` and `message` to the human and only re-call with `acknowledge_high_cost: true` after explicit approval — silently retrying with the flag set defeats the gate.
 
 ### `list_bills`
 
@@ -120,7 +120,7 @@ interchangeably. Cache rows use `endpoint_path="/bills/list"` and
 never collide with `recent_bills`'s `endpoint_path="/bills"` rows —
 see D13.
 
-**Confirmation envelope (R18).** When `limit > 500` and `acknowledge_high_cost` is not set to `true`, the tool returns a structured `requires_confirmation` envelope (instead of bills) with fields: `requires_confirmation: true`, `requested_limit`, `estimated_cost { upstream_calls, openstates_daily_budget_pct?, congress_hourly_budget_pct?, response_tokens_estimate }`, and a `message`. No upstream fetch happens. Re-call with `acknowledge_high_cost: true` to execute.
+**Confirmation envelope (R18).** When `limit > 500` and `acknowledge_high_cost` is not set to `true`, the tool returns a structured `requires_confirmation` envelope (instead of bills) with fields: `requires_confirmation: true`, `requested_limit`, `estimated_cost { upstream_calls, openstates_daily_budget_pct?, congress_hourly_budget_pct?, response_tokens_estimate }`, and a `message`. No upstream fetch happens. The caller should surface `estimated_cost` and `message` to the human and only re-call with `acknowledge_high_cost: true` after explicit approval — silently retrying with the flag set defeats the gate.
 
 Federal (us-federal) is not yet supported; Congress.gov's `/bill`
 endpoint does not accept the same predicate surface (no native

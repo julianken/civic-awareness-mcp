@@ -6,7 +6,7 @@ this file. Format loosely follows [Keep a Changelog](https://keepachangelog.com/
 ## Unreleased
 
 ### Added
-- `recent_bills` accepts an optional `limit: number` (1..20). When set, the handler drops the days-derived upstream time filter and returns top-N by last-updated. Intended for biennial and off-session jurisdictions where the default 7-day window is empty. See D12 / R16. (phase-9a)
+- `recent_bills` accepts an optional `limit: number`. When set, the handler drops the days-derived upstream time filter and returns top-N by last-updated. Intended for biennial and off-session jurisdictions where the default 7-day window is empty. See D12 / R16. (phase-9a; cap removed in phase-9e — see R18)
 - `list_bills` MCP tool for structured bill listing by sponsor,
   subject, classification, session, chamber, and date ranges.
   Ships OpenStates state-bill support; federal returns
