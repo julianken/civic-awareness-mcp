@@ -7,7 +7,7 @@
     "question": "On Passage of HR 1234",
     "result": "Passed",
     "bill": { "type": "HR", "number": "1234" },
-    "totals": { "yea": 52, "nay": 47, "present": 0, "notVoting": 1 },
+    "totals": { "yea": 52, "nay": 47, "present": 1, "notVoting": 2 },
     "members": {
       "item": [
         {
@@ -30,6 +30,18 @@
           "partyName": "Republican",
           "state": "ME",
           "votePosition": "Yea"
+        },
+        {
+          "bioguideId": "K000383",
+          "name": "King, Angus S., Jr.",
+          "state": "ME",
+          "votePosition": "Present"
+        },
+        {
+          "bioguideId": "X000999",
+          "name": "Doe, Jane",
+          "partyName": "Democratic",
+          "votePosition": "Not Voting"
         }
       ]
     }

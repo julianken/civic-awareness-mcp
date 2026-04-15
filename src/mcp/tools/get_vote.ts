@@ -2,12 +2,18 @@ import type Database from "better-sqlite3";
 import { ensureVoteFresh, type EnsureVoteInput } from "../../core/hydrate_vote.js";
 import { GetVoteInput } from "../schemas.js";
 import type { StaleNotice } from "../shared.js";
+import { logger } from "../../util/logger.js";
 
+/**
+ * Tally counts mirror Congress.gov's totals block. `not_voting` is the
+ * upstream's `notVoting` field, which conflates pairs, announced
+ * positions, and physical absences — semantically broader than "absent."
+ */
 export interface VoteTally {
   yea: number;
   nay: number;
   present: number;
-  absent: number;
+  not_voting: number;
 }
 
 export interface VotePosition {
@@ -71,6 +77,10 @@ function normaliseChamber(raw: string | undefined): "upper" | "lower" {
   return (raw ?? "").toLowerCase().includes("senate") ? "upper" : "lower";
 }
 
+// Defensive guard: the Congress adapter (`normalizeVotePosition`)
+// already lowercases and snake-cases positions before write. This guard
+// catches anything that bypasses the adapter (raw fixture imports,
+// future adapters) so the projection's union type stays honest.
 function normalisePosition(p: string): VotePosition["vote"] {
   if (p === "yea" || p === "nay" || p === "present") return p;
   return "not_voting";
@@ -119,10 +129,15 @@ export async function handleGetVote(
     .get(freshness.documentId) as Row | undefined;
 
   if (!row) {
+    const raceNotice: StaleNotice = freshness.stale_notice ?? {
+      as_of: new Date().toISOString(),
+      reason: "not_found",
+      message: `Vote ${freshness.documentId} resolved via ensureVoteFresh but row missing in local store (race).`,
+    };
     return {
       vote: null,
       sources,
-      ...(freshness.stale_notice ? { stale_notice: freshness.stale_notice } : {}),
+      stale_notice: raceNotice,
     };
   }
 
@@ -132,7 +147,7 @@ export async function handleGetVote(
     yea: totals.yea ?? 0,
     nay: totals.nay ?? 0,
     present: totals.present ?? 0,
-    absent: totals.notVoting ?? 0,
+    not_voting: totals.notVoting ?? 0,
   };
   const billIdentifier =
     raw.bill && raw.bill.type && raw.bill.number
@@ -155,6 +170,26 @@ export async function handleGetVote(
     return position;
   });
 
+  const projectedTally: VoteTally = {
+    yea: 0,
+    nay: 0,
+    present: 0,
+    not_voting: 0,
+  };
+  for (const p of positions) projectedTally[p.vote] += 1;
+  if (
+    projectedTally.yea !== tally.yea ||
+    projectedTally.nay !== tally.nay ||
+    projectedTally.present !== tally.present ||
+    projectedTally.not_voting !== tally.not_voting
+  ) {
+    logger.warn("get_vote tally drift: projected positions do not match upstream totals", {
+      vote_id: row.id,
+      upstream: tally,
+      projected: projectedTally,
+    });
+  }
+
   const session = raw.congress !== undefined ? String(raw.congress) : "";
 
   const vote: VoteDetail = {
@@ -164,7 +199,7 @@ export async function handleGetVote(
     session,
     chamber: normaliseChamber(raw.chamber),
     date: row.occurred_at,
-    result: raw.result ?? "unknown",
+    result: raw.result ?? "result_missing",
     tally,
     positions,
     source_url: row.source_url,

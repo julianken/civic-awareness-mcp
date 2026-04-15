@@ -81,10 +81,18 @@ describe("get_vote e2e", () => {
     expect(hitCount).toBe(1);
     expect(result.vote?.bill_identifier).toBe("HR1234");
     expect(result.vote?.chamber).toBe("upper");
-    expect(result.vote?.tally).toEqual({ yea: 52, nay: 47, present: 0, absent: 1 });
-    expect(result.vote?.positions).toHaveLength(3);
+    expect(result.vote?.tally).toEqual({ yea: 52, nay: 47, present: 1, not_voting: 2 });
+    expect(result.vote?.positions).toHaveLength(5);
     expect(result.vote?.positions.find((p) => p.name.startsWith("Schumer"))?.vote).toBe("yea");
     expect(result.vote?.positions.every((p) => p.entity_id !== null)).toBe(true);
+
+    const king = result.vote?.positions.find((p) => p.name.startsWith("King"));
+    expect(king?.vote).toBe("present");
+    expect(king?.party).toBeNull();
+
+    const doe = result.vote?.positions.find((p) => p.name.startsWith("Doe"));
+    expect(doe?.vote).toBe("not_voting");
+    expect(doe?.state).toBeUndefined();
   });
 
   it("serves from cache on second call within TTL", async () => {
