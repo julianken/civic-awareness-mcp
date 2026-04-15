@@ -3,8 +3,14 @@ import { rmSync, existsSync } from "node:fs";
 import { openStore, type Store } from "../../../../src/core/store.js";
 import { seedJurisdictions } from "../../../../src/core/seeds.js";
 import { upsertEntity } from "../../../../src/core/entities.js";
-import { upsertDocument } from "../../../../src/core/documents.js";
 import { upsertFetchLog } from "../../../../src/core/fetch_log.js";
+
+vi.mock("../../../../src/core/documents.js", async (orig) => {
+  const actual = await orig<typeof import("../../../../src/core/documents.js")>();
+  return { ...actual, queryDocuments: vi.fn(actual.queryDocuments) };
+});
+import { upsertDocument, queryDocuments } from "../../../../src/core/documents.js";
+const mockQueryDocuments = vi.mocked(queryDocuments);
 import { hashArgs } from "../../../../src/core/args_hash.js";
 import { _resetToolCacheForTesting } from "../../../../src/core/tool_cache.js";
 import { _resetLimitersForTesting } from "../../../../src/core/limiters.js";
@@ -36,6 +42,7 @@ function seedFetchLogFresh(args: Record<string, unknown>): void {
 beforeEach(() => {
   _resetToolCacheForTesting();
   _resetLimitersForTesting();
+  mockQueryDocuments.mockClear();
   process.env.OPENSTATES_API_KEY = "test-key";
   if (existsSync(TEST_DB)) rmSync(TEST_DB);
   store = openStore(TEST_DB);
@@ -561,9 +568,7 @@ describe("list_bills tool — high-cost confirmation gate", () => {
   });
 
   it("executes when limit > 500 with acknowledge_high_cost: true and projection ceiling scales accordingly", async () => {
-    // Spy on the adapter so no real HTTP fires; we don't care
-    // about hydration here, only that the projection isn't capped at 500.
-    const spy = vi
+    const adapterSpy = vi
       .spyOn(OpenStatesAdapter.prototype, "listBills")
       .mockImplementation(async () => ({ documentsUpserted: 0 }));
 
@@ -575,6 +580,16 @@ describe("list_bills tool — high-cost confirmation gate", () => {
 
     expect("requires_confirmation" in result).toBe(false);
     expect("results" in result).toBe(true);
-    spy.mockRestore();
+    // queryDocuments must be called with Math.max(500, 1000 * 3) = 3000,
+    // not the hardcoded 500 that existed before the fix.
+    expect(mockQueryDocuments).toHaveBeenCalledWith(
+      store.db,
+      expect.objectContaining({
+        kind: "bill",
+        jurisdiction: "us-ca",
+        limit: 3000,
+      }),
+    );
+    adapterSpy.mockRestore();
   });
 });
