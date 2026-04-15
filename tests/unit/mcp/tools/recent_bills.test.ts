@@ -11,7 +11,7 @@ import { _resetLimitersForTesting, _setLimiterForTesting } from "../../../../src
 import { RateLimiter } from "../../../../src/util/http.js";
 import { OpenStatesAdapter } from "../../../../src/adapters/openstates.js";
 import { CongressAdapter } from "../../../../src/adapters/congress.js";
-import { handleRecentBills, type RecentBillsResponse } from "../../../../src/mcp/tools/recent_bills.js";
+import { handleRecentBills } from "../../../../src/mcp/tools/recent_bills.js";
 import { RecentBillsInput } from "../../../../src/mcp/schemas.js";
 import { callBills } from "../../../helpers/bill-response-casts.js";
 

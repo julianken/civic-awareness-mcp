@@ -15,7 +15,7 @@ import { hashArgs } from "../../../../src/core/args_hash.js";
 import { _resetToolCacheForTesting } from "../../../../src/core/tool_cache.js";
 import { _resetLimitersForTesting } from "../../../../src/core/limiters.js";
 import { OpenStatesAdapter } from "../../../../src/adapters/openstates.js";
-import { handleListBills, type ListBillsResponse } from "../../../../src/mcp/tools/list_bills.js";
+import { handleListBills } from "../../../../src/mcp/tools/list_bills.js";
 import { callListBills } from "../../../helpers/bill-response-casts.js";
 
 const TEST_DB = "./data/test-tool-list-bills.db";
