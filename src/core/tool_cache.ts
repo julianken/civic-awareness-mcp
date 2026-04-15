@@ -30,13 +30,13 @@ export function _resetToolCacheForTesting(): void {
 }
 
 /**
- * R15 cache-gated upstream fetch. See
- * `docs/superpowers/specs/2026-04-14-shaped-query-hydration-design.md`.
- *
- * Flow: TTL fast-path → daily budget → rate-limit peek → atomic
- * write-through inside a transaction → budget record. Upstream failures with a prior `fetch_log` row fall back to
- * stale cached data plus a `stale_notice`; cold failures propagate the
- * error.
+ * R15 cache-gated upstream fetch. Cache key is
+ * `(source, endpoint_path, args_hash)`; freshness rows live in the
+ * `fetch_log` table. On a TTL miss the adapter's narrow shaped method
+ * is called and writes through to `documents`/`entities` inside one
+ * transaction so partial writes never land. Upstream failures with a
+ * prior `fetch_log` row fall back to stale cached data plus a
+ * `stale_notice`; cold failures propagate the error.
  *
  * @param fetchAndWrite Async thunk that (1) issues the narrow
  *   upstream request and (2) upserts results into `documents` /

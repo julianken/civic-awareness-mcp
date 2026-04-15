@@ -324,9 +324,11 @@ export class OpenFecAdapter implements Adapter {
    * Narrow per-tool fetch for R15 `recent_contributions` — one page of
    * Schedule A using OpenFEC's native `min_date`/`max_date` filters
    * (MM/DD/YYYY format) with optional repeated `committee_id` query
-   * params. Caveat: OpenFEC's date filters operate on REPORTING date
-   * (form filing), not contribution-receipt date — documented in D3d
-   * / docs/03-data-sources.md.
+   * params. Caveat: OpenFEC's date filters operate on the reporting
+   * (form-filing) date, not the contribution-receipt date — a
+   * contribution made in December can appear in a January report and
+   * vice versa, so window edges are approximate by up to one filing
+   * period (~quarterly).
    */
   async fetchRecentContributions(
     db: Database.Database,

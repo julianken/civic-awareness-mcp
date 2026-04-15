@@ -201,7 +201,9 @@ export async function handleRecentContributions(
         id: doc.id,
         amount,
         date: raw.date ?? doc.occurred_at.slice(0, 10),
-        // Address and employer deliberately omitted per docs/05-tool-surface.md.
+        // Address and employer deliberately omitted — contributor home
+        // addresses and employers are stored for deduplication but must
+        // not be surfaced through tool output to avoid exposing PII.
         contributor: {
           name: contributorName,
           entity_id: contributorEntityId,

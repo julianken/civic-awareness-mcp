@@ -130,8 +130,8 @@ function findByExternalIds(db: Database.Database, ids: Record<string, string>): 
   // Per-source prepared statements with literal JSON paths (see
   // stmtForSource above) so SQLite can use the matching expression index
   // (007 bioguide / 008 openstates_person / 009 fec_committee). A
-  // parameterized path silently regresses to a full table scan.
-  // Matches the canonical algorithm in docs/04-entity-schema.md step 1.
+  // parameterized path regresses to a full table scan because SQLite
+  // cannot evaluate a runtime-supplied path against a stored expression.
   for (const [source, id] of Object.entries(ids)) {
     if (!(source in EXTERNAL_ID_PATHS)) continue;
     const found = findEntityByExternalId(db, source as ExternalIdSource, id);

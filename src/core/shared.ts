@@ -22,11 +22,11 @@ export interface EmptyFeedContext {
   filtersApplied?: string[];
 }
 
-// Narrowed under R15 (docs/00-rationale.md:455). Retired members:
+// Narrowed under R15 shaped-query hydration. Retired members:
 // `rate_limited`, `partial_hydrate`, `daily_budget_exhausted` —
-// shaped-query hydration collapsed these into `upstream_failure`
-// (with cached fallback) or surfaces them as transport-layer errors
-// rather than partial responses.
+// per-tool narrow fetches either succeed fully or fall back to cached
+// data as `upstream_failure`; rate/budget errors are transport-layer
+// rejections rather than partial-result notices.
 export type StaleReason =
   | "upstream_failure"
   | "not_found"
