@@ -682,6 +682,82 @@ describe("OpenStatesAdapter.fetchRecentBills", () => {
       if (existsSync(SKIP_DB)) rmSync(SKIP_DB, { force: true });
     }
   });
+
+  it("paginates when limit > 20", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: any) => {
+      const u = new URL(String(url));
+      const page = parseInt(u.searchParams.get("page") ?? "1", 10);
+      const bills = Array.from({ length: 20 }, (_, i) => ({
+        ...SAMPLE_BILL,
+        id: `ocd-bill/p${page}-${i}`,
+        identifier: `HB${page}${String(i).padStart(2, "0")}`,
+      }));
+      return new Response(
+        JSON.stringify({
+          results: bills,
+          pagination: { max_page: 3, page },
+        }),
+        { status: 200 },
+      );
+    });
+    vi.spyOn(global, "fetch").mockImplementation(fetchMock);
+
+    const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+    const result = await adapter.fetchRecentBills(store.db, {
+      jurisdiction: "us-tx",
+      limit: 50,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(result.documentsUpserted).toBe(60);
+  });
+
+  it("stops at pagination.max_page even when limit not yet met", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: any) => {
+      const u = new URL(String(url));
+      const page = parseInt(u.searchParams.get("page") ?? "1", 10);
+      const bills = Array.from({ length: 20 }, (_, i) => ({
+        ...SAMPLE_BILL,
+        id: `ocd-bill/p${page}-${i}`,
+        identifier: `HB${page}${String(i).padStart(2, "0")}`,
+      }));
+      return new Response(
+        JSON.stringify({
+          results: bills,
+          pagination: { max_page: 2, page },
+        }),
+        { status: 200 },
+      );
+    });
+    vi.spyOn(global, "fetch").mockImplementation(fetchMock);
+
+    const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+    const result = await adapter.fetchRecentBills(store.db, {
+      jurisdiction: "us-tx",
+      limit: 100,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.documentsUpserted).toBe(40);
+  });
+
+  it("makes a single fetch when limit <= 20", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () =>
+      new Response(
+        JSON.stringify({
+          results: [SAMPLE_BILL],
+          pagination: { max_page: 1, page: 1 },
+        }),
+        { status: 200 },
+      ),
+    );
+    vi.spyOn(global, "fetch").mockImplementation(fetchMock);
+
+    const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+    await adapter.fetchRecentBills(store.db, { jurisdiction: "us-tx", limit: 5 });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("OpenStatesAdapter.searchPeople", () => {

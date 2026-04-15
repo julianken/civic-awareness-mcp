@@ -294,7 +294,10 @@ export class OpenStatesAdapter implements Adapter {
     for (const inc of ["sponsorships", "abstracts", "actions"]) {
       url.searchParams.append("include", inc);
     }
-    return this.fetchAndUpsertBillsFromUrl(db, url, { chamber: opts.chamber });
+    return this.fetchAndUpsertBillsFromUrl(db, url, {
+      chamber: opts.chamber,
+      target: opts.limit,
+    });
   }
 
   /** Narrow per-tool fetch for R15 `list_bills` — one page of bills
@@ -342,56 +345,72 @@ export class OpenStatesAdapter implements Adapter {
     // chamber is filtered client-side on from_organization.classification
     // to match fetchRecentBills semantics — OpenStates v3 `/bills` does not
     // filter by origin chamber server-side.
-    return this.fetchAndUpsertBillsFromUrl(db, url, { chamber: opts.chamber });
+    return this.fetchAndUpsertBillsFromUrl(db, url, {
+      chamber: opts.chamber,
+      target: opts.limit,
+    });
   }
 
   /** Shared fetch + write-through loop for the three /bills-shaped
-   *  adapter methods. Callers build their URL with endpoint-specific
-   *  query params; this helper handles rateLimitedFetch, the 200
-   *  check, result iteration, and upsertBill telemetry. The optional
-   *  `chamber` opt is an in-process filter on
-   *  `from_organization.classification` — OpenStates v3 `/bills` does
-   *  not filter by origin chamber server-side, so both `fetchRecentBills`
-   *  and `listBills` apply this filter client-side. */
+   *  adapter methods. When `target` is set and > 20, loops pages of
+   *  per_page=20 until accumulated upserts >= target or the
+   *  upstream's pagination.max_page terminates. Does NOT truncate to
+   *  exactly `target` — extras land in the local DB cache for future
+   *  hits; the handler's local projection enforces the final cap. */
   private async fetchAndUpsertBillsFromUrl(
     db: Database.Database,
     url: URL,
-    opts?: { chamber?: "upper" | "lower" },
+    opts?: { chamber?: "upper" | "lower"; target?: number },
   ): Promise<{ documentsUpserted: number }> {
-    const res = await rateLimitedFetch(url.toString(), {
-      userAgent: "civic-awareness-mcp/0.1.0 (+github)",
-      rateLimiter: this.rateLimiter,
-      headers: { "X-API-KEY": this.opts.apiKey },
-    });
-    if (!res.ok) throw new Error(`OpenStates ${url.pathname} returned ${res.status}`);
-    const body = (await res.json()) as { results?: OpenStatesBill[] };
-
+    const target = opts?.target;
+    if (target !== undefined && target > 20) {
+      url.searchParams.set("per_page", "20");
+    }
     let documentsUpserted = 0;
-    for (const b of body.results ?? []) {
-      if (opts?.chamber) {
-        const classification = b.from_organization?.classification;
-        if (classification && classification !== opts.chamber) {
-          logger.debug("openstates chamber filter: skipping bill", {
+    let page = 1;
+    while (true) {
+      url.searchParams.set("page", String(page));
+      const res = await rateLimitedFetch(url.toString(), {
+        userAgent: "civic-awareness-mcp/0.1.0 (+github)",
+        rateLimiter: this.rateLimiter,
+        headers: { "X-API-KEY": this.opts.apiKey },
+      });
+      if (!res.ok) throw new Error(`OpenStates ${url.pathname} returned ${res.status}`);
+      const body = (await res.json()) as {
+        results?: OpenStatesBill[];
+        pagination?: { max_page?: number; page?: number };
+      };
+      for (const b of body.results ?? []) {
+        if (opts?.chamber) {
+          const classification = b.from_organization?.classification;
+          if (classification && classification !== opts.chamber) {
+            logger.debug("openstates chamber filter: skipping bill", {
+              billId: b.id,
+              identifier: b.identifier,
+              from_organization: classification,
+              requested: opts.chamber,
+            });
+            continue;
+          }
+        }
+        try {
+          this.upsertBill(db, b);
+        } catch (err) {
+          logger.warn("openstates upsertBill threw — skipping record", {
+            endpoint: "fetchAndUpsertBillsFromUrl",
             billId: b.id,
             identifier: b.identifier,
-            from_organization: classification,
-            requested: opts.chamber,
+            error: err instanceof Error ? err.message : String(err),
           });
           continue;
         }
+        documentsUpserted += 1;
       }
-      try {
-        this.upsertBill(db, b);
-      } catch (err) {
-        logger.warn("openstates upsertBill threw — skipping record", {
-          endpoint: "fetchAndUpsertBillsFromUrl",
-          billId: b.id,
-          identifier: b.identifier,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        continue;
-      }
-      documentsUpserted += 1;
+      if (target === undefined || target <= 20) break;
+      if (documentsUpserted >= target) break;
+      const maxPage = body.pagination?.max_page ?? page;
+      if (page >= maxPage) break;
+      page += 1;
     }
     return { documentsUpserted };
   }
