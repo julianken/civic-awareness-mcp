@@ -355,6 +355,15 @@ jurisdiction's recent feed."
 - Auto-widen `days` when results are empty → silent semantic drift; the cache key would no longer reflect what the caller asked for.
 - Add a separate tool for listing → see D13; a distinct tool is only warranted when predicate richness grows past a single optional parameter.
 
+**Amended 2026-04-14 (R18):** The `max(20)` / `max(50)` caps on
+bill-listing tool `limit` parameters are removed. Tools now honor
+any `limit` value, returning a `requires_confirmation` envelope
+(no upstream fetch) for `limit > 500` until the caller passes
+`acknowledge_high_cost: true`. Pagination is added to the
+OpenStates and Congress.gov bill-listing adapter methods. See R18
+in `docs/00-rationale.md` and
+`docs/plans/phase-9e-bill-pagination.md`.
+
 ## D13 — `list_bills` is a distinct tool from `search_civic_documents` (2026-04-14, LOCKED)
 
 **Decision:** `list_bills` ships as MCP tool #10 rather than

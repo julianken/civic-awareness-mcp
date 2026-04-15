@@ -28,6 +28,12 @@ this file. Format loosely follows [Keep a Changelog](https://keepachangelog.com/
   longer require `entity_connections` chaining. (phase-9d)
 
 ### Changed
+- `recent_bills` and `list_bills`: removed the 20/50 caps on
+  `limit`. Both tools now honor any caller-provided `limit`. When
+  `limit > 500`, the tool returns a `requires_confirmation`
+  envelope (no upstream fetch) until the caller passes
+  `acknowledge_high_cost: true`. OpenStates and Congress.gov
+  adapters paginate underneath. See R18, D12 amendment. (phase-9e)
 - `recent_contributions` cache key expanded to include
   `contributor_entity_id` and `side`. When `candidate_or_committee`
   is set and `side` is omitted, `side` defaults to `"recipient"` —

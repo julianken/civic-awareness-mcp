@@ -539,3 +539,34 @@ still well inside the ceiling.
 Cross-references: R14 (per-document freshness for detail tools),
 D11 (detail-tool hydration scope locked),
 `docs/plans/phase-9c-get-vote.md` (implementation plan).
+
+## R18 — Honor caller-requested `limit`, gate at >500 for confirmation (2026-04-14)
+
+D12 (2026-04-14) introduced `limit` on feed tools with a
+`max(20)` cap matching OpenStates `/bills` `per_page`. A real
+test session showed the cap is the wrong shape: a caller asking
+for 30 bills hit the friction immediately, and biennial-state
+queries routinely want 50–200 in one shot.
+
+The user's stance: tools should not impose caps as a design
+choice — they should honor the caller's request and only push
+back when honoring it would impose a real, quantifiable cost.
+
+The real cost is the OpenStates 500/day rate budget, not the
+upstream API's per-call ceiling. OpenStates won't reject
+`per_page=20, page=5000` — it will return empty pages forever
+and charge a request for each. One confused `limit=100000`
+call drains the daily budget for every other tool sharing the
+process.
+
+R18 keeps the principle (honor the caller) but adds a
+confirmation gate above an intuitive threshold (500). The gate
+is a soft barrier — the caller passes `acknowledge_high_cost`
+to proceed — not a hard cap. Pagination is added to the
+adapters so any acknowledged request executes correctly.
+
+Threshold is literal `limit > 500`, not per-source budget
+percentage. Federal queries below 500 are trivial cost-wise;
+the symmetric threshold is simpler to explain and document.
+
+Locked in phase-9e (`docs/plans/phase-9e-bill-pagination.md`).
