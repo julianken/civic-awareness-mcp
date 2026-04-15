@@ -289,4 +289,179 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
     });
     expect(res.results).toHaveLength(3);
   });
+
+  it("filters by session alone", async () => {
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "HB1 — regular",
+      occurred_at: "2026-04-10T00:00:00Z",
+      source: { name: "openstates", id: "ses1", url: "https://ex/ses1" },
+      raw: { session: "2026R", actions: [] },
+    });
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "HB2 — special",
+      occurred_at: "2026-04-10T00:00:00Z",
+      source: { name: "openstates", id: "ses2", url: "https://ex/ses2" },
+      raw: { session: "2026S1", actions: [] },
+    });
+
+    seedFetchLogFresh(defaultArgs({ session: "2026R" }));
+    const res = await handleListBills(store.db, {
+      jurisdiction: "us-tx",
+      session: "2026R",
+    });
+    expect(res.results).toHaveLength(1);
+    expect(res.results[0].identifier).toBe("HB1");
+  });
+
+  it("filters by updated_since/until using document.occurred_at", async () => {
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "HB1 — old update",
+      occurred_at: "2026-01-10T00:00:00Z",
+      source: { name: "openstates", id: "u1", url: "https://ex/u1" },
+      raw: { actions: [] },
+    });
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "HB2 — mid update",
+      occurred_at: "2026-03-10T00:00:00Z",
+      source: { name: "openstates", id: "u2", url: "https://ex/u2" },
+      raw: { actions: [] },
+    });
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "HB3 — new update",
+      occurred_at: "2026-05-10T00:00:00Z",
+      source: { name: "openstates", id: "u3", url: "https://ex/u3" },
+      raw: { actions: [] },
+    });
+
+    seedFetchLogFresh(
+      defaultArgs({ updated_since: "2026-02-01", updated_until: "2026-04-01" }),
+    );
+    const res = await handleListBills(store.db, {
+      jurisdiction: "us-tx",
+      updated_since: "2026-02-01",
+      updated_until: "2026-04-01",
+    });
+    expect(res.results).toHaveLength(1);
+    expect(res.results[0].identifier).toBe("HB2");
+  });
+
+  it("sponsor_entity_id matches role === 'cosponsor' too", async () => {
+    const { entity: member } = upsertEntity(store.db, {
+      kind: "person", name: "Cosponsor Carla",
+      external_ids: { openstates_person: "ocd-person/co1" },
+      metadata: {},
+    });
+    const { entity: other } = upsertEntity(store.db, {
+      kind: "person", name: "Primary Pete",
+      external_ids: { openstates_person: "ocd-person/pri" },
+      metadata: {},
+    });
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "HB1 — as cosponsor",
+      occurred_at: "2026-04-10T00:00:00Z",
+      source: { name: "openstates", id: "cop1", url: "https://ex/cop1" },
+      references: [
+        { entity_id: other.id, role: "sponsor" },
+        { entity_id: member.id, role: "cosponsor" },
+      ],
+      raw: { actions: [] },
+    });
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "HB2 — unrelated",
+      occurred_at: "2026-04-10T00:00:00Z",
+      source: { name: "openstates", id: "cop2", url: "https://ex/cop2" },
+      references: [{ entity_id: other.id, role: "sponsor" }],
+      raw: { actions: [] },
+    });
+
+    seedFetchLogFresh(defaultArgs({ sponsor_entity_id: member.id }));
+    const res = await handleListBills(store.db, {
+      jurisdiction: "us-tx",
+      sponsor_entity_id: member.id,
+    });
+    expect(res.results).toHaveLength(1);
+    expect(res.results[0].identifier).toBe("HB1");
+  });
+
+  it("combines subject + introduced_since on the same document", async () => {
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "HB1 — vehicles, old",
+      occurred_at: "2026-04-10T00:00:00Z",
+      source: { name: "openstates", id: "cmb1", url: "https://ex/cmb1" },
+      raw: {
+        subjects: ["Vehicles"],
+        actions: [{ date: "2026-01-10", description: "Introduced" }],
+      },
+    });
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "HB2 — vehicles, new",
+      occurred_at: "2026-04-10T00:00:00Z",
+      source: { name: "openstates", id: "cmb2", url: "https://ex/cmb2" },
+      raw: {
+        subjects: ["Vehicles"],
+        actions: [{ date: "2026-03-10", description: "Introduced" }],
+      },
+    });
+    upsertDocument(store.db, {
+      kind: "bill", jurisdiction: "us-tx", title: "HB3 — education, new",
+      occurred_at: "2026-04-10T00:00:00Z",
+      source: { name: "openstates", id: "cmb3", url: "https://ex/cmb3" },
+      raw: {
+        subjects: ["Education"],
+        actions: [{ date: "2026-03-10", description: "Introduced" }],
+      },
+    });
+
+    seedFetchLogFresh(
+      defaultArgs({ subject: "Vehicles", introduced_since: "2026-02-01" }),
+    );
+    const res = await handleListBills(store.db, {
+      jurisdiction: "us-tx",
+      subject: "Vehicles",
+      introduced_since: "2026-02-01",
+    });
+    expect(res.results).toHaveLength(1);
+    expect(res.results[0].identifier).toBe("HB2");
+  });
+});
+
+describe("list_bills tool — sponsor_entity_id short-circuit", () => {
+  it("returns empty immediately when entity has no openstates_person id (no adapter call)", async () => {
+    const { entity: unlinked } = upsertEntity(store.db, {
+      kind: "person", name: "Unlinked Ursula",
+      external_ids: {},
+      metadata: {},
+    });
+    const spy = vi
+      .spyOn(OpenStatesAdapter.prototype, "listBills")
+      .mockImplementation(async () => ({ documentsUpserted: 0 }));
+
+    const res = await handleListBills(store.db, {
+      jurisdiction: "us-tx",
+      sponsor_entity_id: unlinked.id,
+    });
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(res.results).toEqual([]);
+    expect(res.total).toBe(0);
+    expect(res.stale_notice).toBeUndefined();
+    expect(res.sources[0].name).toBe("openstates");
+    spy.mockRestore();
+  });
+
+  it("returns empty immediately when sponsor_entity_id is a nonexistent UUID (no adapter call)", async () => {
+    const spy = vi
+      .spyOn(OpenStatesAdapter.prototype, "listBills")
+      .mockImplementation(async () => ({ documentsUpserted: 0 }));
+
+    const res = await handleListBills(store.db, {
+      jurisdiction: "us-tx",
+      sponsor_entity_id: "00000000-0000-0000-0000-000000000000",
+    });
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(res.results).toEqual([]);
+    expect(res.stale_notice).toBeUndefined();
+    spy.mockRestore();
+  });
 });

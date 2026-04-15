@@ -24,13 +24,6 @@ function introducedDate(raw: Record<string, unknown>): string | undefined {
   return actions?.[0]?.date;
 }
 
-function updatedDate(raw: Record<string, unknown>, occurred_at: string): string {
-  // OpenStates bills are written with occurred_at = last action date
-  // (see upsertBill). For update-date comparisons we use occurred_at
-  // directly — it is kept in sync with the most recent action.
-  return occurred_at;
-}
-
 function matchesClassification(
   raw: Record<string, unknown>,
   filter: string,
@@ -87,11 +80,25 @@ export async function handleListBills(
   }
 
   // Map sponsor_entity_id (our UUID) → OCD person id for upstream.
+  // If the entity has no openstates_person external id (or does not exist),
+  // no upstream query can satisfy the sponsor predicate — short-circuit to
+  // an empty response rather than fanning out a broad, unfiltered fetch
+  // that the local projection would then reject anyway.
   let sponsorOcd: string | undefined;
   if (input.sponsor_entity_id) {
     const ent = findEntityById(db, input.sponsor_entity_id);
     const xids = (ent?.external_ids ?? {}) as Record<string, string>;
     sponsorOcd = xids.openstates_person;
+    if (!sponsorOcd) {
+      const stateAbbr = input.jurisdiction.replace(/^us-/, "");
+      return {
+        results: [],
+        total: 0,
+        sources: [
+          { name: "openstates", url: `https://openstates.org/${stateAbbr}/` },
+        ],
+      };
+    }
   }
 
   const projectLocal = (): ListBillsResponse => {
@@ -133,7 +140,7 @@ export async function handleListBills(
         if (input.introduced_until && intro > input.introduced_until) return false;
       }
       if (input.updated_since || input.updated_until) {
-        const upd = updatedDate(d.raw, d.occurred_at);
+        const upd = d.occurred_at;
         if (input.updated_since && upd < input.updated_since) return false;
         if (input.updated_until && upd > input.updated_until) return false;
       }
@@ -143,7 +150,7 @@ export async function handleListBills(
     const sortable = filtered.map((d) => ({
       doc: d,
       intro: introducedDate(d.raw),
-      upd: updatedDate(d.raw, d.occurred_at),
+      upd: d.occurred_at,
     }));
     sortable.sort((a, b) => compareSort(a, b, input.sort));
     const limited = sortable.slice(0, input.limit);
