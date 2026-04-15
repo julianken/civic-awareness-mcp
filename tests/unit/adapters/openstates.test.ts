@@ -547,6 +547,66 @@ describe("OpenStatesAdapter.fetchRecentBills", () => {
       if (existsSync(LIMIT_DB)) rmSync(LIMIT_DB, { force: true });
     }
   });
+
+  // Regression pin for the client-side chamber filter on
+  // `from_organization.classification`. OpenStates v3 `/bills` does not
+  // filter on origin chamber server-side, so the adapter drops rows
+  // whose classification mismatches opts.chamber.
+  it("client-side filters out bills whose from_organization.classification does not match opts.chamber", async () => {
+    vi.spyOn(global, "fetch").mockImplementation(async () =>
+      new Response(JSON.stringify({
+        results: [
+          {
+            id: "ocd-bill/upper-1",
+            identifier: "SB1",
+            title: "Senate Bill",
+            session: "89R",
+            updated_at: "2026-04-10T00:00:00Z",
+            openstates_url: "https://openstates.org/tx/bills/89R/SB1",
+            jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
+            from_organization: { classification: "upper" },
+            sponsorships: [],
+            actions: [{ date: "2026-04-10", description: "Introduced" }],
+          },
+          {
+            id: "ocd-bill/lower-1",
+            identifier: "HB1",
+            title: "House Bill",
+            session: "89R",
+            updated_at: "2026-04-10T00:00:00Z",
+            openstates_url: "https://openstates.org/tx/bills/89R/HB1",
+            jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
+            from_organization: { classification: "lower" },
+            sponsorships: [],
+            actions: [{ date: "2026-04-10", description: "Introduced" }],
+          },
+        ],
+        pagination: { max_page: 1, page: 1 },
+      }), { status: 200 }),
+    );
+
+    const CHAMBER_DB = "./data/test-openstates-frb-chamber.db";
+    if (existsSync(CHAMBER_DB)) rmSync(CHAMBER_DB, { force: true });
+    const db = openStore(CHAMBER_DB);
+    seedJurisdictions(db.db);
+    try {
+      const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+      const result = await adapter.fetchRecentBills(db.db, {
+        jurisdiction: "us-tx",
+        chamber: "upper",
+      });
+
+      expect(result.documentsUpserted).toBe(1);
+      const rows = db.db.prepare(
+        "SELECT title FROM documents WHERE source_name='openstates' AND kind='bill'",
+      ).all() as Array<{ title: string }>;
+      expect(rows).toHaveLength(1);
+      expect(rows[0].title).toMatch(/^SB1 — /);
+    } finally {
+      db.close();
+      if (existsSync(CHAMBER_DB)) rmSync(CHAMBER_DB, { force: true });
+    }
+  });
 });
 
 describe("OpenStatesAdapter.searchPeople", () => {

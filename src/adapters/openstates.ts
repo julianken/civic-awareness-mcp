@@ -267,21 +267,7 @@ export class OpenStatesAdapter implements Adapter {
     for (const inc of ["sponsorships", "abstracts", "actions"]) {
       url.searchParams.append("include", inc);
     }
-    const res = await rateLimitedFetch(url.toString(), {
-      userAgent: "civic-awareness-mcp/0.1.0 (+github)",
-      rateLimiter: this.rateLimiter,
-      headers: { "X-API-KEY": this.opts.apiKey },
-    });
-    if (!res.ok) {
-      throw new Error(`OpenStates /bills?sponsor=${opts.sponsor} returned ${res.status}`);
-    }
-    const body = (await res.json()) as { results?: OpenStatesBill[] };
-    let documentsUpserted = 0;
-    for (const b of body.results ?? []) {
-      this.upsertBill(db, b);
-      documentsUpserted += 1;
-    }
-    return { documentsUpserted };
+    return this.fetchAndUpsertBillsFromUrl(db, url);
   }
 
   /** Narrow per-tool fetch for R15 `recent_bills` — one page of
@@ -308,25 +294,7 @@ export class OpenStatesAdapter implements Adapter {
     for (const inc of ["sponsorships", "abstracts", "actions"]) {
       url.searchParams.append("include", inc);
     }
-
-    const res = await rateLimitedFetch(url.toString(), {
-      userAgent: "civic-awareness-mcp/0.1.0 (+github)",
-      rateLimiter: this.rateLimiter,
-      headers: { "X-API-KEY": this.opts.apiKey },
-    });
-    if (!res.ok) throw new Error(`OpenStates /bills returned ${res.status}`);
-    const body = (await res.json()) as { results: OpenStatesBill[] };
-
-    let documentsUpserted = 0;
-    for (const b of body.results) {
-      if (opts.chamber) {
-        const classification = b.from_organization?.classification;
-        if (classification && classification !== opts.chamber) continue;
-      }
-      this.upsertBill(db, b);
-      documentsUpserted += 1;
-    }
-    return { documentsUpserted };
+    return this.fetchAndUpsertBillsFromUrl(db, url, { chamber: opts.chamber });
   }
 
   /** Narrow per-tool fetch for R15 `list_bills` — one page of bills
@@ -368,17 +336,37 @@ export class OpenStatesAdapter implements Adapter {
     for (const inc of ["sponsorships", "abstracts", "actions"]) {
       url.searchParams.append("include", inc);
     }
+    return this.fetchAndUpsertBillsFromUrl(db, url);
+  }
 
+  /** Shared fetch + write-through loop for the three /bills-shaped
+   *  adapter methods. Callers build their URL with endpoint-specific
+   *  query params; this helper handles rateLimitedFetch, the 200
+   *  check, result iteration, and upsertBill telemetry. The optional
+   *  `chamber` opt is an in-process filter on
+   *  `from_organization.classification` — used by `fetchRecentBills`
+   *  because OpenStates v3 `/bills` does not filter by origin chamber
+   *  server-side on that endpoint. `listBills` sets `chamber=` as a
+   *  server-side query param and does not need the filter. */
+  private async fetchAndUpsertBillsFromUrl(
+    db: Database.Database,
+    url: URL,
+    opts?: { chamber?: "upper" | "lower" },
+  ): Promise<{ documentsUpserted: number }> {
     const res = await rateLimitedFetch(url.toString(), {
       userAgent: "civic-awareness-mcp/0.1.0 (+github)",
       rateLimiter: this.rateLimiter,
       headers: { "X-API-KEY": this.opts.apiKey },
     });
-    if (!res.ok) throw new Error(`OpenStates /bills returned ${res.status}`);
+    if (!res.ok) throw new Error(`OpenStates ${url.pathname} returned ${res.status}`);
     const body = (await res.json()) as { results?: OpenStatesBill[] };
 
     let documentsUpserted = 0;
     for (const b of body.results ?? []) {
+      if (opts?.chamber) {
+        const classification = b.from_organization?.classification;
+        if (classification && classification !== opts.chamber) continue;
+      }
       this.upsertBill(db, b);
       documentsUpserted += 1;
     }
