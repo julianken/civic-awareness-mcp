@@ -364,7 +364,7 @@ output:
       name: string
       party: string | null              // e.g. "Democratic", "Republican"
       state?: string                    // federal only; absent for state votes
-      vote: "yea" | "nay" | "present" | "absent" | "not_voting"
+      vote: "yea" | "nay" | "present" | "not_voting"
     }>
     source_url: string
     fetched_at: string

@@ -15,7 +15,7 @@ export interface VotePosition {
   name: string;
   party: string | null;
   state?: string;
-  vote: "yea" | "nay" | "present" | "absent" | "not_voting";
+  vote: "yea" | "nay" | "present" | "not_voting";
 }
 
 export interface VoteDetail {
@@ -73,7 +73,6 @@ function normaliseChamber(raw: string | undefined): "upper" | "lower" {
 
 function normalisePosition(p: string): VotePosition["vote"] {
   if (p === "yea" || p === "nay" || p === "present") return p;
-  if (p === "absent") return "absent";
   return "not_voting";
 }
 
