@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import { rateLimitedFetch, RateLimiter } from "../util/http.js";
-import { upsertEntity } from "../core/entities.js";
+import { upsertEntity, EXTERNAL_ID_PATHS } from "../core/entities.js";
 import { upsertDocument } from "../core/documents.js";
 import { logger } from "../util/logger.js";
 import type { Adapter, AdapterOptions, RefreshResult } from "./base.js";
@@ -634,7 +634,7 @@ export class CongressAdapter implements Adapter {
     const humanUrl = billUrl(b.congress, b.type, b.number);
 
     const entityByBioguide = db.prepare(
-      "SELECT id FROM entities WHERE json_extract(external_ids, '$.\"bioguide\"') = ? LIMIT 1",
+      `SELECT id FROM entities WHERE json_extract(external_ids, '${EXTERNAL_ID_PATHS.bioguide}') = ? LIMIT 1`,
     );
 
     // Resolve sponsors to entity IDs.

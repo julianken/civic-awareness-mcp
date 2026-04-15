@@ -3,6 +3,7 @@ import { ensureVoteFresh, type EnsureVoteInput } from "../../core/hydrate_vote.j
 import { GetVoteInput } from "../schemas.js";
 import type { StaleNotice } from "../shared.js";
 import { logger } from "../../util/logger.js";
+import { EXTERNAL_ID_PATHS } from "../../core/entities.js";
 
 /**
  * Tally counts mirror Congress.gov's totals block. `not_voting` is the
@@ -156,7 +157,7 @@ export async function handleGetVote(
 
   const entityByBioguide = db.prepare(
     `SELECT id FROM entities
-      WHERE json_extract(external_ids, '$."bioguide"') = ?`,
+      WHERE json_extract(external_ids, '${EXTERNAL_ID_PATHS.bioguide}') = ?`,
   );
   const positions: VotePosition[] = (raw.positions ?? []).map((p) => {
     const ent = entityByBioguide.get(p.bioguideId) as { id: string } | undefined;

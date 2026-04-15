@@ -3,6 +3,51 @@ import { randomUUID } from "node:crypto";
 import { Entity, type EntityKind } from "./types.js";
 import { fuzzyPick, normalizeName, type FuzzyCandidate, type UpstreamSignals } from "../resolution/fuzzy.js";
 
+// Canonical JSON-path literals for entities.external_ids lookups.
+// MUST match the path expressions used in migrations 007/008/009 byte-for-byte;
+// SQLite's planner only uses an expression index when the call-site
+// expression text matches the indexed expression exactly. Bind values, never
+// the path itself — a parameterized path defeats the index.
+export const EXTERNAL_ID_PATHS = {
+  bioguide: '$."bioguide"',
+  openstates_person: '$."openstates_person"',
+  fec_committee: '$."fec_committee"',
+  fec_candidate: '$."fec_candidate"',
+} as const;
+export type ExternalIdSource = keyof typeof EXTERNAL_ID_PATHS;
+
+// Per-source prepared-statement cache. Each statement uses a literal
+// path string so the planner can pick the matching expression index.
+const findByExternalIdStmts = new WeakMap<
+  Database.Database,
+  Partial<Record<ExternalIdSource, Database.Statement>>
+>();
+
+function stmtForSource(db: Database.Database, source: ExternalIdSource): Database.Statement {
+  let cache = findByExternalIdStmts.get(db);
+  if (!cache) {
+    cache = {};
+    findByExternalIdStmts.set(db, cache);
+  }
+  let stmt = cache[source];
+  if (!stmt) {
+    stmt = db.prepare(
+      `SELECT * FROM entities WHERE json_extract(external_ids, '${EXTERNAL_ID_PATHS[source]}') = ? LIMIT 1`,
+    );
+    cache[source] = stmt;
+  }
+  return stmt;
+}
+
+export function findEntityByExternalId(
+  db: Database.Database,
+  source: ExternalIdSource,
+  value: string,
+): Entity | null {
+  const row = stmtForSource(db, source).get(value) as Row | undefined;
+  return row ? rowToEntity(row) : null;
+}
+
 export interface UpsertInput {
   kind: EntityKind;
   name: string;
@@ -82,16 +127,15 @@ export function upsertEntity(db: Database.Database, input: UpsertInput): UpsertR
 }
 
 function findByExternalIds(db: Database.Database, ids: Record<string, string>): Entity | null {
-  // Uses json_extract rather than LIKE so that an underscore or percent
-  // in a source key (e.g. "openstates_person") is treated as a literal,
-  // not a SQL LIKE wildcard. Matches the canonical algorithm in
-  // docs/04-entity-schema.md step 1.
-  const stmt = db.prepare(
-    "SELECT * FROM entities WHERE json_extract(external_ids, ?) = ? LIMIT 1",
-  );
+  // Per-source prepared statements with literal JSON paths (see
+  // stmtForSource above) so SQLite can use the matching expression index
+  // (007 bioguide / 008 openstates_person / 009 fec_committee). A
+  // parameterized path silently regresses to a full table scan.
+  // Matches the canonical algorithm in docs/04-entity-schema.md step 1.
   for (const [source, id] of Object.entries(ids)) {
-    const row = stmt.get(`$."${source}"`, id) as Row | undefined;
-    if (row) return rowToEntity(row);
+    if (!(source in EXTERNAL_ID_PATHS)) continue;
+    const found = findEntityByExternalId(db, source as ExternalIdSource, id);
+    if (found) return found;
   }
   return null;
 }

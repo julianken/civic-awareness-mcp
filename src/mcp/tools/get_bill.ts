@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { findEntityById } from "../../core/entities.js";
+import { findEntityById, EXTERNAL_ID_PATHS } from "../../core/entities.js";
 import { ensureBillFresh } from "../../core/hydrate_bill.js";
 import { GetBillInput } from "../schemas.js";
 import type { StaleNotice } from "../shared.js";
@@ -126,7 +126,7 @@ export async function handleGetBill(
       const ent = db
         .prepare(
           `SELECT id FROM entities
-            WHERE json_extract(external_ids, '$.openstates_person') = ?`,
+            WHERE json_extract(external_ids, '${EXTERNAL_ID_PATHS.openstates_person}') = ?`,
         )
         .get(extId) as { id: string } | undefined;
       entity_id = ent?.id ?? null;

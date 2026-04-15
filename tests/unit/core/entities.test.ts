@@ -2,7 +2,13 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { rmSync, existsSync } from "node:fs";
 import { openStore, type Store } from "../../../src/core/store.js";
 import { seedJurisdictions } from "../../../src/core/seeds.js";
-import { upsertEntity, findEntityById, listEntities } from "../../../src/core/entities.js";
+import {
+  upsertEntity,
+  findEntityById,
+  listEntities,
+  findEntityByExternalId,
+  EXTERNAL_ID_PATHS,
+} from "../../../src/core/entities.js";
 
 const TEST_DB = "./data/test-entities.db";
 let store: Store;
@@ -133,6 +139,68 @@ describe("upsertEntity — roles merge", () => {
       metadata: { roles: [role] },
     });
     expect(r.entity.metadata.roles).toHaveLength(1);
+  });
+});
+
+describe("EXTERNAL_ID_PATHS + findEntityByExternalId", () => {
+  it("path literals match the migration 007/008/009 expressions byte-for-byte", () => {
+    expect(EXTERNAL_ID_PATHS.bioguide).toBe('$."bioguide"');
+    expect(EXTERNAL_ID_PATHS.openstates_person).toBe('$."openstates_person"');
+    expect(EXTERNAL_ID_PATHS.fec_committee).toBe('$."fec_committee"');
+    expect(EXTERNAL_ID_PATHS.fec_candidate).toBe('$."fec_candidate"');
+  });
+
+  it("findEntityByExternalId resolves by each known source", () => {
+    upsertEntity(store.db, {
+      kind: "person", name: "Bio Person",
+      external_ids: { bioguide: "B000001" },
+    });
+    upsertEntity(store.db, {
+      kind: "person", name: "OS Person",
+      external_ids: { openstates_person: "ocd-person/x" },
+    });
+    upsertEntity(store.db, {
+      kind: "pac", name: "FEC Committee", jurisdiction: "us-federal",
+      external_ids: { fec_committee: "C00444444" },
+    });
+
+    expect(findEntityByExternalId(store.db, "bioguide", "B000001")?.name).toBe("Bio Person");
+    expect(findEntityByExternalId(store.db, "openstates_person", "ocd-person/x")?.name).toBe("OS Person");
+    expect(findEntityByExternalId(store.db, "fec_committee", "C00444444")?.name).toBe("FEC Committee");
+    expect(findEntityByExternalId(store.db, "bioguide", "missing")).toBeNull();
+  });
+
+  it("each per-source query plan uses its expression index", () => {
+    for (let i = 0; i < 5; i++) {
+      upsertEntity(store.db, {
+        kind: "person", name: `Bio ${i}`,
+        external_ids: { bioguide: `B00000${i}` },
+      });
+      upsertEntity(store.db, {
+        kind: "person", name: `OS ${i}`,
+        external_ids: { openstates_person: `ocd-person/os-${i}` },
+      });
+      upsertEntity(store.db, {
+        kind: "pac", name: `Cmt ${i}`, jurisdiction: "us-federal",
+        external_ids: { fec_committee: `C0000000${i}` },
+      });
+    }
+
+    const cases: Array<{ source: keyof typeof EXTERNAL_ID_PATHS; index: string }> = [
+      { source: "bioguide", index: "idx_entities_bioguide" },
+      { source: "openstates_person", index: "idx_entities_openstates_person" },
+      { source: "fec_committee", index: "idx_entities_fec_committee" },
+    ];
+    for (const c of cases) {
+      const plan = store.db
+        .prepare(
+          `EXPLAIN QUERY PLAN
+           SELECT * FROM entities WHERE json_extract(external_ids, '${EXTERNAL_ID_PATHS[c.source]}') = ? LIMIT 1`,
+        )
+        .all("anything") as Array<{ detail: string }>;
+      const detail = plan.map((r) => r.detail).join(" | ");
+      expect(detail, `${c.source} plan should use ${c.index}`).toContain(`USING INDEX ${c.index}`);
+    }
   });
 });
 

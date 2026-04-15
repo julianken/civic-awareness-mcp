@@ -36,7 +36,7 @@ describe("openStore", () => {
     const count = s.db
       .prepare("SELECT COUNT(*) as c FROM schema_migrations")
       .get() as { c: number };
-    expect(count.c).toBe(7);
+    expect(count.c).toBe(9);
     s.close();
   });
 
@@ -161,5 +161,72 @@ describe("migration 007: bioguide expression index", () => {
 
     const detail = plan.map((r) => r.detail).join(" | ");
     expect(detail).not.toContain("USING INDEX idx_entities_bioguide");
+  });
+});
+
+// Phase 9.1 D1/D2: same drift-guard pattern as 007 above for the
+// openstates_person and fec_committee expression indexes. The path
+// literals here MUST stay in sync with EXTERNAL_ID_PATHS in entities.ts
+// and the migration files.
+describe("migration 008/009: openstates_person + fec_committee expression indexes", () => {
+  function seedEntity(
+    s: ReturnType<typeof openStore>,
+    id: string,
+    source: string,
+    extId: string,
+  ): void {
+    s.db
+      .prepare(
+        `INSERT INTO entities (id, kind, name, name_normalized, external_ids, first_seen_at, last_seen_at)
+         VALUES (?, 'person', ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        id,
+        `Entity ${extId}`,
+        `entity ${extId}`,
+        JSON.stringify({ [source]: extId }),
+        "2026-04-14T00:00:00.000Z",
+        "2026-04-14T00:00:00.000Z",
+      );
+  }
+
+  it("query plan with quoted '$.\"openstates_person\"' path uses idx_entities_openstates_person", () => {
+    const s = openStore(TEST_DB);
+    seedJurisdictions(s.db);
+    seedEntity(s, "o1", "openstates_person", "ocd-person/aaa");
+    seedEntity(s, "o2", "openstates_person", "ocd-person/bbb");
+    seedEntity(s, "o3", "openstates_person", "ocd-person/ccc");
+
+    const plan = s.db
+      .prepare(
+        `EXPLAIN QUERY PLAN
+         SELECT id FROM entities
+         WHERE json_extract(external_ids, '$."openstates_person"') = ?`,
+      )
+      .all("ocd-person/aaa") as Array<{ detail: string }>;
+    s.close();
+
+    const detail = plan.map((r) => r.detail).join(" | ");
+    expect(detail).toContain("USING INDEX idx_entities_openstates_person");
+  });
+
+  it("query plan with quoted '$.\"fec_committee\"' path uses idx_entities_fec_committee", () => {
+    const s = openStore(TEST_DB);
+    seedJurisdictions(s.db);
+    seedEntity(s, "c1", "fec_committee", "C00111111");
+    seedEntity(s, "c2", "fec_committee", "C00222222");
+    seedEntity(s, "c3", "fec_committee", "C00333333");
+
+    const plan = s.db
+      .prepare(
+        `EXPLAIN QUERY PLAN
+         SELECT id FROM entities
+         WHERE json_extract(external_ids, '$."fec_committee"') = ?`,
+      )
+      .all("C00111111") as Array<{ detail: string }>;
+    s.close();
+
+    const detail = plan.map((r) => r.detail).join(" | ");
+    expect(detail).toContain("USING INDEX idx_entities_fec_committee");
   });
 });

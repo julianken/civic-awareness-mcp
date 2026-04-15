@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import { rateLimitedFetch, RateLimiter } from "../util/http.js";
-import { upsertEntity } from "../core/entities.js";
+import { upsertEntity, EXTERNAL_ID_PATHS } from "../core/entities.js";
 import { upsertDocument } from "../core/documents.js";
 import { logger } from "../util/logger.js";
 import type { Adapter, AdapterOptions, RefreshResult } from "./base.js";
@@ -517,7 +517,7 @@ export class OpenFecAdapter implements Adapter {
     // Resolve the recipient committee entity by fec_committee external_id.
     const recipientRow = db
       .prepare(
-        "SELECT id FROM entities WHERE json_extract(external_ids, '$.\"fec_committee\"') = ? LIMIT 1",
+        `SELECT id FROM entities WHERE json_extract(external_ids, '${EXTERNAL_ID_PATHS.fec_committee}') = ? LIMIT 1`,
       )
       .get(item.committee_id) as { id: string } | undefined;
 
@@ -590,7 +590,7 @@ export class OpenFecAdapter implements Adapter {
     // The spender is the committee that filed Schedule B.
     const spenderRow = db
       .prepare(
-        "SELECT id FROM entities WHERE json_extract(external_ids, '$.\"fec_committee\"') = ? LIMIT 1",
+        `SELECT id FROM entities WHERE json_extract(external_ids, '${EXTERNAL_ID_PATHS.fec_committee}') = ? LIMIT 1`,
       )
       .get(item.committee_id) as { id: string } | undefined;
 

@@ -18,6 +18,8 @@ const MIGRATIONS = [
   { version: 5, file: "005-fetch-log-table.sql" },
   { version: 6, file: "006-drop-hydrations.sql" },
   { version: 7, file: "007-entities-bioguide-index.sql" },
+  { version: 8, file: "008-entities-openstates-person-index.sql" },
+  { version: 9, file: "009-entities-fec-committee-index.sql" },
 ] as const;
 
 export function openStore(path: string): Store {
@@ -25,6 +27,14 @@ export function openStore(path: string): Store {
   const db = new Database(path);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
+  // synchronous=NORMAL is safe under WAL (durability bounded by checkpoint,
+  // not per-commit fsync) and is a meaningful write-throughput win for the
+  // refresh job's bulk upserts.
+  db.pragma("synchronous = NORMAL");
+  // 64 MB page cache (negative = KiB). The default ~2 MB is too small for
+  // the entity-resolution hot loops that repeatedly scan the entities and
+  // documents tables during a refresh.
+  db.pragma("cache_size = -64000");
   applyMigrations(db);
   return { db, close: () => db.close() };
 }
