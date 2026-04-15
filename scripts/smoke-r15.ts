@@ -12,7 +12,7 @@
 import { existsSync, unlinkSync } from "node:fs";
 import { bootstrap } from "../src/cli/bootstrap.js";
 import { openStore } from "../src/core/store.js";
-import { handleRecentBills } from "../src/mcp/tools/recent_bills.js";
+import { handleRecentBills, type RecentBillsResponse } from "../src/mcp/tools/recent_bills.js";
 import { handleResolvePerson } from "../src/mcp/tools/resolve_person.js";
 import { handleSearchDocuments } from "../src/mcp/tools/search_civic_documents.js";
 import { loadProjectEnvDefaults } from "../src/util/env-file.js";
@@ -78,7 +78,7 @@ async function main(): Promise<void> {
     "Scenario 2: recent_bills cold us-tx days=365 (expect upstream OpenStates)",
     async () => {
       const t0 = Date.now();
-      const r = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 365 });
+      const r = (await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 365 })) as RecentBillsResponse;
       const dt = Date.now() - t0;
       console.log(`  elapsed: ${dt}ms`);
       console.log(`  total: ${r.total}`);
@@ -102,7 +102,7 @@ async function main(): Promise<void> {
     "Scenario 3: recent_bills warm us-tx days=365 (expect cache hit <100ms)",
     async () => {
       const t0 = Date.now();
-      const r = await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 365 });
+      const r = (await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 365 })) as RecentBillsResponse;
       const dt = Date.now() - t0;
       console.log(`  elapsed: ${dt}ms`);
       console.log(`  total: ${r.total}`);
@@ -115,7 +115,7 @@ async function main(): Promise<void> {
     "Scenario 4: recent_bills cold us-federal days=30 (Congress.gov; validates fromDateTime fix)",
     async () => {
       const t0 = Date.now();
-      const r = await handleRecentBills(store.db, { jurisdiction: "us-federal", days: 30 });
+      const r = (await handleRecentBills(store.db, { jurisdiction: "us-federal", days: 30 })) as RecentBillsResponse;
       const dt = Date.now() - t0;
       console.log(`  elapsed: ${dt}ms`);
       console.log(`  total: ${r.total}`);
