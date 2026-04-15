@@ -1,22 +1,22 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { existsSync, rmSync } from "node:fs";
 import { openStore, type Store } from "../../../../src/core/store.js";
-import { seedJurisdictions } from "../../../../src/core/seeds.js";
+import { seedJurisdictions } from "../../../../src/federal/seeds.js";
 import { upsertEntity } from "../../../../src/core/entities.js";
 import { upsertDocument } from "../../../../src/core/documents.js";
-import { handleGetVote } from "../../../../src/mcp/tools/get_vote.js";
-import { CongressAdapter } from "../../../../src/adapters/congress.js";
-import { _resetLimitersForTesting } from "../../../../src/core/limiters.js";
+import { handleGetVote } from "../../../../src/federal/tools/get_vote.js";
+import { CongressAdapter } from "../../../../src/federal/adapters/congress.js";
+import { _resetLimitersForTesting } from "../../../../src/federal/limiters.js";
 
-vi.mock("../../../../src/core/hydrate_vote.js", async (orig) => {
-  const actual = await orig<typeof import("../../../../src/core/hydrate_vote.js")>();
+vi.mock("../../../../src/federal/hydrate_vote.js", async (orig) => {
+  const actual = await orig<typeof import("../../../../src/federal/hydrate_vote.js")>();
   return { ...actual, ensureVoteFresh: vi.fn(actual.ensureVoteFresh) };
 });
-import * as hydrateVoteModule from "../../../../src/core/hydrate_vote.js";
-import { ensureVoteFresh } from "../../../../src/core/hydrate_vote.js";
+import * as hydrateVoteModule from "../../../../src/federal/hydrate_vote.js";
+import { ensureVoteFresh } from "../../../../src/federal/hydrate_vote.js";
 const mockEnsure = vi.mocked(ensureVoteFresh);
 const realEnsureVoteFresh = (await vi.importActual<typeof hydrateVoteModule>(
-  "../../../../src/core/hydrate_vote.js",
+  "../../../../src/federal/hydrate_vote.js",
 )).ensureVoteFresh;
 
 const TEST_DB = "./data/test-get-vote.db";

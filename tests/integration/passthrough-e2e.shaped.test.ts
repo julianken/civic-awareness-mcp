@@ -21,25 +21,25 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { openStore, type Store } from "../../src/core/store.js";
-import { seedJurisdictions } from "../../src/core/seeds.js";
+import { seedJurisdictions } from "../../src/federal/seeds.js";
 import { upsertEntity } from "../../src/core/entities.js";
-import { handleEntityConnections } from "../../src/mcp/tools/entity_connections.js";
-import { handleGetEntity } from "../../src/mcp/tools/get_entity.js";
-import { handleRecentBills } from "../../src/mcp/tools/recent_bills.js";
+import { handleEntityConnections } from "../../src/federal/tools/entity_connections.js";
+import { handleGetEntity } from "../../src/federal/tools/get_entity.js";
+import { handleRecentBills } from "../../src/federal/tools/recent_bills.js";
 import { callBills } from "../helpers/bill-response-casts.js";
-import { handleRecentVotes } from "../../src/mcp/tools/recent_votes.js";
-import { handleRecentContributions } from "../../src/mcp/tools/recent_contributions.js";
-import { handleResolvePerson } from "../../src/mcp/tools/resolve_person.js";
-import { handleSearchEntities } from "../../src/mcp/tools/search_entities.js";
+import { handleRecentVotes } from "../../src/federal/tools/recent_votes.js";
+import { handleRecentContributions } from "../../src/federal/tools/recent_contributions.js";
+import { handleResolvePerson } from "../../src/federal/tools/resolve_person.js";
+import { handleSearchEntities } from "../../src/federal/tools/search_entities.js";
 import { _resetToolCacheForTesting } from "../../src/core/tool_cache.js";
-import { _resetLimitersForTesting } from "../../src/core/limiters.js";
+import { _resetLimitersForTesting } from "../../src/federal/limiters.js";
 import { seedStaleCache } from "../helpers/seed_stale_cache.js";
 
 vi.stubEnv("OPENSTATES_API_KEY", "test-key");
 vi.stubEnv("API_DATA_GOV_KEY", "test-key");
 
 const billsFixture = readFileSync(
-  "tests/integration/fixtures/openstates-bills-page1.json",
+  "tests/integration/fixtures/congress-bills-page1.json",
   "utf-8",
 );
 
@@ -63,13 +63,13 @@ describe("passthrough shaped e2e — recent_bills (R15)", () => {
   it("cold fetch → warm hit: second call does not hit upstream", async () => {
     vi.spyOn(global, "fetch").mockImplementation(async (input) => {
       const url = String(typeof input === "string" ? input : (input as URL | Request).toString());
-      if (!url.includes("openstates.org/bills")) return new Response("", { status: 404 });
+      if (!url.includes("api.congress.gov/v3/bill")) return new Response("", { status: 404 });
       upstreamHits += 1;
       return new Response(billsFixture, { status: 200 });
     });
 
-    const first = await callBills(store.db, { jurisdiction: "us-tx", days: 90 });
-    const second = await callBills(store.db, { jurisdiction: "us-tx", days: 90 });
+    const first = await callBills(store.db, { days: 90 });
+    const second = await callBills(store.db, { days: 90 });
 
     expect(upstreamHits).toBe(1);
     expect(first.results.length).toBeGreaterThan(0);
@@ -81,44 +81,42 @@ describe("passthrough shaped e2e — recent_bills (R15)", () => {
   it("upstream failure with no prior cache propagates the error", async () => {
     vi.spyOn(global, "fetch").mockImplementation(async (input) => {
       const url = String(typeof input === "string" ? input : (input as URL | Request).toString());
-      if (!url.includes("openstates.org/bills")) return new Response("", { status: 404 });
+      if (!url.includes("api.congress.gov/v3/bill")) return new Response("", { status: 404 });
       upstreamHits += 1;
       return new Response(JSON.stringify({ detail: "server error" }), { status: 500 });
     });
 
     await expect(
-      handleRecentBills(store.db, { jurisdiction: "us-tx", days: 90 }),
+      handleRecentBills(store.db, { days: 90 }),
     ).rejects.toThrow();
 
     expect(upstreamHits).toBeGreaterThan(0);
   });
 
   it("upstream failure with stale cache returns stale + upstream_failure notice", async () => {
-    // Seed a stale fetch_log row and the document it projects from.
-    // `last_rowcount` is informational only — the projection reads
-    // whatever is in `documents` at the time of the call.
     seedStaleCache({
       db: store.db,
-      source: "openstates",
-      endpoint_path: "/bills",
+      source: "congress",
+      endpoint_path: "/bill",
       scope: "recent",
       tool: "recent_bills",
       args: {
-        jurisdiction: "us-tx",
+        jurisdiction: "us-federal",
         days: 90,
         chamber: undefined,
         session: undefined,
+        limit: undefined,
       },
       documents: [
         {
           kind: "bill",
-          jurisdiction: "us-tx",
-          title: "HB99 — Stale Bill",
+          jurisdiction: "us-federal",
+          title: "HR99 — Stale Bill",
           occurred_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
           source: {
-            name: "openstates",
-            id: "ocd-bill/tx-stale",
-            url: "https://openstates.org/tx/bills/HB99",
+            name: "congress",
+            id: "congress-bill-stale",
+            url: "https://congress.gov/bill/119/house-bill/99",
           },
           raw: { actions: [] },
         },
@@ -127,17 +125,17 @@ describe("passthrough shaped e2e — recent_bills (R15)", () => {
 
     vi.spyOn(global, "fetch").mockImplementation(async (input) => {
       const url = String(typeof input === "string" ? input : (input as URL | Request).toString());
-      if (!url.includes("openstates.org/bills")) return new Response("", { status: 404 });
+      if (!url.includes("api.congress.gov/v3/bill")) return new Response("", { status: 404 });
       upstreamHits += 1;
       return new Response(JSON.stringify({ detail: "server error" }), { status: 500 });
     });
 
-    const result = await callBills(store.db, { jurisdiction: "us-tx", days: 90 });
+    const result = await callBills(store.db, { days: 90 });
 
     expect(upstreamHits).toBeGreaterThan(0);
     expect(result.stale_notice?.reason).toBe("upstream_failure");
     expect(result.results.length).toBeGreaterThan(0);
-    expect(result.results[0].identifier).toBe("HB99");
+    expect(result.results[0].identifier).toBe("HR99");
   });
 });
 

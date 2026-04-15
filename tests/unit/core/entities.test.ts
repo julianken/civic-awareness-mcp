@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { rmSync, existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { openStore, type Store } from "../../../src/core/store.js";
-import { seedJurisdictions } from "../../../src/core/seeds.js";
+import { seedJurisdictions } from "../../../src/federal/seeds.js";
 import {
   upsertEntity,
   findEntityById,
@@ -10,11 +11,14 @@ import {
   EXTERNAL_ID_PATHS,
 } from "../../../src/core/entities.js";
 
+const coreSqlPath = fileURLToPath(new URL("../../../src/core/schema.sql", import.meta.url));
+const federalSqlPath = fileURLToPath(new URL("../../../src/federal/schema.sql", import.meta.url));
+
 const TEST_DB = "./data/test-entities.db";
 let store: Store;
 beforeEach(() => {
   if (existsSync(TEST_DB)) rmSync(TEST_DB);
-  store = openStore(TEST_DB);
+  store = openStore(TEST_DB, coreSqlPath, federalSqlPath);
   seedJurisdictions(store.db);
 });
 afterEach(() => store.close());
@@ -186,9 +190,10 @@ describe("EXTERNAL_ID_PATHS + findEntityByExternalId", () => {
       });
     }
 
+    // openstates_person index lives in src/state/schema.sql (Agent 2 scope) —
+    // only federal indexes (bioguide, fec_committee) are available here.
     const cases: Array<{ source: keyof typeof EXTERNAL_ID_PATHS; index: string }> = [
       { source: "bioguide", index: "idx_entities_bioguide" },
-      { source: "openstates_person", index: "idx_entities_openstates_person" },
       { source: "fec_committee", index: "idx_entities_fec_committee" },
     ];
     for (const c of cases) {

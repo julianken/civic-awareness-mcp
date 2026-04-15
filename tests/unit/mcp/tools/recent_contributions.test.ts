@@ -1,15 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { rmSync, existsSync } from "node:fs";
 import { openStore, type Store } from "../../../../src/core/store.js";
-import { seedJurisdictions } from "../../../../src/core/seeds.js";
+import { seedJurisdictions } from "../../../../src/federal/seeds.js";
 import { upsertEntity } from "../../../../src/core/entities.js";
 import { upsertDocument } from "../../../../src/core/documents.js";
 import { upsertFetchLog } from "../../../../src/core/fetch_log.js";
 import { hashArgs } from "../../../../src/core/args_hash.js";
 import { _resetToolCacheForTesting } from "../../../../src/core/tool_cache.js";
-import { _resetLimitersForTesting } from "../../../../src/core/limiters.js";
-import { OpenFecAdapter } from "../../../../src/adapters/openfec.js";
-import { handleRecentContributions } from "../../../../src/mcp/tools/recent_contributions.js";
+import { _resetLimitersForTesting } from "../../../../src/federal/limiters.js";
+import { OpenFecAdapter } from "../../../../src/federal/adapters/openfec.js";
+import { handleRecentContributions } from "../../../../src/federal/tools/recent_contributions.js";
 
 const TEST_DB = "./data/test-tool-recent-contributions.db";
 let store: Store;

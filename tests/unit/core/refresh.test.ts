@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { rmSync, existsSync } from "node:fs";
 import { openStore, type Store } from "../../../src/core/store.js";
-import { seedJurisdictions } from "../../../src/core/seeds.js";
-import { refreshSource } from "../../../src/core/refresh.js";
+import { seedJurisdictions } from "../../../src/federal/seeds.js";
+import { refreshSource } from "../../../src/federal/refresh.js";
 
 const TEST_DB = "./data/test-core-refresh.db";
 let store: Store;

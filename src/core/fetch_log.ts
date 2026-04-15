@@ -1,10 +1,9 @@
 import type Database from "better-sqlite3";
-import type { HydrationSource } from "./sources.js";
 
 export type FetchLogScope = "recent" | "full" | "detail";
 
 export interface FetchLogRow {
-  source: HydrationSource;
+  source: string;
   endpoint_path: string;
   args_hash: string;
   scope: FetchLogScope;
@@ -14,7 +13,7 @@ export interface FetchLogRow {
 
 export function getFetchLog(
   db: Database.Database,
-  source: HydrationSource,
+  source: string,
   endpoint_path: string,
   args_hash: string,
 ): FetchLogRow | null {
@@ -62,7 +61,7 @@ export function evictStaleFetchLogRows(
 
 export function isFetchLogFresh(
   db: Database.Database,
-  source: HydrationSource,
+  source: string,
   endpoint_path: string,
   args_hash: string,
   ttlMs: number,

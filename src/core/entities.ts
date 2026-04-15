@@ -4,7 +4,7 @@ import { Entity, type EntityKind } from "./types.js";
 import { fuzzyPick, normalizeName, type FuzzyCandidate, type UpstreamSignals } from "../resolution/fuzzy.js";
 
 // Canonical JSON-path literals for entities.external_ids lookups.
-// MUST match the path expressions used in migrations 007/008/009 byte-for-byte;
+// MUST match src/federal/schema.sql and src/state/schema.sql byte-for-byte;
 // SQLite's planner only uses an expression index when the call-site
 // expression text matches the indexed expression exactly. Bind values, never
 // the path itself — a parameterized path defeats the index.

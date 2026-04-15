@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { rmSync, existsSync, mkdirSync } from "node:fs";
 import { openStore, type Store } from "../../src/core/store.js";
-import { autoBootstrapIfNeeded } from "../../src/index.js";
+import { autoBootstrapIfNeeded } from "../../src/federal/index.js";
 
 const TEST_DB = "./data/test-auto-bootstrap.db";
 

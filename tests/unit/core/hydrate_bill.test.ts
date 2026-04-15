@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { existsSync, rmSync } from "node:fs";
 import { openStore, type Store } from "../../../src/core/store.js";
-import { seedJurisdictions } from "../../../src/core/seeds.js";
+import { seedJurisdictions } from "../../../src/federal/seeds.js";
 import { upsertDocument } from "../../../src/core/documents.js";
-import { ensureBillFresh } from "../../../src/core/hydrate_bill.js";
-import { OpenStatesAdapter } from "../../../src/adapters/openstates.js";
+import { ensureBillFresh } from "../../../src/state/hydrate_bill.js";
+import { OpenStatesAdapter } from "../../../src/state/adapters/openstates.js";
 
 const TEST_DB = "./data/test-hydrate-bill.db";
 let store: Store;
@@ -95,7 +95,7 @@ describe("ensureBillFresh", () => {
   });
 
   it("returns not_found when upstream throws BillNotFoundError", async () => {
-    const { BillNotFoundError } = await import("../../../src/adapters/openstates.js");
+    const { BillNotFoundError } = await import("../../../src/state/adapters/openstates.js");
     fetchBillSpy.mockRejectedValueOnce(
       new BillNotFoundError("us-ca", "20252026", "ZZ 9999"),
     );

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import type Database from "better-sqlite3";
-import { bootstrap } from "../../../src/cli/bootstrap.js";
+import { bootstrap } from "../../../src/federal/cli/bootstrap.js";
 import { openStore } from "../../../src/core/store.js";
 import {
   getFetchLog,

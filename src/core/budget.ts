@@ -1,5 +1,3 @@
-import type { HydrationSource } from "./sources.js";
-
 export interface BudgetCheck {
   allowed: boolean;
   remaining: number;
@@ -23,7 +21,7 @@ export class DailyBudget {
     }
   }
 
-  check(source: HydrationSource): BudgetCheck {
+  check(source: string): BudgetCheck {
     this.rollIfNewDay();
     const limit = this.limits.get(source);
     if (limit === undefined) return { allowed: true, remaining: Number.POSITIVE_INFINITY };
@@ -32,12 +30,12 @@ export class DailyBudget {
     return { allowed: remaining > 0, remaining };
   }
 
-  record(source: HydrationSource): void {
+  record(source: string): void {
     this.rollIfNewDay();
     this.used.set(source, (this.used.get(source) ?? 0) + 1);
   }
 
-  remaining(source: HydrationSource): number {
+  remaining(source: string): number {
     return this.check(source).remaining;
   }
 

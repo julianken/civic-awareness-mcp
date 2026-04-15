@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { rmSync, existsSync } from "node:fs";
 import { normalizeName, levenshtein, fuzzyPick } from "../../../src/resolution/fuzzy.js";
 import { openStore, type Store } from "../../../src/core/store.js";
-import { seedJurisdictions } from "../../../src/core/seeds.js";
+import { seedJurisdictions } from "../../../src/federal/seeds.js";
 import { upsertEntity } from "../../../src/core/entities.js";
 
 const TEST_DB = "./data/test-fuzzy.db";

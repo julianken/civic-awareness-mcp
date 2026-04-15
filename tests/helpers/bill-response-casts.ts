@@ -1,20 +1,17 @@
 /** Test helpers for the bill-listing tools' discriminated-union
- *  return types. Use these at call sites that are provably outside
- *  the high-cost gate path (i.e. the test passes no `limit` or
- *  `limit ≤ 500`), so the response can never be the
- *  `RequiresConfirmationResponse` envelope. The cast is unsafe in
- *  the general case — only call these from sites where the
- *  precondition holds. */
+ *  return types. The cast is unsafe in the general case — only call
+ *  these from sites where the precondition holds (no `limit` or
+ *  `limit ≤ 500`). */
 
 import type Database from "better-sqlite3";
 import {
   handleRecentBills,
   type RecentBillsResponse,
-} from "../../src/mcp/tools/recent_bills.js";
+} from "../../src/federal/tools/recent_bills.js";
 import {
   handleListBills,
   type ListBillsResponse,
-} from "../../src/mcp/tools/list_bills.js";
+} from "../../src/state/tools/list_bills.js";
 
 export async function callBills(
   db: Database.Database,

@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { rmSync, existsSync } from "node:fs";
 import { openStore, type Store } from "../../../src/core/store.js";
-import { seedJurisdictions } from "../../../src/core/seeds.js";
+import { seedJurisdictions } from "../../../src/federal/seeds.js";
 import { upsertEntity } from "../../../src/core/entities.js";
-import { CongressAdapter } from "../../../src/adapters/congress.js";
+import { CongressAdapter } from "../../../src/federal/adapters/congress.js";
 
 const TEST_DB = "./data/test-congress.db";
 let store: Store;

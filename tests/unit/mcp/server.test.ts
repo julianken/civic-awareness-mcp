@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildServer } from "../../../src/mcp/server.js";
+import { buildServer } from "../../../src/federal/server.js";
 
 describe("buildServer", () => {
   it("constructs an MCP server with no tools registered yet", () => {
@@ -9,11 +9,11 @@ describe("buildServer", () => {
     store.close();
   });
 
-  it("registers the get_bill tool", () => {
+  it("registers the recent_bills tool", () => {
     const { mcp, store } = buildServer({ dbPath: ":memory:" });
     const tools = (mcp as unknown as { _registeredTools: Record<string, unknown> })
       ._registeredTools;
-    expect(tools).toHaveProperty("get_bill");
+    expect(tools).toHaveProperty("recent_bills");
     store.close();
   });
 
