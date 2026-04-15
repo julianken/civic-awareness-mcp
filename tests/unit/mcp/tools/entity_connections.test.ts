@@ -35,8 +35,8 @@ afterEach(() => {
   if (existsSync(TEST_DB)) rmSync(TEST_DB);
 });
 
-function makeEntity(name: string, external_ids?: Record<string, string>) {
-  return upsertEntity(store.db, { kind: "person", name, external_ids }).entity;
+function makeEntity(name: string, external_ids?: Record<string, string>, jurisdiction?: string) {
+  return upsertEntity(store.db, { kind: "person", name, external_ids, jurisdiction }).entity;
 }
 
 /**
@@ -298,12 +298,13 @@ describe("handleEntityConnections — R15 fanout", () => {
     const fecSpy = vi.spyOn(OpenFecAdapter.prototype, "fetchContributionsToCandidate")
       .mockResolvedValue({ documentsUpserted: 0 });
 
-    const e = makeEntity("State Legislator", { openstates_person: "ocd-person/tx-1" });
+    const e = makeEntity("State Legislator", { openstates_person: "ocd-person/tx-1" }, "us-tx");
     await handleEntityConnections(store.db, { id: e.id, depth: 1, min_co_occurrences: 1 });
 
     expect(openstatesSpy).toHaveBeenCalledOnce();
     expect(openstatesSpy).toHaveBeenCalledWith(store.db, {
       sponsor: "ocd-person/tx-1",
+      jurisdiction: "tx",
       limit: 50,
     });
     expect(sponsoredSpy).not.toHaveBeenCalled();
@@ -335,11 +336,11 @@ describe("handleEntityConnections — R15 fanout", () => {
     const openstatesSpy = vi.spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor")
       .mockResolvedValue({ documentsUpserted: 0 });
 
-    const e = makeEntity("Sponsor Person", { openstates_person: "ocd-person/tx-2" });
+    const e = makeEntity("Sponsor Person", { openstates_person: "ocd-person/tx-2" }, "us-tx");
     await handleEntityConnections(store.db, { id: e.id, depth: 1, min_co_occurrences: 1 });
 
     expect(openstatesSpy).toHaveBeenCalledOnce();
-    const call = openstatesSpy.mock.calls[0][1] as { sponsor: string; limit?: number };
+    const call = openstatesSpy.mock.calls[0][1] as { sponsor: string; jurisdiction: string; limit?: number };
     expect(call.limit).toBeGreaterThan(20);
   });
 
@@ -357,7 +358,7 @@ describe("handleEntityConnections — R15 fanout", () => {
       bioguide: "S000148",
       openstates_person: "ocd-person/ny-schumer",
       fec_candidate: "S2NY00123",
-    });
+    }, "us-ny");
     await handleEntityConnections(store.db, { id: e.id, depth: 1, min_co_occurrences: 1 });
 
     expect(sponsoredSpy).toHaveBeenCalledOnce();
