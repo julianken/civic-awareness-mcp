@@ -16,23 +16,17 @@ import { handleRecentBills } from "../src/mcp/tools/recent_bills.js";
 import { handleResolvePerson } from "../src/mcp/tools/resolve_person.js";
 import { handleSearchDocuments } from "../src/mcp/tools/search_civic_documents.js";
 import { loadProjectEnvDefaults } from "../src/util/env-file.js";
+import { redactSecrets } from "../src/util/redact.js";
 
 const DB_PATH = "/tmp/civic-r15-smoke.db";
 
 type Scenario = () => Promise<void>;
 
-function maskKeys(msg: string): string {
-  return msg
-    .replace(/([?&])api_key=[^&\s"']+/gi, "$1api_key=***REDACTED***")
-    .replace(/X-API-KEY["'\s:]+[A-Za-z0-9-]+/gi, "X-API-KEY: ***REDACTED***")
-    .replace(/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/gi, "***UUID***");
-}
-
 function formatError(err: unknown): string {
   if (err instanceof Error) {
-    return maskKeys(`${err.name}: ${err.message}${err.stack ? "\n" + err.stack.split("\n").slice(1, 4).join("\n") : ""}`);
+    return redactSecrets(`${err.name}: ${err.message}${err.stack ? "\n" + err.stack.split("\n").slice(1, 4).join("\n") : ""}`);
   }
-  return maskKeys(String(err));
+  return redactSecrets(String(err));
 }
 
 async function runScenario(label: string, fn: Scenario): Promise<void> {

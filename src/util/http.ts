@@ -1,4 +1,5 @@
 import { logger } from "./logger.js";
+import { redactSecrets } from "./redact.js";
 
 export const RATE_LIMIT_WAIT_THRESHOLD_MS = 2500;
 
@@ -82,7 +83,7 @@ export async function rateLimitedFetch(url: string, opts: FetchOptions): Promise
     } catch (err) {
       const duration_ms = Math.round(performance.now() - t0);
       logger.warn("upstream fetch network error", {
-        url,
+        url: redactSecrets(url),
         method: init.method ?? "GET",
         status: "network_error",
         duration_ms,
@@ -92,7 +93,7 @@ export async function rateLimitedFetch(url: string, opts: FetchOptions): Promise
       throw err;
     }
     const duration_ms = Math.round(performance.now() - t0);
-    const meta = { url, method: init.method ?? "GET", status, duration_ms, attempt: attempt + 1, host };
+    const meta = { url: redactSecrets(url), method: init.method ?? "GET", status, duration_ms, attempt: attempt + 1, host };
     if (status === 429 || status >= 500) {
       logger.warn("upstream fetch failed", meta);
       if (attempt >= retries) return res;

@@ -138,6 +138,21 @@ describe("rateLimitedFetch latency logging", () => {
     expect(typeof fields?.duration_ms).toBe("number");
   });
 
+  it("redacts api_key query param in logged url", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({}), { status: 200 }),
+    );
+    const infoSpy = vi.spyOn(logger, "info").mockImplementation(() => {});
+
+    await rateLimitedFetch("https://api.congress.gov/v3/bill?api_key=supersecret&format=json", {
+      userAgent: "test/1.0",
+    });
+
+    const [, fields] = infoSpy.mock.calls[0];
+    expect(fields?.url).toBe("https://api.congress.gov/v3/bill?api_key=***REDACTED***&format=json");
+    expect(fields?.url).not.toContain("supersecret");
+  });
+
   it("does not include auth headers in logged fields", async () => {
     vi.spyOn(global, "fetch").mockResolvedValueOnce(
       new Response(JSON.stringify({}), { status: 200 }),
