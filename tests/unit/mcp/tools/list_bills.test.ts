@@ -9,7 +9,15 @@ import { hashArgs } from "../../../../src/core/args_hash.js";
 import { _resetToolCacheForTesting } from "../../../../src/core/tool_cache.js";
 import { _resetLimitersForTesting } from "../../../../src/core/limiters.js";
 import { OpenStatesAdapter } from "../../../../src/adapters/openstates.js";
-import { handleListBills } from "../../../../src/mcp/tools/list_bills.js";
+import { handleListBills, type ListBillsResponse } from "../../../../src/mcp/tools/list_bills.js";
+
+/** Cast for existing tests that are provably outside the gate path (limit ≤ 500). */
+async function callListBills(
+  db: Parameters<typeof handleListBills>[0],
+  input: Parameters<typeof handleListBills>[1],
+): Promise<ListBillsResponse> {
+  return handleListBills(db, input) as Promise<ListBillsResponse>;
+}
 
 const TEST_DB = "./data/test-tool-list-bills.db";
 let store: Store;
@@ -62,7 +70,7 @@ describe("list_bills tool — R15 hydration", () => {
       .spyOn(OpenStatesAdapter.prototype, "listBills")
       .mockImplementation(async () => ({ documentsUpserted: 0 }));
 
-    const res = await handleListBills(store.db, {
+    const res = await callListBills(store.db, {
       jurisdiction: "us-tx",
     });
 
@@ -84,7 +92,7 @@ describe("list_bills tool — R15 hydration", () => {
   });
 
   it("us-federal returns stale_notice with reason=not_yet_supported", async () => {
-    const res = await handleListBills(store.db, {
+    const res = await callListBills(store.db, {
       jurisdiction: "us-federal",
     });
     expect(res.results).toHaveLength(0);
@@ -120,7 +128,7 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
     });
 
     seedFetchLogFresh(defaultArgs({ sponsor_entity_id: sponsor.id }));
-    const res = await handleListBills(store.db, {
+    const res = await callListBills(store.db, {
       jurisdiction: "us-tx",
       sponsor_entity_id: sponsor.id,
     });
@@ -143,7 +151,7 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
     });
 
     seedFetchLogFresh(defaultArgs({ classification: "resolution" }));
-    const res = await handleListBills(store.db, {
+    const res = await callListBills(store.db, {
       jurisdiction: "us-tx",
       classification: "resolution",
     });
@@ -166,7 +174,7 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
     });
 
     seedFetchLogFresh(defaultArgs({ subject: "Vehicles" }));
-    const res = await handleListBills(store.db, {
+    const res = await callListBills(store.db, {
       jurisdiction: "us-tx",
       subject: "Vehicles",
     });
@@ -191,7 +199,7 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
     seedFetchLogFresh(
       defaultArgs({ introduced_since: "2026-02-01", introduced_until: "2026-04-01" }),
     );
-    const res = await handleListBills(store.db, {
+    const res = await callListBills(store.db, {
       jurisdiction: "us-tx",
       introduced_since: "2026-02-01",
       introduced_until: "2026-04-01",
@@ -215,7 +223,7 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
     });
 
     seedFetchLogFresh(defaultArgs({ sort: "introduced_asc" }));
-    const res = await handleListBills(store.db, {
+    const res = await callListBills(store.db, {
       jurisdiction: "us-tx",
       sort: "introduced_asc",
     });
@@ -263,7 +271,7 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
     });
 
     seedFetchLogFresh(defaultArgs({ chamber: "upper" }));
-    const res = await handleListBills(store.db, {
+    const res = await callListBills(store.db, {
       jurisdiction: "us-tx",
       chamber: "upper",
     });
@@ -283,7 +291,7 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
     }
 
     seedFetchLogFresh(defaultArgs({ limit: 3 }));
-    const res = await handleListBills(store.db, {
+    const res = await callListBills(store.db, {
       jurisdiction: "us-tx",
       limit: 3,
     });
@@ -305,7 +313,7 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
     });
 
     seedFetchLogFresh(defaultArgs({ session: "2026R" }));
-    const res = await handleListBills(store.db, {
+    const res = await callListBills(store.db, {
       jurisdiction: "us-tx",
       session: "2026R",
     });
@@ -336,7 +344,7 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
     seedFetchLogFresh(
       defaultArgs({ updated_since: "2026-02-01", updated_until: "2026-04-01" }),
     );
-    const res = await handleListBills(store.db, {
+    const res = await callListBills(store.db, {
       jurisdiction: "us-tx",
       updated_since: "2026-02-01",
       updated_until: "2026-04-01",
@@ -375,7 +383,7 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
     });
 
     seedFetchLogFresh(defaultArgs({ sponsor_entity_id: member.id }));
-    const res = await handleListBills(store.db, {
+    const res = await callListBills(store.db, {
       jurisdiction: "us-tx",
       sponsor_entity_id: member.id,
     });
@@ -415,7 +423,7 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
     seedFetchLogFresh(
       defaultArgs({ subject: "Vehicles", introduced_since: "2026-02-01" }),
     );
-    const res = await handleListBills(store.db, {
+    const res = await callListBills(store.db, {
       jurisdiction: "us-tx",
       subject: "Vehicles",
       introduced_since: "2026-02-01",
@@ -436,7 +444,7 @@ describe("list_bills tool — sponsor_entity_id edge handling", () => {
       .spyOn(OpenStatesAdapter.prototype, "listBills")
       .mockImplementation(async () => ({ documentsUpserted: 0 }));
 
-    const res = await handleListBills(store.db, {
+    const res = await callListBills(store.db, {
       jurisdiction: "us-tx",
       sponsor_entity_id: unlinked.id,
     });
@@ -500,7 +508,7 @@ describe("list_bills tool — date filter AND-semantics", () => {
     });
     seedFetchLogFresh(args);
 
-    const res = await handleListBills(store.db, {
+    const res = await callListBills(store.db, {
       jurisdiction: "us-tx",
       introduced_since: "2026-02-01",
       introduced_until: "2026-03-01",
@@ -509,5 +517,46 @@ describe("list_bills tool — date filter AND-semantics", () => {
     });
     expect(res.results).toHaveLength(1);
     expect(res.results[0].identifier).toBe("HBY");
+  });
+});
+
+describe("list_bills tool — high-cost confirmation gate", () => {
+  it("returns confirmation envelope when limit > 500 without acknowledgement", async () => {
+    const fetchMock = vi.fn();
+    vi.spyOn(global, "fetch").mockImplementation(fetchMock);
+
+    const result = await handleListBills(store.db, {
+      jurisdiction: "us-ca",
+      limit: 1000,
+    });
+
+    expect("requires_confirmation" in result && result.requires_confirmation).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+    if ("requires_confirmation" in result) {
+      expect(result.requested_limit).toBe(1000);
+      expect(result.estimated_cost.openstates_daily_budget_pct).toBe(10);
+    }
+  });
+
+  it("does not gate at limit = 500 (boundary)", async () => {
+    const spy = vi
+      .spyOn(OpenStatesAdapter.prototype, "listBills")
+      .mockImplementation(async () => ({ documentsUpserted: 0 }));
+
+    const result = await handleListBills(store.db, {
+      jurisdiction: "us-ca",
+      limit: 500,
+    });
+    expect("requires_confirmation" in result).toBe(false);
+    spy.mockRestore();
+  });
+
+  it("federal short-circuit fires before the gate (returns not_yet_supported, not envelope)", async () => {
+    const result = await handleListBills(store.db, {
+      jurisdiction: "us-federal",
+      limit: 1000,
+    });
+    expect("requires_confirmation" in result).toBe(false);
+    expect("stale_notice" in result && result.stale_notice?.reason).toBe("not_yet_supported");
   });
 });

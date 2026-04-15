@@ -9,6 +9,11 @@ import { logger } from "../../util/logger.js";
 import { ListBillsInput } from "../schemas.js";
 import type { StaleNotice } from "../shared.js";
 import {
+  isHighCostLimit,
+  buildConfirmationResponse,
+  type RequiresConfirmationResponse,
+} from "../cost_estimate.js";
+import {
   buildSponsorSummary,
   type BillSummary,
 } from "./recent_bills.js";
@@ -61,7 +66,7 @@ function compareSort(
 export async function handleListBills(
   db: Database.Database,
   rawInput: unknown,
-): Promise<ListBillsResponse> {
+): Promise<ListBillsResponse | RequiresConfirmationResponse> {
   const input = ListBillsInput.parse(rawInput);
 
   // Federal: defer to future phase; return not_yet_supported.
@@ -80,6 +85,12 @@ export async function handleListBills(
           "entity_connections on the member's entity id.",
       },
     };
+  }
+
+  // High-cost confirmation gate (R18). Federal short-circuited
+  // above; only state jurisdictions reach this point.
+  if (isHighCostLimit(input.limit) && input.acknowledge_high_cost !== true) {
+    return buildConfirmationResponse("openstates", input.limit);
   }
 
   // Map sponsor_entity_id (our UUID) → OCD person id for upstream.

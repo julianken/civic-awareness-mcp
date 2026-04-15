@@ -18,7 +18,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { openStore, type Store } from "../../src/core/store.js";
 import { seedJurisdictions } from "../../src/core/seeds.js";
-import { handleListBills } from "../../src/mcp/tools/list_bills.js";
+import { handleListBills, type ListBillsResponse } from "../../src/mcp/tools/list_bills.js";
+
+/** Cast for e2e tests that are provably outside the gate path (all use default/low limits). */
+async function callListBills(
+  db: Parameters<typeof handleListBills>[0],
+  input: Parameters<typeof handleListBills>[1],
+): Promise<ListBillsResponse> {
+  return handleListBills(db, input) as Promise<ListBillsResponse>;
+}
 import { _resetToolCacheForTesting } from "../../src/core/tool_cache.js";
 import { _resetLimitersForTesting } from "../../src/core/limiters.js";
 import { seedStaleCache } from "../helpers/seed_stale_cache.js";
@@ -79,11 +87,11 @@ describe("list_bills — R15 shaped e2e", () => {
       );
     });
 
-    const first = await handleListBills(store.db, {
+    const first = await callListBills(store.db, {
       jurisdiction: "us-ca",
       subject: "Vehicles",
     });
-    const second = await handleListBills(store.db, {
+    const second = await callListBills(store.db, {
       jurisdiction: "us-ca",
       subject: "Vehicles",
     });
@@ -121,7 +129,7 @@ describe("list_bills — R15 shaped e2e", () => {
       return new Response("{}", { status: 200 });
     });
 
-    const res = await handleListBills(store.db, { jurisdiction: "us-federal" });
+    const res = await callListBills(store.db, { jurisdiction: "us-federal" });
     expect(res.stale_notice?.reason).toBe("not_yet_supported");
     expect(hit).toBe(0);
   });
@@ -189,7 +197,7 @@ describe("list_bills — R15 shaped e2e", () => {
       );
     });
 
-    const res = await handleListBills(store.db, { jurisdiction: "us-ca" });
+    const res = await callListBills(store.db, { jurisdiction: "us-ca" });
     expect(res.results).toHaveLength(1);
     const top = res.results[0].sponsor_summary?.top ?? [];
     expect(top.length).toBeGreaterThan(0);
@@ -244,7 +252,7 @@ describe("list_bills — R15 shaped e2e", () => {
       throw new Error("network down");
     });
 
-    const result = await handleListBills(store.db, {
+    const result = await callListBills(store.db, {
       jurisdiction: "us-ca",
       subject: "Vehicles",
     });
