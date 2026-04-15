@@ -13,7 +13,11 @@ export const RecentBillsInput = z.object({
   // OpenStates' native `sort=updated_desc` / Congress.gov's
   // `sort=updateDate+desc`. Use to query biennial or off-session
   // jurisdictions where the time window is empty. See D12 / R16.
-  limit: z.number().int().min(1).max(20).optional(),
+  // No upper bound — the handler's confirmation gate (R18) returns
+  // a `requires_confirmation` envelope for limit > 500 until the
+  // caller passes `acknowledge_high_cost: true`.
+  limit: z.number().int().min(1).optional(),
+  acknowledge_high_cost: z.boolean().optional(),
 });
 export type RecentBillsInput = z.infer<typeof RecentBillsInput>;
 
@@ -100,7 +104,8 @@ export const ListBillsInput = z.object({
   sort: z
     .enum(["updated_desc", "updated_asc", "introduced_desc", "introduced_asc"])
     .default("updated_desc"),
-  limit: z.number().int().min(1).max(50).default(20),
+  limit: z.number().int().min(1).default(20),
+  acknowledge_high_cost: z.boolean().optional(),
 });
 export type ListBillsInput = z.infer<typeof ListBillsInput>;
 

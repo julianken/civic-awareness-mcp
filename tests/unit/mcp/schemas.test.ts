@@ -50,12 +50,6 @@ describe("ListBillsInput", () => {
     ).toThrow();
   });
 
-  it("rejects limit > 50", () => {
-    expect(() =>
-      ListBillsInput.parse({ jurisdiction: "us-tx", limit: 51 }),
-    ).toThrow();
-  });
-
   it("rejects limit < 1", () => {
     expect(() =>
       ListBillsInput.parse({ jurisdiction: "us-tx", limit: 0 }),
