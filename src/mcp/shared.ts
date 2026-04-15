@@ -19,13 +19,15 @@ export interface EmptyFeedContext {
   kind: DocumentKind;
 }
 
+// Narrowed under R15 (docs/00-rationale.md:455). Retired members:
+// `rate_limited`, `partial_hydrate`, `daily_budget_exhausted` —
+// shaped-query hydration collapsed these into `upstream_failure`
+// (with cached fallback) or surfaces them as transport-layer errors
+// rather than partial responses.
 export type StaleReason =
   | "upstream_failure"
-  | "rate_limited"
-  | "partial_hydrate"
-  | "daily_budget_exhausted"
-  | "not_yet_supported"
-  | "not_found";
+  | "not_found"
+  | "not_yet_supported";
 
 export interface StaleNotice {
   as_of: string;
