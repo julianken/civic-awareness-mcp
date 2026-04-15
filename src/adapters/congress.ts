@@ -633,16 +633,16 @@ export class CongressAdapter implements Adapter {
     const occurredAt = b.updateDate ?? b.introducedDate ?? new Date().toISOString();
     const humanUrl = billUrl(b.congress, b.type, b.number);
 
+    const entityByBioguide = db.prepare(
+      "SELECT id FROM entities WHERE json_extract(external_ids, '$.\"bioguide\"') = ? LIMIT 1",
+    );
+
     // Resolve sponsors to entity IDs.
     const refs = (b.sponsors ?? []).map((s) => {
       let entityId: string;
       if (s.bioguideId) {
         // Fast path: sponsor has a bioguide ID — look up by external_id.
-        const existing = db
-          .prepare(
-            "SELECT id FROM entities WHERE json_extract(external_ids, '$.\"bioguide\"') = ? LIMIT 1",
-          )
-          .get(s.bioguideId) as { id: string } | undefined;
+        const existing = entityByBioguide.get(s.bioguideId) as { id: string } | undefined;
         if (existing) {
           entityId = existing.id;
         } else {

@@ -140,13 +140,12 @@ export async function handleGetVote(
       ? `${raw.bill.type.toUpperCase()}${raw.bill.number}`
       : null;
 
+  const entityByBioguide = db.prepare(
+    `SELECT id FROM entities
+      WHERE json_extract(external_ids, '$."bioguide"') = ?`,
+  );
   const positions: VotePosition[] = (raw.positions ?? []).map((p) => {
-    const ent = db
-      .prepare(
-        `SELECT id FROM entities
-          WHERE json_extract(external_ids, '$."bioguide"') = ?`,
-      )
-      .get(p.bioguideId) as { id: string } | undefined;
+    const ent = entityByBioguide.get(p.bioguideId) as { id: string } | undefined;
     const position: VotePosition = {
       entity_id: ent?.id ?? null,
       name: p.name,
