@@ -408,6 +408,59 @@ describe("handleEntityConnections — R15 fanout", () => {
     expect(nodeIds).toContain(colleague.id);
   });
 
+  it("multiple upstream failures → stale_notice mentions every failing source", async () => {
+    const e = makeEntity("Multi-Fail Person", {
+      bioguide: "S000148",
+      openstates_person: "ocd-person/ny-1",
+    });
+
+    // Seed stale fetch_log rows for every endpoint so each call has a
+    // cached fallback and produces a stale_notice instead of throwing.
+    const ageMs = 48 * 60 * 60 * 1000;
+    const stale = new Date(Date.now() - ageMs).toISOString();
+    for (const [endpoint, tool, args] of [
+      ["/member/S000148/sponsored-legislation", "fetchMemberSponsored", { bioguide: "S000148" }],
+      ["/member/S000148/cosponsored-legislation", "fetchMemberCosponsored", { bioguide: "S000148" }],
+    ] as const) {
+      upsertFetchLog(store.db, {
+        source: "congress",
+        endpoint_path: endpoint,
+        args_hash: hashArgs(tool, args),
+        scope: "full",
+        fetched_at: stale,
+        last_rowcount: 0,
+      });
+    }
+    upsertFetchLog(store.db, {
+      source: "openstates",
+      endpoint_path: "/bills/by-sponsor",
+      args_hash: hashArgs("fetchBillsBySponsor", { sponsor: "ocd-person/ny-1" }),
+      scope: "full",
+      fetched_at: stale,
+      last_rowcount: 0,
+    });
+
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
+      .mockRejectedValue(new Error("congress sponsored exploded"));
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
+      .mockRejectedValue(new Error("congress cosponsored exploded"));
+    vi.spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor")
+      .mockRejectedValue(new Error("openstates exploded"));
+
+    const res = await handleEntityConnections(store.db, {
+      id: e.id,
+      depth: 1,
+      min_co_occurrences: 1,
+    });
+
+    expect(res.stale_notice).toBeDefined();
+    expect(res.stale_notice!.reason).toBe("upstream_failure");
+    // Aggregated message lists labels for each failing source.
+    expect(res.stale_notice!.message).toMatch(/congress sponsored/);
+    expect(res.stale_notice!.message).toMatch(/congress cosponsored/);
+    expect(res.stale_notice!.message).toMatch(/openstates/);
+  });
+
   it("upstream failure with no cache → error propagates", async () => {
     const e = makeEntity("Cold-Fail Person", { bioguide: "S000148" });
     vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
@@ -483,6 +536,57 @@ describe("handleEntityConnections via_roles", () => {
     expect(edgeToB).toBeDefined();
     expect(edgeToB!.via_kinds).toEqual(["bill"]);
     expect(new Set(edgeToB!.via_roles)).toEqual(new Set(["sponsor", "cosponsor"]));
+  });
+
+  it("depth=2 second-hop edge carries the to-node's role on the shared document", async () => {
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
+      .mockResolvedValue({ documentsUpserted: 0 });
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
+      .mockResolvedValue({ documentsUpserted: 0 });
+
+    const a = makeProjectionRoot("Alice D2VR");
+    const b = makeEntity("Bob D2VR");
+    const c = makeEntity("Carol D2VR");
+
+    // Bill 1: A sponsors, B cosponsors → A→B edge via_roles=[cosponsor].
+    upsertDocument(store.db, {
+      kind: "bill",
+      jurisdiction: "us-federal",
+      title: "D2VR Bill 1",
+      occurred_at: "2024-03-01T00:00:00.000Z",
+      source: { name: "congress", id: "d2vr-bill-1", url: "https://congress.gov/d2vr-bill-1" },
+      references: [
+        { entity_id: a.id, role: "sponsor" },
+        { entity_id: b.id, role: "cosponsor" },
+      ],
+    });
+
+    // Bill 2: B sponsors, C cosponsors → B→C edge via_roles=[cosponsor].
+    upsertDocument(store.db, {
+      kind: "bill",
+      jurisdiction: "us-federal",
+      title: "D2VR Bill 2",
+      occurred_at: "2024-03-02T00:00:00.000Z",
+      source: { name: "congress", id: "d2vr-bill-2", url: "https://congress.gov/d2vr-bill-2" },
+      references: [
+        { entity_id: b.id, role: "sponsor" },
+        { entity_id: c.id, role: "cosponsor" },
+      ],
+    });
+
+    const result = await handleEntityConnections(store.db, {
+      id: a.id,
+      depth: 2,
+      min_co_occurrences: 1,
+    });
+
+    const edgeAB = result.edges.find((e) => e.from === a.id && e.to === b.id);
+    expect(edgeAB).toBeDefined();
+    expect(edgeAB!.via_roles).toEqual(["cosponsor"]);
+
+    const edgeBC = result.edges.find((e) => e.from === b.id && e.to === c.id);
+    expect(edgeBC).toBeDefined();
+    expect(edgeBC!.via_roles).toContain("cosponsor");
   });
 
   it("exposes voter role on vote documents", async () => {

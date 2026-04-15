@@ -7,8 +7,9 @@ import { findEntityById } from "../../core/entities.js";
 import { getLimiter } from "../../core/limiters.js";
 import { withShapedFetch } from "../../core/tool_cache.js";
 import { requireEnv } from "../../util/env.js";
+import { logger } from "../../util/logger.js";
 import { EntityConnectionsInput } from "../schemas.js";
-import type { StaleNotice } from "../shared.js";
+import type { StaleNotice, StaleReason } from "../shared.js";
 
 interface EntityMatch {
   id: string;
@@ -113,6 +114,50 @@ function sourceUrl(sourceName: string, jurisdiction: string): string {
   return "";
 }
 
+// Severity ordering used when merging stale_notices from multiple
+// parallel adapter calls. `upstream_failure` outranks `not_found`
+// (which outranks `not_yet_supported`) because an unreachable
+// upstream is the most actionable signal for an LLM consumer —
+// a "not found" or "not yet supported" might be expected.
+const STALE_REASON_RANK: Record<StaleReason, number> = {
+  upstream_failure: 3,
+  not_found: 2,
+  not_yet_supported: 1,
+};
+
+/**
+ * Combine stale_notices from N parallel adapter calls into a single
+ * notice. Picks the most-severe `reason` (per `STALE_REASON_RANK`) and
+ * concatenates the source labels of every failing call into the
+ * `message`, so an LLM consumer sees that (e.g.) both Congress.gov and
+ * OpenFEC failed rather than only the first one. `as_of` is the
+ * earliest of the contributing notices (oldest cached fallback wins,
+ * since it bounds freshness across all sources).
+ */
+function aggregateStaleNotices(
+  results: Array<{ label: string; stale_notice?: StaleNotice }>,
+): StaleNotice | undefined {
+  const failing = results.filter(
+    (r): r is { label: string; stale_notice: StaleNotice } => r.stale_notice !== undefined,
+  );
+  if (failing.length === 0) return undefined;
+  if (failing.length === 1) return failing[0].stale_notice;
+
+  const sorted = [...failing].sort(
+    (a, b) => STALE_REASON_RANK[b.stale_notice.reason] - STALE_REASON_RANK[a.stale_notice.reason],
+  );
+  const reason = sorted[0].stale_notice.reason;
+  const as_of = sorted
+    .map((r) => r.stale_notice.as_of)
+    .reduce((min, v) => (v < min ? v : min));
+  const parts = sorted.map((r) => `${r.label}: ${r.stale_notice.message}`);
+  return {
+    as_of,
+    reason,
+    message: `Multiple sources reported issues — ${parts.join(" | ")}`,
+  };
+}
+
 export async function handleEntityConnections(
   db: Database.Database,
   rawInput: unknown,
@@ -120,7 +165,10 @@ export async function handleEntityConnections(
   const input = EntityConnectionsInput.parse(rawInput);
 
   const rootEntity = findEntityById(db, input.id);
-  if (!rootEntity) throw new Error(`Entity not found: ${input.id}`);
+  if (!rootEntity) {
+    logger.warn("entity_connections: entity not found", { id: input.id });
+    throw new Error(`Entity not found: ${input.id}`);
+  }
 
   const rootRoleMap = batchFetchRoles(db, [rootEntity.id]);
   const root: EntityMatch = {
@@ -149,12 +197,16 @@ export async function handleEntityConnections(
 
   const ttl = { scope: "full" as const, ms: 24 * 60 * 60 * 1000 };
   const noop = (): void => {};
-  const calls: Promise<{ stale_notice?: StaleNotice }>[] = [];
+  const calls: Array<{
+    label: string;
+    promise: Promise<{ stale_notice?: StaleNotice }>;
+  }> = [];
 
   if (rootEntity.external_ids.bioguide) {
     const bioguide = rootEntity.external_ids.bioguide;
-    calls.push(
-      withShapedFetch(
+    calls.push({
+      label: "congress sponsored",
+      promise: withShapedFetch(
         db,
         {
           source: "congress",
@@ -174,9 +226,10 @@ export async function handleEntityConnections(
         noop,
         () => getLimiter("congress").peekWaitMs(),
       ),
-    );
-    calls.push(
-      withShapedFetch(
+    });
+    calls.push({
+      label: "congress cosponsored",
+      promise: withShapedFetch(
         db,
         {
           source: "congress",
@@ -196,17 +249,18 @@ export async function handleEntityConnections(
         noop,
         () => getLimiter("congress").peekWaitMs(),
       ),
-    );
+    });
   }
 
   if (rootEntity.external_ids.openstates_person) {
     const ocdId = rootEntity.external_ids.openstates_person;
-    calls.push(
-      withShapedFetch(
+    calls.push({
+      label: "openstates bills-by-sponsor",
+      promise: withShapedFetch(
         db,
         {
           source: "openstates",
-          endpoint_path: `/bills?sponsor=${ocdId}`,
+          endpoint_path: "/bills/by-sponsor",
           args: { sponsor: ocdId },
           tool: "fetchBillsBySponsor",
         },
@@ -222,13 +276,14 @@ export async function handleEntityConnections(
         noop,
         () => getLimiter("openstates").peekWaitMs(),
       ),
-    );
+    });
   }
 
   if (rootEntity.external_ids.fec_candidate) {
     const candidateId = rootEntity.external_ids.fec_candidate;
-    calls.push(
-      withShapedFetch(
+    calls.push({
+      label: "openfec contributions-to-candidate",
+      promise: withShapedFetch(
         db,
         {
           source: "openfec",
@@ -248,13 +303,13 @@ export async function handleEntityConnections(
         noop,
         () => getLimiter("openfec").peekWaitMs(),
       ),
-    );
+    });
   }
 
-  let stale_notice: StaleNotice | undefined;
-  for (const res of await Promise.all(calls)) {
-    if (res.stale_notice && !stale_notice) stale_notice = res.stale_notice;
-  }
+  const callResults = await Promise.all(
+    calls.map(async (c) => ({ label: c.label, ...(await c.promise) })),
+  );
+  const stale_notice = aggregateStaleNotices(callResults);
 
   const { edges: rawEdges, truncated } = findConnections(
     db,
