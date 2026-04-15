@@ -267,7 +267,9 @@ export class OpenStatesAdapter implements Adapter {
     for (const inc of ["sponsorships", "abstracts", "actions"]) {
       url.searchParams.append("include", inc);
     }
-    return this.fetchAndUpsertBillsFromUrl(db, url);
+    return this.fetchAndUpsertBillsFromUrl(db, url, {
+      target: opts.limit,
+    });
   }
 
   /** Narrow per-tool fetch for R15 `recent_bills` — one page of

@@ -943,7 +943,44 @@ describe("OpenStatesAdapter.fetchBillsBySponsor", () => {
         limit: 50,
       });
       const u = new URL(capturedUrl!);
-      expect(u.searchParams.get("per_page")).toBe("50");
+      // fetchAndUpsertBillsFromUrl caps per_page at 20 when target > 20
+      expect(u.searchParams.get("per_page")).toBe("20");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("paginates when limit > 20", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: any) => {
+      const u = new URL(String(url));
+      const page = parseInt(u.searchParams.get("page") ?? "1", 10);
+      const bills = Array.from({ length: 20 }, (_, i) => ({
+        ...SAMPLE_BILL,
+        id: `ocd-bill/p${page}-${i}`,
+        identifier: `HB${page}${String(i).padStart(2, "0")}`,
+      }));
+      return new Response(
+        JSON.stringify({
+          results: bills,
+          pagination: { max_page: 3, page },
+        }),
+        { status: 200 },
+      );
+    });
+    vi.spyOn(global, "fetch").mockImplementation(fetchMock);
+
+    if (existsSync(FBS_DB)) rmSync(FBS_DB, { force: true });
+    const db = openStore(FBS_DB);
+    seedJurisdictions(db.db);
+    try {
+      const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
+      const result = await adapter.fetchBillsBySponsor(db.db, {
+        sponsor: "ocd-person/abc",
+        limit: 50,
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(result.documentsUpserted).toBe(60);
     } finally {
       db.close();
     }
