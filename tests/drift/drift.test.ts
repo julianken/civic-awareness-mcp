@@ -31,7 +31,8 @@ const HAS_API_DATA_GOV = !!process.env.API_DATA_GOV_KEY;
 
 // ─── OpenStates ──────────────────────────────────────────────────────
 
-describe.skipIf(!HAS_OPENSTATES)("OpenStates drift", () => {
+// Live API tests need generous timeouts — CI runners have variable latency.
+describe.skipIf(!HAS_OPENSTATES)("OpenStates drift", { timeout: 30_000 }, () => {
   const base = "https://v3.openstates.org";
   const headers = { "X-API-KEY": process.env.OPENSTATES_API_KEY!, "User-Agent": UA };
 
@@ -89,7 +90,7 @@ describe.skipIf(!HAS_API_DATA_GOV)("Congress.gov drift", () => {
 
   it("/member response shape matches the CongressMember interface", async () => {
     await pause();
-    const res = await fetch(`${base}/member?congress=119&limit=5&api_key=${key}`, {
+    const res = await fetch(`${base}/member?congress=119&limit=5&api_key=${key}&format=json`, {
       headers: { "User-Agent": UA },
     });
     expect(res.status).toBe(200);
@@ -105,7 +106,7 @@ describe.skipIf(!HAS_API_DATA_GOV)("Congress.gov drift", () => {
 
   it("/bill response shape matches the CongressBill interface", async () => {
     await pause();
-    const res = await fetch(`${base}/bill?congress=119&limit=5&api_key=${key}`, {
+    const res = await fetch(`${base}/bill?congress=119&limit=5&api_key=${key}&format=json`, {
       headers: { "User-Agent": UA },
     });
     expect(res.status).toBe(200);
