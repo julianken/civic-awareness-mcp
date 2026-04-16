@@ -9,6 +9,7 @@ import { handleSearchEntities } from "./tools/search_entities.js";
 import { handleResolvePerson } from "./tools/resolve_person.js";
 import { handleGetEntity } from "./tools/get_entity.js";
 import { handleEntityConnections } from "./tools/entity_connections.js";
+import { handleRecentVotes } from "./tools/recent_votes.js";
 import {
   RecentBillsInput,
   GetBillInput,
@@ -18,6 +19,7 @@ import {
   ResolvePersonInput,
   GetEntityInput,
   EntityConnectionsInput,
+  RecentVotesInput,
 } from "./schemas.js";
 
 const coreSqlPath = fileURLToPath(new URL("../core/schema.sql", import.meta.url));
@@ -143,6 +145,21 @@ export function buildServer(opts: BuildServerOptions): CivicStateServer {
     },
     async (input) => {
       const data = await handleEntityConnections(store.db, input);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    },
+  );
+
+  mcp.registerTool(
+    "recent_votes",
+    {
+      description:
+        "List recent roll-call votes from state legislatures via OpenStates. " +
+        "Pass a jurisdiction like 'us-tx' or 'us-ca'. Votes are sourced from " +
+        "recently-updated bills with embedded vote data. Use '*' to query all cached jurisdictions locally.",
+      inputSchema: RecentVotesInput.shape,
+    },
+    async (input) => {
+      const data = await handleRecentVotes(store.db, input);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     },
   );
