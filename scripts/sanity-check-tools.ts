@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * Manual smoke gate — exercises all 17 MCP tool handlers end-to-end
+ * Manual smoke gate — exercises all 18 MCP tool handlers end-to-end
  * against real upstream APIs (OpenStates, Congress.gov, OpenFEC).
  *
  * Run:
@@ -44,6 +44,7 @@ import { handleSearchEntities as stateSearchEntities } from "../src/state/tools/
 import { handleResolvePerson as stateResolvePerson } from "../src/state/tools/resolve_person.js";
 import { handleGetEntity as stateGetEntity } from "../src/state/tools/get_entity.js";
 import { handleEntityConnections as stateEntityConnections } from "../src/state/tools/entity_connections.js";
+import { handleRecentVotes as stateRecentVotes } from "../src/state/tools/recent_votes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
@@ -208,6 +209,10 @@ async function main() {
       id: stateEntityId ?? "fake-id-does-not-exist",
       depth: 1,
     })
+  );
+
+  await run("state", "recent_votes", () =>
+    stateRecentVotes(stateStore.db, { jurisdiction: "us-tx", days: 14, limit: 5 })
   );
 
   fedStore.close();

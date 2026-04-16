@@ -73,6 +73,31 @@ export interface OpenStatesRelatedBill {
   relation_type?: string;
 }
 
+export interface OpenStatesVoteCount {
+  option: string;
+  value: number;
+}
+
+export interface OpenStatesVoteOrganization {
+  id: string;
+  name: string;
+  classification: string;
+}
+
+export interface OpenStatesVote {
+  id: string;
+  motion_text: string;
+  motion_classification: string[];
+  start_date: string;
+  result: string;
+  identifier: string;
+  extras: Record<string, unknown>;
+  organization: OpenStatesVoteOrganization;
+  votes: unknown[];
+  counts: OpenStatesVoteCount[];
+  sources: Array<{ url: string; note?: string }>;
+}
+
 export interface OpenStatesBillDetail {
   id: string;
   identifier: string;
@@ -92,6 +117,7 @@ export interface OpenStatesBillDetail {
   versions?: OpenStatesBillVersion[];
   documents?: OpenStatesBillDocument[];
   related_bills?: OpenStatesRelatedBill[];
+  votes?: OpenStatesVote[];
 }
 
 // Alias kept for backwards compat with the existing fetchAllPages
@@ -351,6 +377,96 @@ export class OpenStatesAdapter implements Adapter {
     return this.fetchAndUpsertBillsFromUrl(db, url, {
       chamber: opts.chamber,
       target: opts.limit,
+    });
+  }
+
+  /** Narrow per-tool fetch for R15 `recent_votes` — fetches recently-updated
+   *  bills with `include=votes` and flat-maps embedded vote arrays into
+   *  `documents` rows (kind="vote"). OpenStates v3 has no standalone votes
+   *  feed; this is the approved approach per the upstream research notes. */
+  async fetchRecentVotes(
+    db: Database.Database,
+    opts: {
+      jurisdiction: string;
+      updated_since?: string;
+      limit?: number;
+    },
+  ): Promise<{ documentsUpserted: number }> {
+    const abbr = opts.jurisdiction.replace(/^us-/, "").toLowerCase();
+    const url = new URL(`${BASE_URL}/bills`);
+    url.searchParams.set("jurisdiction", abbr);
+    url.searchParams.set("sort", "updated_desc");
+    url.searchParams.set("per_page", String(Math.min(opts.limit ?? 20, 20)));
+    if (opts.updated_since) url.searchParams.set("updated_since", opts.updated_since);
+    url.searchParams.append("include", "votes");
+
+    url.searchParams.set("page", "1");
+    const res = await rateLimitedFetch(url.toString(), {
+      userAgent: "civic-awareness-mcp/0.1.0 (+github)",
+      rateLimiter: this.rateLimiter,
+      headers: { "X-API-KEY": this.opts.apiKey },
+    });
+    if (!res.ok) throw new Error(`OpenStates /bills (include=votes) returned ${res.status}`);
+    const body = (await res.json()) as {
+      results?: OpenStatesBillDetail[];
+      pagination?: { max_page?: number; page?: number };
+    };
+
+    let documentsUpserted = 0;
+    for (const bill of body.results ?? []) {
+      const votes = bill.votes ?? [];
+      if (votes.length === 0) continue;
+
+      // Ensure the parent bill document exists before writing votes.
+      this.upsertBill(db, bill);
+
+      for (const vote of votes) {
+        this.upsertVote(db, bill, vote);
+        documentsUpserted += 1;
+      }
+    }
+    return { documentsUpserted };
+  }
+
+  private upsertVote(
+    db: Database.Database,
+    bill: OpenStatesBillDetail,
+    vote: OpenStatesVote,
+  ): void {
+    const billStateAbbr = extractStateAbbr(bill.jurisdiction?.id);
+    if (!billStateAbbr) {
+      logger.warn("openstates vote: parent bill missing jurisdiction — skipping", {
+        endpoint: "upsertVote",
+        voteId: vote.id,
+        billId: bill.id,
+      });
+      return;
+    }
+    const jurisdiction = `us-${billStateAbbr}`;
+    const sourceUrl = vote.sources[0]?.url ?? bill.openstates_url;
+
+    // Bill reference is stored in raw.bill (not via document_references,
+    // which only links documents to entities, not documents to documents).
+    upsertDocument(db, {
+      kind: "vote",
+      jurisdiction,
+      title: `${bill.identifier} — ${vote.motion_text}`,
+      occurred_at: vote.start_date,
+      source: { name: "openstates", id: vote.id, url: sourceUrl },
+      raw: {
+        chamber: vote.organization.classification,
+        result: vote.result,
+        motion_text: vote.motion_text,
+        motion_classification: vote.motion_classification,
+        counts: vote.counts,
+        extras: vote.extras,
+        bill: {
+          id: bill.id,
+          identifier: bill.identifier,
+          session: bill.session,
+          openstates_url: bill.openstates_url,
+        },
+      },
     });
   }
 

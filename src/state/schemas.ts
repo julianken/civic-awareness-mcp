@@ -79,3 +79,12 @@ export const EntityConnectionsInput = z.object({
   min_co_occurrences: z.number().int().min(1).max(50).default(2),
 });
 export type EntityConnectionsInput = z.infer<typeof EntityConnectionsInput>;
+
+export const RecentVotesInput = z.object({
+  jurisdiction: z.string().min(1),
+  days: z.number().int().min(1).max(365).default(7),
+  chamber: z.enum(["upper", "lower"]).optional(),
+  session: z.string().optional(),
+  limit: z.number().int().min(1).max(500).optional(),
+});
+export type RecentVotesInput = z.infer<typeof RecentVotesInput>;

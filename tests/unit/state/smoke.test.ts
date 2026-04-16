@@ -9,12 +9,12 @@ describe("civic-state-mcp server", () => {
     server = null;
   });
 
-  it("boots and registers exactly 8 tools", () => {
+  it("boots and registers exactly 9 tools", () => {
     server = buildServer({ dbPath: ":memory:" });
     const { mcp } = server;
 
     const tools = (mcp as unknown as { _registeredTools: Record<string, unknown> })._registeredTools;
-    expect(Object.keys(tools)).toHaveLength(8);
+    expect(Object.keys(tools)).toHaveLength(9);
 
     const expectedTools = [
       "recent_bills",
@@ -25,6 +25,7 @@ describe("civic-state-mcp server", () => {
       "resolve_person",
       "get_entity",
       "entity_connections",
+      "recent_votes",
     ];
     for (const name of expectedTools) {
       expect(tools, `tool ${name} should be registered`).toHaveProperty(name);
@@ -35,7 +36,6 @@ describe("civic-state-mcp server", () => {
     server = buildServer({ dbPath: ":memory:" });
     const tools = (server.mcp as unknown as { _registeredTools: Record<string, unknown> })._registeredTools;
 
-    expect(tools).not.toHaveProperty("recent_votes");
     expect(tools).not.toHaveProperty("recent_contributions");
     expect(tools).not.toHaveProperty("get_vote");
   });
