@@ -195,9 +195,8 @@ async function main() {
     stateResolvePerson(stateStore.db, { name: "Greg Abbott", jurisdiction_hint: "us-tx" }),
   );
 
-  // State uses entity_id field (not id) per GetEntityInput schema
   await run("state", "get_entity", () =>
-    stateGetEntity(stateStore.db, { entity_id: stateEntityId ?? "fake-id-does-not-exist" }),
+    stateGetEntity(stateStore.db, { id: stateEntityId ?? "fake-id-does-not-exist" }),
   );
 
   await run("state", "entity_connections", () =>

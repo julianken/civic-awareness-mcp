@@ -61,7 +61,7 @@ export const SearchEntitiesInput = z.object({
 export type SearchEntitiesInput = z.infer<typeof SearchEntitiesInput>;
 
 export const GetEntityInput = z.object({
-  entity_id: z.string().min(1),
+  id: z.string().min(1),
 });
 export type GetEntityInput = z.infer<typeof GetEntityInput>;
 

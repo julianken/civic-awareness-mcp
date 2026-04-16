@@ -28,8 +28,8 @@ export async function handleGetEntity(
   rawInput: unknown,
 ): Promise<GetEntityResponse> {
   const input = GetEntityInput.parse(rawInput);
-  const entity = findEntityById(db, input.entity_id);
-  if (!entity) throw new Error(`Entity not found: ${input.entity_id}`);
+  const entity = findEntityById(db, input.id);
+  if (!entity) throw new Error(`Entity not found: ${input.id}`);
 
   const ttl = { scope: "detail" as const, ms: 24 * 60 * 60 * 1000 };
   const noop = (): void => {};
@@ -67,7 +67,7 @@ export async function handleGetEntity(
   }
 
   // Re-read the entity — the fanout may have merged new external IDs or metadata.
-  const refreshedEntity = findEntityById(db, input.entity_id) ?? entity;
+  const refreshedEntity = findEntityById(db, input.id) ?? entity;
 
   const docs = findDocumentsByEntity(db, refreshedEntity.id, 10);
   const sourceKeys = new Map<string, { name: string; jurisdiction: string }>();
