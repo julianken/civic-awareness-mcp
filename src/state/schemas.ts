@@ -27,10 +27,10 @@ export const RecentBillsInput = z.object({
     ),
   classification: z.string().min(1).optional(),
   subject: z.string().min(1).optional(),
-  introduced_since: z.string().min(1).optional(),
-  introduced_until: z.string().min(1).optional(),
-  updated_since: z.string().min(1).optional(),
-  updated_until: z.string().min(1).optional(),
+  introduced_since: z.union([z.iso.date(), z.iso.datetime()]).optional(),
+  introduced_until: z.union([z.iso.date(), z.iso.datetime()]).optional(),
+  updated_since: z.union([z.iso.date(), z.iso.datetime()]).optional(),
+  updated_until: z.union([z.iso.date(), z.iso.datetime()]).optional(),
   sort: z
     .enum(["updated_desc", "updated_asc", "introduced_desc", "introduced_asc"])
     .default("updated_desc"),
