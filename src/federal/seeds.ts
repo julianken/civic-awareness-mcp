@@ -61,8 +61,6 @@ const JURISDICTIONS = [
 ];
 
 export function seedJurisdictions(db: Database.Database): void {
-  const stmt = db.prepare(
-    "INSERT OR IGNORE INTO jurisdictions (id, level, name) VALUES (?, ?, ?)",
-  );
+  const stmt = db.prepare("INSERT OR IGNORE INTO jurisdictions (id, level, name) VALUES (?, ?, ?)");
   for (const j of JURISDICTIONS) stmt.run(j.id, j.level, j.name);
 }

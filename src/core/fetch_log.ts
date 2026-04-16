@@ -36,26 +36,15 @@ export function upsertFetchLog(db: Database.Database, row: FetchLogRow): void {
        scope = excluded.scope,
        fetched_at = excluded.fetched_at,
        last_rowcount = excluded.last_rowcount`,
-  ).run(
-    row.source,
-    row.endpoint_path,
-    row.args_hash,
-    row.scope,
-    row.fetched_at,
-    row.last_rowcount,
-  );
+  ).run(row.source, row.endpoint_path, row.args_hash, row.scope, row.fetched_at, row.last_rowcount);
 }
 
 export function evictStaleFetchLogRows(
   db: Database.Database,
   opts: { olderThanDays: number },
 ): { evictedCount: number } {
-  const cutoff = new Date(
-    Date.now() - opts.olderThanDays * 86400 * 1000,
-  ).toISOString();
-  const result = db
-    .prepare("DELETE FROM fetch_log WHERE fetched_at < ?")
-    .run(cutoff);
+  const cutoff = new Date(Date.now() - opts.olderThanDays * 86400 * 1000).toISOString();
+  const result = db.prepare("DELETE FROM fetch_log WHERE fetched_at < ?").run(cutoff);
   return { evictedCount: Number(result.changes) };
 }
 

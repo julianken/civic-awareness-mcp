@@ -24,18 +24,22 @@ beforeEach(() => {
   seedJurisdictions(store.db);
 
   const { entity: jones } = upsertEntity(store.db, {
-    kind: "person", name: "Brian Jones", jurisdiction: undefined,
+    kind: "person",
+    name: "Brian Jones",
+    jurisdiction: undefined,
     external_ids: { openstates_person: "ocd-person/xyz" },
     metadata: { party: "Republican", district: "40", chamber: "upper" },
   });
 
   upsertDocument(store.db, {
-    kind: "bill", jurisdiction: "us-ca",
+    kind: "bill",
+    jurisdiction: "us-ca",
     title: "SB 1338 — Vehicles: repossession.",
     summary: "Existing law prohibits interference...",
     occurred_at: "2026-04-09T00:00:00Z",
     source: {
-      name: "openstates", id: "ocd-bill/abc",
+      name: "openstates",
+      id: "ocd-bill/abc",
       url: "https://openstates.org/ca/bills/20252026/SB1338/",
     },
     references: [{ entity_id: jones.id, role: "sponsor" }],
@@ -47,16 +51,24 @@ beforeEach(() => {
       ],
       abstracts: [{ abstract: "Existing law prohibits interference..." }],
       subjects: ["Vehicles", "Repossession"],
-      versions: [{
-        note: "Introduced", date: "2026-02-20",
-        links: [{ url: "https://leginfo.legislature.ca.gov/xyz.pdf", media_type: "application/pdf" }],
-      }],
+      versions: [
+        {
+          note: "Introduced",
+          date: "2026-02-20",
+          links: [
+            { url: "https://leginfo.legislature.ca.gov/xyz.pdf", media_type: "application/pdf" },
+          ],
+        },
+      ],
       documents: [],
       related_bills: [],
-      sponsorships: [{
-        name: "Brian Jones", classification: "primary",
-        person: { id: "ocd-person/xyz", name: "Brian Jones", party: "Republican" },
-      }],
+      sponsorships: [
+        {
+          name: "Brian Jones",
+          classification: "primary",
+          person: { id: "ocd-person/xyz", name: "Brian Jones", party: "Republican" },
+        },
+      ],
     },
   });
 });
@@ -65,7 +77,9 @@ afterEach(() => store.close());
 describe("get_bill tool (state)", () => {
   it("returns full bill detail with entity-linked primary sponsor", async () => {
     const result = await handleGetBill(store.db, {
-      jurisdiction: "us-ca", session: "20252026", identifier: "SB 1338",
+      jurisdiction: "us-ca",
+      session: "20252026",
+      identifier: "SB 1338",
     });
     expect(result.bill?.identifier).toBe("SB 1338");
     expect(result.bill?.title).toBe("Vehicles: repossession.");
@@ -87,7 +101,9 @@ describe("get_bill tool (state)", () => {
       },
     });
     const result = await handleGetBill(store.db, {
-      jurisdiction: "us-ca", session: "20252026", identifier: "ZZ 9999",
+      jurisdiction: "us-ca",
+      session: "20252026",
+      identifier: "ZZ 9999",
     });
     expect(result.bill).toBeNull();
     expect(result.stale_notice?.reason).toBe("not_found");

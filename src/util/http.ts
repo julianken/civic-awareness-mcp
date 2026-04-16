@@ -37,10 +37,7 @@ export class RateLimiter {
     const elapsed = now - this.lastRefill;
     const newTokens = (elapsed / this.opts.intervalMs) * this.opts.tokensPerInterval;
     if (newTokens >= 1) {
-      this.tokens = Math.min(
-        this.opts.tokensPerInterval,
-        this.tokens + Math.floor(newTokens),
-      );
+      this.tokens = Math.min(this.opts.tokensPerInterval, this.tokens + Math.floor(newTokens));
       this.lastRefill = now;
     }
   }
@@ -93,7 +90,14 @@ export async function rateLimitedFetch(url: string, opts: FetchOptions): Promise
       throw err;
     }
     const duration_ms = Math.round(performance.now() - t0);
-    const meta = { url: redactSecrets(url), method: init.method ?? "GET", status, duration_ms, attempt: attempt + 1, host };
+    const meta = {
+      url: redactSecrets(url),
+      method: init.method ?? "GET",
+      status,
+      duration_ms,
+      attempt: attempt + 1,
+      host,
+    };
     if (status === 429 || status >= 500) {
       logger.warn("upstream fetch failed", meta);
       if (attempt >= retries) return res;

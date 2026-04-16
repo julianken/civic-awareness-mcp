@@ -25,7 +25,9 @@ describe("emptyFeedDiagnostic", () => {
 
   it("returns no_events_in_window when rows exist but outside the window", () => {
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "Old — B",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "Old — B",
       occurred_at: "2024-01-01T00:00:00Z",
       source: { name: "openstates", id: "old", url: "https://ex" },
     });
@@ -44,7 +46,9 @@ describe("emptyFeedDiagnostic", () => {
 
   it("returns no_events_in_window for jurisdiction '*' when any jurisdiction has data", () => {
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "SB 1 — A",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "SB 1 — A",
       occurred_at: "2025-09-18T00:00:00Z",
       source: { name: "openstates", id: "tx-1", url: "https://ex" },
     });

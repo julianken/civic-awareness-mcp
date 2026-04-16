@@ -54,9 +54,10 @@ function makeProjectionRoot(name: string): ReturnType<typeof makeEntity> {
     `/member/${bioguide}/sponsored-legislation`,
     `/member/${bioguide}/cosponsored-legislation`,
   ]) {
-    const tool = endpoint.endsWith("sponsored-legislation") && !endpoint.includes("cosponsored")
-      ? "fetchMemberSponsored"
-      : "fetchMemberCosponsored";
+    const tool =
+      endpoint.endsWith("sponsored-legislation") && !endpoint.includes("cosponsored")
+        ? "fetchMemberSponsored"
+        : "fetchMemberCosponsored";
     upsertFetchLog(store.db, {
       source: "congress",
       endpoint_path: endpoint,
@@ -234,13 +235,17 @@ describe("handleEntityConnections — projection", () => {
 
 describe("handleEntityConnections — R15 fanout", () => {
   it("entity with no external IDs → short-circuits with empty_reason=no_external_ids", async () => {
-    const sponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
+    const sponsoredSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
       .mockResolvedValue({ documentsUpserted: 0 });
-    const cosponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
+    const cosponsoredSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
       .mockResolvedValue({ documentsUpserted: 0 });
-    const openstatesSpy = vi.spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor")
+    const openstatesSpy = vi
+      .spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor")
       .mockResolvedValue({ documentsUpserted: 0 });
-    const fecSpy = vi.spyOn(OpenFecAdapter.prototype, "fetchContributionsToCandidate")
+    const fecSpy = vi
+      .spyOn(OpenFecAdapter.prototype, "fetchContributionsToCandidate")
       .mockResolvedValue({ documentsUpserted: 0 });
 
     const a = makeEntity("Bare Entity");
@@ -268,13 +273,17 @@ describe("handleEntityConnections — R15 fanout", () => {
   });
 
   it("bioguide only → sponsored + cosponsored Congress.gov methods invoked", async () => {
-    const sponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
+    const sponsoredSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
       .mockResolvedValue({ documentsUpserted: 0 });
-    const cosponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
+    const cosponsoredSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
       .mockResolvedValue({ documentsUpserted: 0 });
-    const openstatesSpy = vi.spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor")
+    const openstatesSpy = vi
+      .spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor")
       .mockResolvedValue({ documentsUpserted: 0 });
-    const fecSpy = vi.spyOn(OpenFecAdapter.prototype, "fetchContributionsToCandidate")
+    const fecSpy = vi
+      .spyOn(OpenFecAdapter.prototype, "fetchContributionsToCandidate")
       .mockResolvedValue({ documentsUpserted: 0 });
 
     const e = makeEntity("Sen. Bioguide", { bioguide: "S000148" });
@@ -289,13 +298,17 @@ describe("handleEntityConnections — R15 fanout", () => {
   });
 
   it("openstates_person only → fetchBillsBySponsor invoked", async () => {
-    const sponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
+    const sponsoredSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
       .mockResolvedValue({ documentsUpserted: 0 });
-    const cosponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
+    const cosponsoredSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
       .mockResolvedValue({ documentsUpserted: 0 });
-    const openstatesSpy = vi.spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor")
+    const openstatesSpy = vi
+      .spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor")
       .mockResolvedValue({ documentsUpserted: 0 });
-    const fecSpy = vi.spyOn(OpenFecAdapter.prototype, "fetchContributionsToCandidate")
+    const fecSpy = vi
+      .spyOn(OpenFecAdapter.prototype, "fetchContributionsToCandidate")
       .mockResolvedValue({ documentsUpserted: 0 });
 
     const e = makeEntity("State Legislator", { openstates_person: "ocd-person/tx-1" }, "us-tx");
@@ -313,13 +326,17 @@ describe("handleEntityConnections — R15 fanout", () => {
   });
 
   it("fec_candidate only → fetchContributionsToCandidate invoked", async () => {
-    const sponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
+    const sponsoredSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
       .mockResolvedValue({ documentsUpserted: 0 });
-    const cosponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
+    const cosponsoredSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
       .mockResolvedValue({ documentsUpserted: 0 });
-    const openstatesSpy = vi.spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor")
+    const openstatesSpy = vi
+      .spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor")
       .mockResolvedValue({ documentsUpserted: 0 });
-    const fecSpy = vi.spyOn(OpenFecAdapter.prototype, "fetchContributionsToCandidate")
+    const fecSpy = vi
+      .spyOn(OpenFecAdapter.prototype, "fetchContributionsToCandidate")
       .mockResolvedValue({ documentsUpserted: 0 });
 
     const e = makeEntity("FEC Candidate", { fec_candidate: "H0AZ01234" });
@@ -333,32 +350,45 @@ describe("handleEntityConnections — R15 fanout", () => {
   });
 
   it("passes a non-default fanout limit to fetchBillsBySponsor (>20)", async () => {
-    const openstatesSpy = vi.spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor")
+    const openstatesSpy = vi
+      .spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor")
       .mockResolvedValue({ documentsUpserted: 0 });
 
     const e = makeEntity("Sponsor Person", { openstates_person: "ocd-person/tx-2" }, "us-tx");
     await handleEntityConnections(store.db, { id: e.id, depth: 1, min_co_occurrences: 1 });
 
     expect(openstatesSpy).toHaveBeenCalledOnce();
-    const call = openstatesSpy.mock.calls[0][1] as { sponsor: string; jurisdiction: string; limit?: number };
+    const call = openstatesSpy.mock.calls[0][1] as {
+      sponsor: string;
+      jurisdiction: string;
+      limit?: number;
+    };
     expect(call.limit).toBeGreaterThan(20);
   });
 
   it("all three external IDs → 4 adapter methods invoked exactly once each", async () => {
-    const sponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
+    const sponsoredSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
       .mockResolvedValue({ documentsUpserted: 0 });
-    const cosponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
+    const cosponsoredSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
       .mockResolvedValue({ documentsUpserted: 0 });
-    const openstatesSpy = vi.spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor")
+    const openstatesSpy = vi
+      .spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor")
       .mockResolvedValue({ documentsUpserted: 0 });
-    const fecSpy = vi.spyOn(OpenFecAdapter.prototype, "fetchContributionsToCandidate")
+    const fecSpy = vi
+      .spyOn(OpenFecAdapter.prototype, "fetchContributionsToCandidate")
       .mockResolvedValue({ documentsUpserted: 0 });
 
-    const e = makeEntity("Multi-ID Person", {
-      bioguide: "S000148",
-      openstates_person: "ocd-person/ny-schumer",
-      fec_candidate: "S2NY00123",
-    }, "us-ny");
+    const e = makeEntity(
+      "Multi-ID Person",
+      {
+        bioguide: "S000148",
+        openstates_person: "ocd-person/ny-schumer",
+        fec_candidate: "S2NY00123",
+      },
+      "us-ny",
+    );
     await handleEntityConnections(store.db, { id: e.id, depth: 1, min_co_occurrences: 1 });
 
     expect(sponsoredSpy).toHaveBeenCalledOnce();
@@ -368,9 +398,11 @@ describe("handleEntityConnections — R15 fanout", () => {
   });
 
   it("cache hit: second call within TTL skips the adapter calls", async () => {
-    const sponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
+    const sponsoredSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
       .mockResolvedValue({ documentsUpserted: 0 });
-    const cosponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
+    const cosponsoredSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
       .mockResolvedValue({ documentsUpserted: 0 });
 
     const e = makeEntity("Cached Person", { bioguide: "S000148" });
@@ -394,9 +426,10 @@ describe("handleEntityConnections — R15 fanout", () => {
       "/member/S000148/sponsored-legislation",
       "/member/S000148/cosponsored-legislation",
     ]) {
-      const tool = endpoint.endsWith("sponsored-legislation") && !endpoint.includes("cosponsored")
-        ? "fetchMemberSponsored"
-        : "fetchMemberCosponsored";
+      const tool =
+        endpoint.endsWith("sponsored-legislation") && !endpoint.includes("cosponsored")
+          ? "fetchMemberSponsored"
+          : "fetchMemberCosponsored";
       upsertFetchLog(store.db, {
         source: "congress",
         endpoint_path: endpoint,
@@ -407,10 +440,12 @@ describe("handleEntityConnections — R15 fanout", () => {
       });
     }
 
-    vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
-      .mockRejectedValue(new Error("simulated upstream failure"));
-    vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
-      .mockRejectedValue(new Error("simulated upstream failure"));
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills").mockRejectedValue(
+      new Error("simulated upstream failure"),
+    );
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills").mockRejectedValue(
+      new Error("simulated upstream failure"),
+    );
 
     const res = await handleEntityConnections(store.db, {
       id: e.id,
@@ -436,7 +471,11 @@ describe("handleEntityConnections — R15 fanout", () => {
     const stale = new Date(Date.now() - ageMs).toISOString();
     for (const [endpoint, tool, args] of [
       ["/member/S000148/sponsored-legislation", "fetchMemberSponsored", { bioguide: "S000148" }],
-      ["/member/S000148/cosponsored-legislation", "fetchMemberCosponsored", { bioguide: "S000148" }],
+      [
+        "/member/S000148/cosponsored-legislation",
+        "fetchMemberCosponsored",
+        { bioguide: "S000148" },
+      ],
     ] as const) {
       upsertFetchLog(store.db, {
         source: "congress",
@@ -456,12 +495,15 @@ describe("handleEntityConnections — R15 fanout", () => {
       last_rowcount: 0,
     });
 
-    vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
-      .mockRejectedValue(new Error("congress sponsored exploded"));
-    vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
-      .mockRejectedValue(new Error("congress cosponsored exploded"));
-    vi.spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor")
-      .mockRejectedValue(new Error("openstates exploded"));
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills").mockRejectedValue(
+      new Error("congress sponsored exploded"),
+    );
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills").mockRejectedValue(
+      new Error("congress cosponsored exploded"),
+    );
+    vi.spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor").mockRejectedValue(
+      new Error("openstates exploded"),
+    );
 
     const res = await handleEntityConnections(store.db, {
       id: e.id,
@@ -479,10 +521,12 @@ describe("handleEntityConnections — R15 fanout", () => {
 
   it("upstream failure with no cache → error propagates", async () => {
     const e = makeEntity("Cold-Fail Person", { bioguide: "S000148" });
-    vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
-      .mockRejectedValue(new Error("network down"));
-    vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
-      .mockRejectedValue(new Error("network down"));
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills").mockRejectedValue(
+      new Error("network down"),
+    );
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills").mockRejectedValue(
+      new Error("network down"),
+    );
 
     await expect(
       handleEntityConnections(store.db, { id: e.id, depth: 1, min_co_occurrences: 1 }),
@@ -490,10 +534,12 @@ describe("handleEntityConnections — R15 fanout", () => {
   });
 
   it("endpoint_path includes the ID → different entities get different cache rows", async () => {
-    const sponsoredSpy = vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
+    const sponsoredSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
       .mockResolvedValue({ documentsUpserted: 0 });
-    vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
-      .mockResolvedValue({ documentsUpserted: 0 });
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills").mockResolvedValue({
+      documentsUpserted: 0,
+    });
 
     const e1 = makeEntity("Person One", { bioguide: "AAA111" });
     const e2 = makeEntity("Person Two", { bioguide: "BBB222" });
@@ -508,10 +554,12 @@ describe("handleEntityConnections — R15 fanout", () => {
 
 describe("handleEntityConnections via_roles", () => {
   it("distinguishes sponsor vs cosponsor on separate bills between the same two people", async () => {
-    vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
-      .mockResolvedValue({ documentsUpserted: 0 });
-    vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
-      .mockResolvedValue({ documentsUpserted: 0 });
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills").mockResolvedValue({
+      documentsUpserted: 0,
+    });
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills").mockResolvedValue({
+      documentsUpserted: 0,
+    });
 
     const a = makeProjectionRoot("Alice VR");
     const b = makeEntity("Bob VR");
@@ -555,10 +603,12 @@ describe("handleEntityConnections via_roles", () => {
   });
 
   it("depth=2 second-hop edge carries the to-node's role on the shared document", async () => {
-    vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
-      .mockResolvedValue({ documentsUpserted: 0 });
-    vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
-      .mockResolvedValue({ documentsUpserted: 0 });
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills").mockResolvedValue({
+      documentsUpserted: 0,
+    });
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills").mockResolvedValue({
+      documentsUpserted: 0,
+    });
 
     const a = makeProjectionRoot("Alice D2VR");
     const b = makeEntity("Bob D2VR");
@@ -606,10 +656,12 @@ describe("handleEntityConnections via_roles", () => {
   });
 
   it("exposes voter role on vote documents", async () => {
-    vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
-      .mockResolvedValue({ documentsUpserted: 0 });
-    vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
-      .mockResolvedValue({ documentsUpserted: 0 });
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills").mockResolvedValue({
+      documentsUpserted: 0,
+    });
+    vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills").mockResolvedValue({
+      documentsUpserted: 0,
+    });
 
     const x = makeProjectionRoot("Person VR X");
     const y = makeEntity("Person VR Y");

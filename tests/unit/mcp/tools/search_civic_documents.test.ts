@@ -10,25 +10,29 @@ let store: Store;
 
 function seedDocs() {
   upsertDocument(store.db, {
-    kind: "bill", jurisdiction: "us-tx",
+    kind: "bill",
+    jurisdiction: "us-tx",
     title: "HB1234 — civic awareness and transparency",
     occurred_at: "2026-04-10T00:00:00Z",
     source: { name: "openstates", id: "1", url: "https://openstates.org/tx/bills/HB1234" },
   });
   upsertDocument(store.db, {
-    kind: "bill", jurisdiction: "us-tx",
+    kind: "bill",
+    jurisdiction: "us-tx",
     title: "HB9999 — unrelated matter",
     occurred_at: "2026-04-09T00:00:00Z",
     source: { name: "openstates", id: "2", url: "https://openstates.org/tx/bills/HB9999" },
   });
   upsertDocument(store.db, {
-    kind: "bill", jurisdiction: "us-ca",
+    kind: "bill",
+    jurisdiction: "us-ca",
     title: "AB123 — california civic awareness act",
     occurred_at: "2026-04-08T00:00:00Z",
     source: { name: "openstates", id: "3", url: "https://openstates.org/ca/bills/AB123" },
   });
   upsertDocument(store.db, {
-    kind: "vote", jurisdiction: "us-tx",
+    kind: "vote",
+    jurisdiction: "us-tx",
     title: "Vote on HB1234 civic awareness",
     occurred_at: "2026-04-07T00:00:00Z",
     source: { name: "openstates", id: "v1", url: "https://openstates.org/tx/votes/v1" },
@@ -55,7 +59,8 @@ describe("search_civic_documents", () => {
   it("filters by jurisdiction", async () => {
     seedDocs();
     const res = await handleSearchDocuments(store.db, {
-      q: "civic awareness", jurisdiction: "us-tx",
+      q: "civic awareness",
+      jurisdiction: "us-tx",
     });
     expect(res.results.length).toBeGreaterThanOrEqual(1);
     for (const r of res.results) {
@@ -66,7 +71,8 @@ describe("search_civic_documents", () => {
   it("filters by kinds", async () => {
     seedDocs();
     const res = await handleSearchDocuments(store.db, {
-      q: "civic awareness", kinds: ["vote"],
+      q: "civic awareness",
+      kinds: ["vote"],
     });
     expect(res.results).toHaveLength(1);
     expect(res.results[0].kind).toBe("vote");
@@ -75,7 +81,8 @@ describe("search_civic_documents", () => {
   it("filters by source", async () => {
     seedDocs();
     const res = await handleSearchDocuments(store.db, {
-      q: "HB", sources: ["openstates"],
+      q: "HB",
+      sources: ["openstates"],
     });
     expect(res.results.length).toBeGreaterThanOrEqual(2);
     const srcs = res.sources.map((s) => s.name);
@@ -110,7 +117,9 @@ describe("search_civic_documents", () => {
   it("sets empty_reason: store_not_warmed when jurisdiction has no docs", async () => {
     seedDocs();
     const result = await handleSearchDocuments(store.db, {
-      q: "anything", jurisdiction: "us-ny", limit: 10,
+      q: "anything",
+      jurisdiction: "us-ny",
+      limit: 10,
     });
     expect(result.results).toEqual([]);
     expect(result.empty_reason).toBe("store_not_warmed");

@@ -13,7 +13,8 @@ describe("civic-state-mcp server", () => {
     server = buildServer({ dbPath: ":memory:" });
     const { mcp } = server;
 
-    const tools = (mcp as unknown as { _registeredTools: Record<string, unknown> })._registeredTools;
+    const tools = (mcp as unknown as { _registeredTools: Record<string, unknown> })
+      ._registeredTools;
     expect(Object.keys(tools)).toHaveLength(9);
 
     const expectedTools = [
@@ -34,7 +35,8 @@ describe("civic-state-mcp server", () => {
 
   it("does NOT register federal-only tools", () => {
     server = buildServer({ dbPath: ":memory:" });
-    const tools = (server.mcp as unknown as { _registeredTools: Record<string, unknown> })._registeredTools;
+    const tools = (server.mcp as unknown as { _registeredTools: Record<string, unknown> })
+      ._registeredTools;
 
     expect(tools).not.toHaveProperty("recent_contributions");
     expect(tools).not.toHaveProperty("get_vote");

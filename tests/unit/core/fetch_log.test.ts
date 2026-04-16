@@ -76,8 +76,7 @@ describe("fetch_log", () => {
       fetched_at: new Date(now - 30 * 60 * 1000).toISOString(), // 30 min ago
       last_rowcount: 1,
     });
-    expect(isFetchLogFresh(db, "openstates", "/people", "abc123", 60 * 60 * 1000))
-      .toBe(true);
+    expect(isFetchLogFresh(db, "openstates", "/people", "abc123", 60 * 60 * 1000)).toBe(true);
   });
 
   it("isFetchLogFresh returns false when past TTL", () => {
@@ -90,13 +89,11 @@ describe("fetch_log", () => {
       fetched_at: new Date(now - 2 * 60 * 60 * 1000).toISOString(), // 2h ago
       last_rowcount: 1,
     });
-    expect(isFetchLogFresh(db, "openstates", "/people", "abc123", 60 * 60 * 1000))
-      .toBe(false);
+    expect(isFetchLogFresh(db, "openstates", "/people", "abc123", 60 * 60 * 1000)).toBe(false);
   });
 
   it("isFetchLogFresh returns false when row is absent", () => {
-    expect(isFetchLogFresh(db, "openstates", "/people", "unknown", 60 * 60 * 1000))
-      .toBe(false);
+    expect(isFetchLogFresh(db, "openstates", "/people", "unknown", 60 * 60 * 1000)).toBe(false);
   });
 
   describe("evictStaleFetchLogRows", () => {

@@ -10,7 +10,10 @@
       "bill": { "type": "HR", "number": "1234" },
       "positions": [
         { "member": { "bioguideId": "P000197", "name": "Pelosi, Nancy" }, "votePosition": "Yea" },
-        { "member": { "bioguideId": "S000148", "name": "Schumer, Charles E." }, "votePosition": "Nay" }
+        {
+          "member": { "bioguideId": "S000148", "name": "Schumer, Charles E." },
+          "votePosition": "Nay"
+        }
       ],
       "totals": { "yea": 218, "nay": 210, "present": 0, "notVoting": 7 }
     }

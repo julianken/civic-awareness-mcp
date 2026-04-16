@@ -25,8 +25,13 @@ import {
 const coreSqlPath = fileURLToPath(new URL("../core/schema.sql", import.meta.url));
 const federalSqlPath = fileURLToPath(new URL("./schema.sql", import.meta.url));
 
-export interface BuildServerOptions { dbPath: string }
-export interface CivicAwarenessServer { mcp: McpServer; store: Store }
+export interface BuildServerOptions {
+  dbPath: string;
+}
+export interface CivicAwarenessServer {
+  mcp: McpServer;
+  store: Store;
+}
 
 export function buildServer(opts: BuildServerOptions): CivicAwarenessServer {
   const store = openStore(opts.dbPath, coreSqlPath, federalSqlPath);
@@ -38,8 +43,7 @@ export function buildServer(opts: BuildServerOptions): CivicAwarenessServer {
   mcp.registerTool(
     "recent_bills",
     {
-      description:
-        "List recently-updated U.S. federal legislative bills from Congress.gov.",
+      description: "List recently-updated U.S. federal legislative bills from Congress.gov.",
       inputSchema: RecentBillsInput.shape,
     },
     async (input) => {

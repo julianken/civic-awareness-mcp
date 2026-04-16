@@ -14,20 +14,13 @@ beforeEach(() => {
   vi.spyOn(global, "fetch").mockImplementation(async (url: string | URL | Request) => {
     const u = String(url);
     if (u.includes("/member"))
-      return new Response(
-        JSON.stringify({ members: [], pagination: { count: 0 } }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify({ members: [], pagination: { count: 0 } }), {
+        status: 200,
+      });
     if (u.includes("/bill"))
-      return new Response(
-        JSON.stringify({ bills: [], pagination: { count: 0 } }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify({ bills: [], pagination: { count: 0 } }), { status: 200 });
     if (u.includes("/vote"))
-      return new Response(
-        JSON.stringify({ votes: [], pagination: { count: 0 } }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify({ votes: [], pagination: { count: 0 } }), { status: 200 });
     return new Response("not found", { status: 404 });
   });
 });
@@ -59,25 +52,21 @@ describe("refresh CLI — openfec source", () => {
     vi.spyOn(global, "fetch").mockImplementation(async (url: string | URL | Request) => {
       const u = String(url);
       if (u.includes("/candidates/search"))
-        return new Response(
-          JSON.stringify({ results: [], pagination: { count: 0, pages: 1 } }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify({ results: [], pagination: { count: 0, pages: 1 } }), {
+          status: 200,
+        });
       if (u.includes("/committees"))
-        return new Response(
-          JSON.stringify({ results: [], pagination: { count: 0, pages: 1 } }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify({ results: [], pagination: { count: 0, pages: 1 } }), {
+          status: 200,
+        });
       if (u.includes("/schedules/schedule_a"))
-        return new Response(
-          JSON.stringify({ results: [], pagination: { count: 0, pages: 1 } }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify({ results: [], pagination: { count: 0, pages: 1 } }), {
+          status: 200,
+        });
       if (u.includes("/schedules/schedule_b"))
-        return new Response(
-          JSON.stringify({ results: [], pagination: { count: 0, pages: 1 } }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify({ results: [], pagination: { count: 0, pages: 1 } }), {
+          status: 200,
+        });
       return new Response("not found", { status: 404 });
     });
 
@@ -91,12 +80,15 @@ describe("refresh CLI — openfec source", () => {
   it("openfec URLs contain no bare 2-letter state path segment", async () => {
     vi.spyOn(global, "fetch").mockImplementation(async (url: string | URL | Request) => {
       const u = String(url);
-      if (u.includes("/candidates/search") || u.includes("/committees") ||
-          u.includes("/schedules/schedule_a") || u.includes("/schedules/schedule_b")) {
-        return new Response(
-          JSON.stringify({ results: [], pagination: { count: 0, pages: 1 } }),
-          { status: 200 },
-        );
+      if (
+        u.includes("/candidates/search") ||
+        u.includes("/committees") ||
+        u.includes("/schedules/schedule_a") ||
+        u.includes("/schedules/schedule_b")
+      ) {
+        return new Response(JSON.stringify({ results: [], pagination: { count: 0, pages: 1 } }), {
+          status: 200,
+        });
       }
       return new Response("not found", { status: 404 });
     });

@@ -159,16 +159,32 @@ describe("upsertEntity — fuzzy fallback with linking signal", () => {
   // Role-jurisdiction overlap is the linking signal.
   it("resolves typo name to existing legislator when role-jurisdiction overlaps", () => {
     upsertEntity(store.db, {
-      kind: "person", name: "Lake",
+      kind: "person",
+      name: "Lake",
       external_ids: { openstates_person: "ocd-person/lake" },
       metadata: {
-        roles: [{ jurisdiction: "us-tx", role: "state_legislator", from: "2021-01-12T00:00:00Z", to: null }],
+        roles: [
+          {
+            jurisdiction: "us-tx",
+            role: "state_legislator",
+            from: "2021-01-12T00:00:00Z",
+            to: null,
+          },
+        ],
       },
     });
     const r = upsertEntity(store.db, {
-      kind: "person", name: "Laake",
+      kind: "person",
+      name: "Laake",
       metadata: {
-        roles: [{ jurisdiction: "us-tx", role: "state_legislator", from: "2025-09-01T00:00:00Z", to: null }],
+        roles: [
+          {
+            jurisdiction: "us-tx",
+            role: "state_legislator",
+            from: "2025-09-01T00:00:00Z",
+            to: null,
+          },
+        ],
       },
     });
     expect(r.created).toBe(false);
@@ -178,13 +194,15 @@ describe("upsertEntity — fuzzy fallback with linking signal", () => {
 
   it("does NOT fuzzy-resolve without a linking signal", () => {
     upsertEntity(store.db, {
-      kind: "person", name: "Lake",
+      kind: "person",
+      name: "Lake",
       external_ids: { openstates_person: "ocd-person/lake" },
       metadata: { roles: [{ jurisdiction: "us-tx", role: "state_legislator" }] },
     });
     // "Laake" is distance-1 from "Lake" but has no linking signal.
     const r = upsertEntity(store.db, {
-      kind: "person", name: "Laake",
+      kind: "person",
+      name: "Laake",
     });
     expect(r.created).toBe(true);
   });

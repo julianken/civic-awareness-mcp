@@ -4,19 +4,24 @@ import { hashArgs, canonicalizeArgs } from "../../../src/core/args_hash.js";
 describe("args_hash", () => {
   describe("canonicalizeArgs", () => {
     it("lowercases + trims + collapses whitespace on string values", () => {
-      expect(canonicalizeArgs("resolve_person", { name: "Angus King" }))
-        .toBe('resolve_person:{"name":"angus king"}');
-      expect(canonicalizeArgs("resolve_person", { name: "angus king" }))
-        .toBe('resolve_person:{"name":"angus king"}');
-      expect(canonicalizeArgs("resolve_person", { name: "  Angus  King  " }))
-        .toBe('resolve_person:{"name":"angus king"}');
+      expect(canonicalizeArgs("resolve_person", { name: "Angus King" })).toBe(
+        'resolve_person:{"name":"angus king"}',
+      );
+      expect(canonicalizeArgs("resolve_person", { name: "angus king" })).toBe(
+        'resolve_person:{"name":"angus king"}',
+      );
+      expect(canonicalizeArgs("resolve_person", { name: "  Angus  King  " })).toBe(
+        'resolve_person:{"name":"angus king"}',
+      );
     });
 
     it("drops empty-string and undefined fields", () => {
-      expect(canonicalizeArgs("resolve_person", { name: "Angus King", role_hint: "" }))
-        .toBe('resolve_person:{"name":"angus king"}');
-      expect(canonicalizeArgs("resolve_person", { name: "Angus King", role_hint: undefined }))
-        .toBe('resolve_person:{"name":"angus king"}');
+      expect(canonicalizeArgs("resolve_person", { name: "Angus King", role_hint: "" })).toBe(
+        'resolve_person:{"name":"angus king"}',
+      );
+      expect(canonicalizeArgs("resolve_person", { name: "Angus King", role_hint: undefined })).toBe(
+        'resolve_person:{"name":"angus king"}',
+      );
     });
 
     it("sorts object keys in codepoint order", () => {
@@ -27,10 +32,12 @@ describe("args_hash", () => {
     });
 
     it("normalizes jurisdictions to lowercase", () => {
-      expect(canonicalizeArgs("recent_bills", { jurisdiction: "US-TX", days: 7 }))
-        .toBe('recent_bills:{"days":7,"jurisdiction":"us-tx"}');
-      expect(canonicalizeArgs("recent_bills", { jurisdiction: "us-tx", days: 7.0 }))
-        .toBe('recent_bills:{"days":7,"jurisdiction":"us-tx"}');
+      expect(canonicalizeArgs("recent_bills", { jurisdiction: "US-TX", days: 7 })).toBe(
+        'recent_bills:{"days":7,"jurisdiction":"us-tx"}',
+      );
+      expect(canonicalizeArgs("recent_bills", { jurisdiction: "us-tx", days: 7.0 })).toBe(
+        'recent_bills:{"days":7,"jurisdiction":"us-tx"}',
+      );
     });
 
     it("preserves array order (semantic)", () => {
@@ -46,27 +53,25 @@ describe("args_hash", () => {
     });
 
     it("cascade-drops empty nested objects", () => {
-      expect(canonicalizeArgs("tool", { a: { b: "" } }))
-        .toBe('tool:{}');
-      expect(canonicalizeArgs("tool", { a: { b: {} } }))
-        .toBe('tool:{}');
-      expect(canonicalizeArgs("tool", { a: { b: "", c: { d: undefined } } }))
-        .toBe('tool:{}');
+      expect(canonicalizeArgs("tool", { a: { b: "" } })).toBe("tool:{}");
+      expect(canonicalizeArgs("tool", { a: { b: {} } })).toBe("tool:{}");
+      expect(canonicalizeArgs("tool", { a: { b: "", c: { d: undefined } } })).toBe("tool:{}");
     });
 
     it("treats empty-options equal to omitted-options", () => {
-      expect(canonicalizeArgs("resolve_person", { name: "Angus King" }))
-        .toBe(canonicalizeArgs("resolve_person", { name: "Angus King", options: {} }));
+      expect(canonicalizeArgs("resolve_person", { name: "Angus King" })).toBe(
+        canonicalizeArgs("resolve_person", { name: "Angus King", options: {} }),
+      );
     });
 
     it("preserves empty-string elements in arrays (position-semantic)", () => {
-      expect(canonicalizeArgs("tool", { kinds: ["bill", "", "vote"] }))
-        .toBe('tool:{"kinds":["bill","","vote"]}');
+      expect(canonicalizeArgs("tool", { kinds: ["bill", "", "vote"] })).toBe(
+        'tool:{"kinds":["bill","","vote"]}',
+      );
     });
 
     it("preserves empty arrays as distinct from missing keys", () => {
-      expect(canonicalizeArgs("tool", { kinds: [] }))
-        .toBe('tool:{"kinds":[]}');
+      expect(canonicalizeArgs("tool", { kinds: [] })).toBe('tool:{"kinds":[]}');
     });
   });
 
@@ -77,13 +82,15 @@ describe("args_hash", () => {
     });
 
     it("collides identical canonical forms", () => {
-      expect(hashArgs("resolve_person", { name: "Angus King" }))
-        .toBe(hashArgs("resolve_person", { name: "  angus king  " }));
+      expect(hashArgs("resolve_person", { name: "Angus King" })).toBe(
+        hashArgs("resolve_person", { name: "  angus king  " }),
+      );
     });
 
     it("does not collide distinct inputs", () => {
-      expect(hashArgs("resolve_person", { name: "Smith" }))
-        .not.toBe(hashArgs("resolve_person", { name: "John Smith" }));
+      expect(hashArgs("resolve_person", { name: "Smith" })).not.toBe(
+        hashArgs("resolve_person", { name: "John Smith" }),
+      );
     });
   });
 });

@@ -13,9 +13,18 @@ beforeEach(() => {
   store = openStore(TEST_DB);
   seedJurisdictions(store.db);
 
-  const membersFixture = readFileSync("tests/integration/fixtures/congress-members-page1.json", "utf-8");
-  const billsFixture = readFileSync("tests/integration/fixtures/congress-bills-page1.json", "utf-8");
-  const votesFixture = readFileSync("tests/integration/fixtures/congress-votes-page1.json", "utf-8");
+  const membersFixture = readFileSync(
+    "tests/integration/fixtures/congress-members-page1.json",
+    "utf-8",
+  );
+  const billsFixture = readFileSync(
+    "tests/integration/fixtures/congress-bills-page1.json",
+    "utf-8",
+  );
+  const votesFixture = readFileSync(
+    "tests/integration/fixtures/congress-votes-page1.json",
+    "utf-8",
+  );
 
   vi.spyOn(global, "fetch").mockImplementation(async (url: string | URL | Request) => {
     const u = String(url);
@@ -65,9 +74,9 @@ describe("Congress.gov end-to-end", () => {
     await adapter.refresh({ db: store.db, maxPages: 1 });
 
     const count = (
-      store.db
-        .prepare("SELECT COUNT(*) c FROM entities WHERE kind = 'person'")
-        .get() as { c: number }
+      store.db.prepare("SELECT COUNT(*) c FROM entities WHERE kind = 'person'").get() as {
+        c: number;
+      }
     ).c;
     expect(count).toBe(2);
 

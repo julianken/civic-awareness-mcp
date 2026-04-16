@@ -73,9 +73,7 @@ export async function withShapedFetch<T>(
     }
     const waitMs = peekWaitMs();
     if (waitMs > RATE_LIMIT_WAIT_THRESHOLD_MS) {
-      throw new Error(
-        `Rate limit for ${key.source} requires ${Math.ceil(waitMs / 1000)}s wait`,
-      );
+      throw new Error(`Rate limit for ${key.source} requires ${Math.ceil(waitMs / 1000)}s wait`);
     }
     const result = await fetchAndWrite();
     // upsertFetchLog is the only write that needs to be atomic with

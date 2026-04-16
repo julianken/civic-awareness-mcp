@@ -85,15 +85,11 @@ function classify(result: unknown): { status: Row["status"]; notes: string } {
   if (hasError) notes += `error=${JSON.stringify(r.error)} `;
   if (!notes) notes = JSON.stringify(result).slice(0, 120);
 
-  const status = (hasEmptyReason || hasStaleNotice) ? "empty_diagnostic" : "ok";
+  const status = hasEmptyReason || hasStaleNotice ? "empty_diagnostic" : "ok";
   return { status, notes: notes.trim() };
 }
 
-async function run(
-  server: string,
-  tool: string,
-  fn: () => Promise<unknown>
-): Promise<void> {
+async function run(server: string, tool: string, fn: () => Promise<unknown>): Promise<void> {
   try {
     const result = await fn();
     const { status, notes } = classify(result);
@@ -117,11 +113,9 @@ async function main() {
   let stateEntityId: string | undefined;
 
   // --- FEDERAL TOOLS ---
-  await run("federal", "recent_bills", () =>
-    fedRecentBills(fedStore.db, { days: 3, limit: 5 })
-  );
+  await run("federal", "recent_bills", () => fedRecentBills(fedStore.db, { days: 3, limit: 5 }));
   await run("federal", "recent_votes", () =>
-    fedRecentVotes(fedStore.db, { jurisdiction: "us-federal", days: 3 })
+    fedRecentVotes(fedStore.db, { jurisdiction: "us-federal", days: 3 }),
   );
 
   // RecentContributionsInput requires { window: { from, to } }
@@ -130,7 +124,7 @@ async function main() {
   await run("federal", "recent_contributions", () =>
     fedRecentContributions(fedStore.db, {
       window: { from: weekAgo.toISOString(), to: now.toISOString() },
-    })
+    }),
   );
 
   // get_vote: provide composite key
@@ -140,12 +134,10 @@ async function main() {
       chamber: "upper",
       session: 1,
       roll_number: 1,
-    })
+    }),
   );
 
-  await run("federal", "search_civic_documents", () =>
-    fedSearchDocs(fedStore.db, { q: "health" })
-  );
+  await run("federal", "search_civic_documents", () => fedSearchDocs(fedStore.db, { q: "health" }));
 
   // search_entities — capture first result id for chaining
   await run("federal", "search_entities", async () => {
@@ -158,35 +150,35 @@ async function main() {
   });
 
   await run("federal", "resolve_person", () =>
-    fedResolvePerson(fedStore.db, { name: "Elizabeth Warren" })
+    fedResolvePerson(fedStore.db, { name: "Elizabeth Warren" }),
   );
 
   await run("federal", "get_entity", () =>
-    fedGetEntity(fedStore.db, { id: fedEntityId ?? "fake-id-does-not-exist" })
+    fedGetEntity(fedStore.db, { id: fedEntityId ?? "fake-id-does-not-exist" }),
   );
 
   await run("federal", "entity_connections", () =>
     fedEntityConnections(fedStore.db, {
       id: fedEntityId ?? "fake-id-does-not-exist",
       depth: 1,
-    })
+    }),
   );
 
   // --- STATE TOOLS ---
   await run("state", "recent_bills", () =>
-    stateRecentBills(stateStore.db, { jurisdiction: "us-tx", days: 7, limit: 5 })
+    stateRecentBills(stateStore.db, { jurisdiction: "us-tx", days: 7, limit: 5 }),
   );
 
   await run("state", "get_bill", () =>
-    stateGetBill(stateStore.db, { jurisdiction: "us-tx", session: "89R", identifier: "SB 11" })
+    stateGetBill(stateStore.db, { jurisdiction: "us-tx", session: "89R", identifier: "SB 11" }),
   );
 
   await run("state", "list_bills", () =>
-    stateListBills(stateStore.db, { jurisdiction: "us-tx", limit: 5 })
+    stateListBills(stateStore.db, { jurisdiction: "us-tx", limit: 5 }),
   );
 
   await run("state", "search_civic_documents", () =>
-    stateSearchDocs(stateStore.db, { q: "education" })
+    stateSearchDocs(stateStore.db, { q: "education" }),
   );
 
   // state search_entities — capture id for chaining
@@ -200,23 +192,23 @@ async function main() {
   });
 
   await run("state", "resolve_person", () =>
-    stateResolvePerson(stateStore.db, { name: "Greg Abbott", jurisdiction_hint: "us-tx" })
+    stateResolvePerson(stateStore.db, { name: "Greg Abbott", jurisdiction_hint: "us-tx" }),
   );
 
   // State uses entity_id field (not id) per GetEntityInput schema
   await run("state", "get_entity", () =>
-    stateGetEntity(stateStore.db, { entity_id: stateEntityId ?? "fake-id-does-not-exist" })
+    stateGetEntity(stateStore.db, { entity_id: stateEntityId ?? "fake-id-does-not-exist" }),
   );
 
   await run("state", "entity_connections", () =>
     stateEntityConnections(stateStore.db, {
       id: stateEntityId ?? "fake-id-does-not-exist",
       depth: 1,
-    })
+    }),
   );
 
   await run("state", "recent_votes", () =>
-    stateRecentVotes(stateStore.db, { jurisdiction: "us-tx", days: 14, limit: 5 })
+    stateRecentVotes(stateStore.db, { jurisdiction: "us-tx", days: 14, limit: 5 }),
   );
 
   fedStore.close();
@@ -233,7 +225,7 @@ async function main() {
   for (const row of rows) {
     const statusStr = row.status === "error" ? "ERROR **" : row.status;
     console.log(
-      `| ${pad(row.server, colWidths.server)} | ${pad(row.tool, colWidths.tool)} | ${pad(statusStr, colWidths.status)} | ${pad(row.notes, colWidths.notes)} |`
+      `| ${pad(row.server, colWidths.server)} | ${pad(row.tool, colWidths.tool)} | ${pad(statusStr, colWidths.status)} | ${pad(row.notes, colWidths.notes)} |`,
     );
   }
 
@@ -252,7 +244,9 @@ async function main() {
   const errorCount = rows.filter((r) => r.status === "error").length;
   const emptyCount = rows.filter((r) => r.status === "empty_diagnostic").length;
   const okCount = rows.filter((r) => r.status === "ok").length;
-  console.log(`\nSummary: ${rows.length} tools | ${okCount} ok | ${emptyCount} empty_diagnostic | ${errorCount} errors\n`);
+  console.log(
+    `\nSummary: ${rows.length} tools | ${okCount} ok | ${emptyCount} empty_diagnostic | ${errorCount} errors\n`,
+  );
 }
 
 main().catch((err) => {

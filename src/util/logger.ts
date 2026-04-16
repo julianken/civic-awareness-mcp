@@ -12,7 +12,7 @@ function log(level: Level, message: string, extra?: Record<string, unknown>): vo
 
 export const logger = {
   debug: (msg: string, x?: Record<string, unknown>) => log("debug", msg, x),
-  info:  (msg: string, x?: Record<string, unknown>) => log("info",  msg, x),
-  warn:  (msg: string, x?: Record<string, unknown>) => log("warn",  msg, x),
+  info: (msg: string, x?: Record<string, unknown>) => log("info", msg, x),
+  warn: (msg: string, x?: Record<string, unknown>) => log("warn", msg, x),
   error: (msg: string, x?: Record<string, unknown>) => log("error", msg, x),
 };

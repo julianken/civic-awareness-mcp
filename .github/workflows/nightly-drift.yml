@@ -9,8 +9,8 @@ name: Nightly upstream drift detection
 # users run the MCP server with their own local keys via .env.local or
 # claude_desktop_config.json — see README.
 #
-# This is the ONLY workflow. No CI on push/PR — tests run locally via
-# `pnpm test` and the nightly job catches upstream drift. Trigger
+# Scheduled live-API drift check. PR CI (typecheck/tests/build + MCP smoke)
+# runs in ci.yml; this job catches upstream shape drift daily. Trigger
 # manually from the Actions tab if you want to re-check immediately.
 
 on:

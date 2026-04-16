@@ -7,7 +7,11 @@ import type { EntityReference } from "../../core/types.js";
 import { requireEnv } from "../../util/env.js";
 import { logger } from "../../util/logger.js";
 import { RecentBillsInput } from "../schemas.js";
-import { emptyFeedDiagnostic, type EmptyFeedDiagnostic, type StaleNotice } from "../../core/shared.js";
+import {
+  emptyFeedDiagnostic,
+  type EmptyFeedDiagnostic,
+  type StaleNotice,
+} from "../../core/shared.js";
 
 const MAX_WARN_PER_CALL = 3;
 
@@ -67,7 +71,11 @@ export function buildSponsorSummary(
   const allPlaceholders = filtered.map(() => "?").join(",");
   const allRows = db
     .prepare(`SELECT id, name, metadata FROM entities WHERE id IN (${allPlaceholders})`)
-    .all(...filtered.map((r) => r.entity_id)) as Array<{ id: string; name: string; metadata: string }>;
+    .all(...filtered.map((r) => r.entity_id)) as Array<{
+    id: string;
+    name: string;
+    metadata: string;
+  }>;
   const byId = new Map(
     allRows.map((r) => [
       r.id,
@@ -174,10 +182,13 @@ export async function handleRecentBills(
     const results: BillSummary[] = filtered.map((d) => {
       const [identifier, ...titleParts] = d.title.split(" — ");
       if (titleParts.length === 0 && titleSplitWarns < MAX_WARN_PER_CALL) {
-        logger.warn("recent_bills: title missing ' — ' separator; identifier and title duplicated", {
-          document_id: d.id,
-          title: d.title,
-        });
+        logger.warn(
+          "recent_bills: title missing ' — ' separator; identifier and title duplicated",
+          {
+            document_id: d.id,
+            title: d.title,
+          },
+        );
         titleSplitWarns++;
       }
       return {
@@ -190,9 +201,7 @@ export async function handleRecentBills(
       };
     });
 
-    const capped = input.limit !== undefined
-      ? results.slice(0, input.limit)
-      : results;
+    const capped = input.limit !== undefined ? results.slice(0, input.limit) : results;
 
     const base: RecentBillsResponse = {
       results: capped,
@@ -224,9 +233,10 @@ export async function handleRecentBills(
     // to be meaningful; when `limit` is set we widen the window
     // to 365d so older re-touched bills can surface and the
     // native sort + limit do the real work.
-    const fromDateTime = input.limit !== undefined
-      ? new Date(to.getTime() - 365 * 86400 * 1000).toISOString()
-      : from.toISOString();
+    const fromDateTime =
+      input.limit !== undefined
+        ? new Date(to.getTime() - 365 * 86400 * 1000).toISOString()
+        : from.toISOString();
     const { documentsUpserted } = await adapter.fetchRecentBills(db, {
       fromDateTime,
       chamber: input.chamber,

@@ -21,9 +21,9 @@ describe("autoBootstrapIfNeeded", () => {
     expect(existsSync(TEST_DB)).toBe(true);
 
     const store: Store = openStore(TEST_DB);
-    const count = (store.db
-      .prepare("SELECT COUNT(*) AS n FROM jurisdictions")
-      .get() as { n: number }).n;
+    const count = (
+      store.db.prepare("SELECT COUNT(*) AS n FROM jurisdictions").get() as { n: number }
+    ).n;
     store.close();
     expect(count).toBeGreaterThan(0);
   });
@@ -31,16 +31,16 @@ describe("autoBootstrapIfNeeded", () => {
   it("is a no-op when the DB is already bootstrapped", async () => {
     await autoBootstrapIfNeeded(TEST_DB);
     const store1: Store = openStore(TEST_DB);
-    const count1 = (store1.db
-      .prepare("SELECT COUNT(*) AS n FROM jurisdictions")
-      .get() as { n: number }).n;
+    const count1 = (
+      store1.db.prepare("SELECT COUNT(*) AS n FROM jurisdictions").get() as { n: number }
+    ).n;
     store1.close();
 
     await autoBootstrapIfNeeded(TEST_DB);
     const store2: Store = openStore(TEST_DB);
-    const count2 = (store2.db
-      .prepare("SELECT COUNT(*) AS n FROM jurisdictions")
-      .get() as { n: number }).n;
+    const count2 = (
+      store2.db.prepare("SELECT COUNT(*) AS n FROM jurisdictions").get() as { n: number }
+    ).n;
     store2.close();
 
     expect(count2).toBe(count1);

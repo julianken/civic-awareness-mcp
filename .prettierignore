@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+coverage/
+.pnpm-store/
+data/
+
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+pnpm-lock.yaml
+
+**/*.sql

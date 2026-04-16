@@ -6,7 +6,9 @@ import { logger } from "../../util/logger.js";
 const coreSqlPath = fileURLToPath(new URL("../../core/schema.sql", import.meta.url));
 const stateSqlPath = fileURLToPath(new URL("../schema.sql", import.meta.url));
 
-export interface BootstrapOptions { dbPath: string }
+export interface BootstrapOptions {
+  dbPath: string;
+}
 
 export async function bootstrap(opts: BootstrapOptions): Promise<void> {
   logger.info("bootstrapping state store", { dbPath: opts.dbPath });

@@ -8,10 +8,10 @@ Two [MCP](https://modelcontextprotocol.io) servers for US civic data — one for
 
 ## Servers
 
-| Server | Source | Jurisdictions | Package |
-|--------|--------|---------------|---------|
-| `civic-federal-mcp` | Congress.gov + OpenFEC | US federal | `npx civic-federal-mcp` |
-| `civic-state-mcp` | OpenStates | 50 states + DC | `npx civic-state-mcp` |
+| Server              | Source                 | Jurisdictions  | Package                 |
+| ------------------- | ---------------------- | -------------- | ----------------------- |
+| `civic-federal-mcp` | Congress.gov + OpenFEC | US federal     | `npx civic-federal-mcp` |
+| `civic-state-mcp`   | OpenStates             | 50 states + DC | `npx civic-state-mcp`   |
 
 Each server reads/writes-through to a local SQLite store as a TTL cache. Every response includes a `sources: { name, url }[]` array for provenance. No tool synthesizes summaries — that is the LLM's job.
 
@@ -19,31 +19,31 @@ Each server reads/writes-through to a local SQLite store as a TTL cache. Every r
 
 ### civic-federal-mcp (9 tools)
 
-| Tool | Kind | What it answers |
-|------|------|-----------------|
-| `recent_bills` | feed | Bills introduced or acted on in the last N days (Congress.gov) |
-| `recent_votes` | feed | Roll-call votes in the last N days, yea/nay/present tallies |
-| `recent_contributions` | feed | Federal campaign contributions in a date window (OpenFEC) |
-| `search_civic_documents` | search | Title search across cached federal bills, votes, contributions |
-| `search_entities` | entity | Name search across Members of Congress + FEC candidates/committees |
-| `get_entity` | entity | Entity detail + role history + recent documents |
-| `resolve_person` | entity | Disambiguate a name into one or more Person entity IDs |
-| `entity_connections` | entity | Co-occurrence graph via bills, votes, contributions (depth 1–2) |
-| `get_vote` | detail | Full roll-call vote with per-legislator positions |
+| Tool                     | Kind   | What it answers                                                    |
+| ------------------------ | ------ | ------------------------------------------------------------------ |
+| `recent_bills`           | feed   | Bills introduced or acted on in the last N days (Congress.gov)     |
+| `recent_votes`           | feed   | Roll-call votes in the last N days, yea/nay/present tallies        |
+| `recent_contributions`   | feed   | Federal campaign contributions in a date window (OpenFEC)          |
+| `search_civic_documents` | search | Title search across cached federal bills, votes, contributions     |
+| `search_entities`        | entity | Name search across Members of Congress + FEC candidates/committees |
+| `get_entity`             | entity | Entity detail + role history + recent documents                    |
+| `resolve_person`         | entity | Disambiguate a name into one or more Person entity IDs             |
+| `entity_connections`     | entity | Co-occurrence graph via bills, votes, contributions (depth 1–2)    |
+| `get_vote`               | detail | Full roll-call vote with per-legislator positions                  |
 
 ### civic-state-mcp (9 tools)
 
-| Tool | Kind | What it answers |
-|------|------|-----------------|
-| `recent_bills` | feed | Bills introduced or acted on in the last N days (OpenStates, per jurisdiction) |
-| `recent_votes` | feed | Roll-call votes in the last N days, chamber + tally (OpenStates, per jurisdiction) |
-| `get_bill` | detail | Full bill detail: actions, versions, sponsors, subjects |
-| `list_bills` | feed | Predicate-first bill listing by sponsor / subject / classification / session |
-| `search_civic_documents` | search | Title search across cached state bills |
-| `search_entities` | entity | Name search across state legislators (OpenStates) |
-| `get_entity` | entity | Entity detail + role history + recent documents |
-| `resolve_person` | entity | Disambiguate a name into one or more Person entity IDs |
-| `entity_connections` | entity | Co-occurrence graph via shared sponsored bills (depth 1–2) |
+| Tool                     | Kind   | What it answers                                                                    |
+| ------------------------ | ------ | ---------------------------------------------------------------------------------- |
+| `recent_bills`           | feed   | Bills introduced or acted on in the last N days (OpenStates, per jurisdiction)     |
+| `recent_votes`           | feed   | Roll-call votes in the last N days, chamber + tally (OpenStates, per jurisdiction) |
+| `get_bill`               | detail | Full bill detail: actions, versions, sponsors, subjects                            |
+| `list_bills`             | feed   | Predicate-first bill listing by sponsor / subject / classification / session       |
+| `search_civic_documents` | search | Title search across cached state bills                                             |
+| `search_entities`        | entity | Name search across state legislators (OpenStates)                                  |
+| `get_entity`             | entity | Entity detail + role history + recent documents                                    |
+| `resolve_person`         | entity | Disambiguate a name into one or more Person entity IDs                             |
+| `entity_connections`     | entity | Co-occurrence graph via shared sponsored bills (depth 1–2)                         |
 
 ## Installation
 
@@ -68,6 +68,7 @@ pnpm start:state
 ```
 
 For development (no build step):
+
 ```bash
 pnpm dev:federal
 pnpm dev:state
@@ -87,6 +88,7 @@ pnpm refresh:state -- --source=openstates --jurisdictions=tx --max-pages=1
 ```
 
 To prune stale fetch-log rows (recommended monthly):
+
 ```bash
 pnpm evict-fetch-log
 ```
@@ -120,14 +122,14 @@ To run both servers locally, add to `~/Library/Application Support/Claude/claude
 
 ## Environment variables
 
-| Variable | Server | Description |
-|----------|--------|-------------|
-| `API_DATA_GOV_KEY` | federal | api.data.gov key (Congress.gov + OpenFEC) |
-| `OPENSTATES_API_KEY` | state | OpenStates v3 API key |
-| `CIVIC_FEDERAL_DB_PATH` | federal | SQLite path (default `./data/federal.db`) |
-| `CIVIC_STATE_DB_PATH` | state | SQLite path (default `./data/state.db`) |
-| `CIVIC_AWARENESS_DAILY_BUDGET` | both | Optional daily API spend cap (unused by default) |
-| `LOG_LEVEL` | both | `debug` / `info` / `warn` / `error` (default `info`, JSON to stderr) |
+| Variable                       | Server  | Description                                                          |
+| ------------------------------ | ------- | -------------------------------------------------------------------- |
+| `API_DATA_GOV_KEY`             | federal | api.data.gov key (Congress.gov + OpenFEC)                            |
+| `OPENSTATES_API_KEY`           | state   | OpenStates v3 API key                                                |
+| `CIVIC_FEDERAL_DB_PATH`        | federal | SQLite path (default `./data/federal.db`)                            |
+| `CIVIC_STATE_DB_PATH`          | state   | SQLite path (default `./data/state.db`)                              |
+| `CIVIC_AWARENESS_DAILY_BUDGET` | both    | Optional daily API spend cap (unused by default)                     |
+| `LOG_LEVEL`                    | both    | `debug` / `info` / `warn` / `error` (default `info`, JSON to stderr) |
 
 ## CI
 
@@ -138,6 +140,7 @@ Requires two repo secrets: `OPENSTATES_API_KEY` and `API_DATA_GOV_KEY`.
 ## Security
 
 See [`SECURITY.md`](./SECURITY.md). Highlights:
+
 - Never writes to upstream APIs
 - All sources are sanctioned free-tier APIs with documented rate limits
 - Rate-limited fetch with per-host token bucket; `Retry-After` honoured

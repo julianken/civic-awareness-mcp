@@ -81,8 +81,8 @@ function hasRoleSignal(row: PersonRow, roleHint: string | undefined): boolean {
   const roles = metadata.roles;
   if (!Array.isArray(roles)) return false;
   const needle = roleHint.toLowerCase();
-  return roles.some(
-    (r: unknown) => ((r as { role?: string }).role ?? "").toLowerCase().includes(needle),
+  return roles.some((r: unknown) =>
+    ((r as { role?: string }).role ?? "").toLowerCase().includes(needle),
   );
 }
 
@@ -198,9 +198,7 @@ export async function handleResolvePerson(
   // as a substring (fast). Then re-normalize each alias in JS for
   // correctness.
   const aliasPreFilter = db
-    .prepare(
-      "SELECT * FROM entities WHERE kind = 'person' AND aliases LIKE ? ESCAPE '\\'",
-    )
+    .prepare("SELECT * FROM entities WHERE kind = 'person' AND aliases LIKE ? ESCAPE '\\'")
     .all(`%${escapeLike(input.name)}%`) as PersonRow[];
 
   for (const row of aliasPreFilter) {
@@ -220,15 +218,11 @@ export async function handleResolvePerson(
   // ── Step 3: Fuzzy match ──────────────────────────────────────────────
   // Fetch all person entities for fuzzy distance calculation.
   const fuzzyCandidateRows = db
-    .prepare(
-      "SELECT * FROM entities WHERE kind = 'person'",
-    )
+    .prepare("SELECT * FROM entities WHERE kind = 'person'")
     .all() as PersonRow[];
 
   // Build UpstreamSignals from hints.
-  const hintJurisdictions: string[] = input.jurisdiction_hint
-    ? [input.jurisdiction_hint]
-    : [];
+  const hintJurisdictions: string[] = input.jurisdiction_hint ? [input.jurisdiction_hint] : [];
 
   for (const row of fuzzyCandidateRows) {
     if (best.has(row.id)) continue; // already matched at higher confidence
@@ -240,9 +234,9 @@ export async function handleResolvePerson(
       metadataParsed = {};
     }
     const roles = Array.isArray(metadataParsed.roles) ? metadataParsed.roles : [];
-    const roleJurisdictions = roles.map(
-      (r: unknown) => (r as { jurisdiction?: string }).jurisdiction ?? "",
-    ).filter(Boolean);
+    const roleJurisdictions = roles
+      .map((r: unknown) => (r as { jurisdiction?: string }).jurisdiction ?? "")
+      .filter(Boolean);
 
     // We deliberately do NOT call fuzzyPick here — that helper picks
     // exactly one candidate and enforces a runner-up distance guard
@@ -259,12 +253,15 @@ export async function handleResolvePerson(
     // signal (the primary discriminator in D3b).
     let hasSignal = false;
     for (const j of hintJurisdictions) {
-      if (roleJurisdictions.includes(j)) { hasSignal = true; break; }
+      if (roleJurisdictions.includes(j)) {
+        hasSignal = true;
+        break;
+      }
     }
     if (!hasSignal && input.role_hint) {
       const needle = input.role_hint.toLowerCase();
-      hasSignal = roles.some(
-        (r: unknown) => ((r as { role?: string }).role ?? "").toLowerCase().includes(needle),
+      hasSignal = roles.some((r: unknown) =>
+        ((r as { role?: string }).role ?? "").toLowerCase().includes(needle),
       );
     }
     if (!hasSignal) continue;

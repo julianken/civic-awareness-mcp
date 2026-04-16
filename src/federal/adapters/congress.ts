@@ -13,9 +13,7 @@ export class VoteNotFoundError extends Error {
     public readonly rollNumber: number,
   ) {
     const ch = chamber === "upper" ? "senate" : "house";
-    super(
-      `Vote not found: ${ch} ${congress}-${session} roll ${rollNumber}`,
-    );
+    super(`Vote not found: ${ch} ${congress}-${session} roll ${rollNumber}`);
     this.name = "VoteNotFoundError";
   }
 }
@@ -57,7 +55,7 @@ interface CongressVotePosition {
     partyName?: string;
     state?: string;
   };
-  votePosition: string;  // "Yea" | "Nay" | "Present" | "Not Voting"
+  votePosition: string; // "Yea" | "Nay" | "Present" | "Not Voting"
 }
 
 interface CongressVote {
@@ -122,11 +120,12 @@ function normalizeVotePosition(pos: string): string {
 /** Build a human-facing URL for a bill on congress.gov. */
 function billUrl(congress: number, type: string, number: string): string {
   // e.g. https://www.congress.gov/bill/119th-congress/house-bill/1234
-  const typeSuffix = type.toLowerCase() === "hr"
-    ? "house-bill"
-    : type.toLowerCase() === "s"
-    ? "senate-bill"
-    : `${type.toLowerCase()}-resolution`;
+  const typeSuffix =
+    type.toLowerCase() === "hr"
+      ? "house-bill"
+      : type.toLowerCase() === "s"
+        ? "senate-bill"
+        : `${type.toLowerCase()}-resolution`;
   return `https://www.congress.gov/bill/${congress}th-congress/${typeSuffix}/${number}`;
 }
 
@@ -233,10 +232,9 @@ export class CongressAdapter implements Adapter {
     } catch (err) {
       const msg = String(err);
       if (msg.includes("returned 404")) {
-        logger.warn(
-          "congress /vote endpoint unavailable on this API tier — skipping votes",
-          { error: msg },
-        );
+        logger.warn("congress /vote endpoint unavailable on this API tier — skipping votes", {
+          error: msg,
+        });
         // Not pushed to result.errors — graceful degradation.
       } else {
         const tagged = `votes: ${msg}`;
@@ -404,15 +402,20 @@ export class CongressAdapter implements Adapter {
       rateLimiter: this.rateLimiter,
     });
     if (res.status === 404) {
-      logger.warn("congress /member/{bioguideId}/sponsored-legislation 404 — skipping sponsored bills", {
-        endpoint: "/member/{bioguideId}/sponsored-legislation",
-        status: 404,
-        bioguideId,
-      });
+      logger.warn(
+        "congress /member/{bioguideId}/sponsored-legislation 404 — skipping sponsored bills",
+        {
+          endpoint: "/member/{bioguideId}/sponsored-legislation",
+          status: 404,
+          bioguideId,
+        },
+      );
       return { documentsUpserted: 0 };
     }
     if (!res.ok) {
-      throw new Error(`Congress.gov /member/${bioguideId}/sponsored-legislation returned ${res.status}`);
+      throw new Error(
+        `Congress.gov /member/${bioguideId}/sponsored-legislation returned ${res.status}`,
+      );
     }
     const body = (await res.json()) as { sponsoredLegislation?: CongressBill[] };
     let documentsUpserted = 0;
@@ -444,15 +447,20 @@ export class CongressAdapter implements Adapter {
       rateLimiter: this.rateLimiter,
     });
     if (res.status === 404) {
-      logger.warn("congress /member/{bioguideId}/cosponsored-legislation 404 — skipping cosponsored bills", {
-        endpoint: "/member/{bioguideId}/cosponsored-legislation",
-        status: 404,
-        bioguideId,
-      });
+      logger.warn(
+        "congress /member/{bioguideId}/cosponsored-legislation 404 — skipping cosponsored bills",
+        {
+          endpoint: "/member/{bioguideId}/cosponsored-legislation",
+          status: 404,
+          bioguideId,
+        },
+      );
       return { documentsUpserted: 0 };
     }
     if (!res.ok) {
-      throw new Error(`Congress.gov /member/${bioguideId}/cosponsored-legislation returned ${res.status}`);
+      throw new Error(
+        `Congress.gov /member/${bioguideId}/cosponsored-legislation returned ${res.status}`,
+      );
     }
     const body = (await res.json()) as { cosponsoredLegislation?: CongressBill[] };
     let documentsUpserted = 0;
@@ -540,9 +548,7 @@ export class CongressAdapter implements Adapter {
       rateLimiter: this.rateLimiter,
     });
     if (res.status === 404) {
-      throw new VoteNotFoundError(
-        opts.congress, opts.chamber, opts.session, opts.roll_number,
-      );
+      throw new VoteNotFoundError(opts.congress, opts.chamber, opts.session, opts.roll_number);
     }
     if (!res.ok) {
       throw new Error(`Congress.gov ${path} returned ${res.status}`);
@@ -597,9 +603,9 @@ export class CongressAdapter implements Adapter {
     this.upsertVote(db, vote);
 
     const sourceId = `vote-${info.congress}-${info.chamber.toLowerCase()}-${info.rollNumber}`;
-    const row = db
-      .prepare("SELECT id FROM documents WHERE source_id = ?")
-      .get(sourceId) as { id: string } | undefined;
+    const row = db.prepare("SELECT id FROM documents WHERE source_id = ?").get(sourceId) as
+      | { id: string }
+      | undefined;
     if (!row) {
       throw new Error(`fetchVote upsert failed to produce document row for ${sourceId}`);
     }
@@ -659,7 +665,7 @@ export class CongressAdapter implements Adapter {
     const { entity } = upsertEntity(db, {
       kind: "person",
       name: m.name,
-      jurisdiction: undefined,  // D3b: Persons are cross-jurisdiction
+      jurisdiction: undefined, // D3b: Persons are cross-jurisdiction
       external_ids: { bioguide: m.bioguideId },
       metadata: {
         party: m.partyName,
@@ -676,11 +682,14 @@ export class CongressAdapter implements Adapter {
     const identifier = billIdentifier(b.type, b.number);
     let occurredAt = b.updateDate ?? b.introducedDate;
     if (!occurredAt) {
-      logger.warn("congress bill missing both updateDate and introducedDate — stamping occurred_at as now()", {
-        endpoint: "upsertBill",
-        congress: b.congress,
-        billId: identifier,
-      });
+      logger.warn(
+        "congress bill missing both updateDate and introducedDate — stamping occurred_at as now()",
+        {
+          endpoint: "upsertBill",
+          congress: b.congress,
+          billId: identifier,
+        },
+      );
       occurredAt = new Date().toISOString();
     }
     const humanUrl = billUrl(b.congress, b.type, b.number);

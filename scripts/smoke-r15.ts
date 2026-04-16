@@ -24,7 +24,9 @@ type Scenario = () => Promise<void>;
 
 function formatError(err: unknown): string {
   if (err instanceof Error) {
-    return redactSecrets(`${err.name}: ${err.message}${err.stack ? "\n" + err.stack.split("\n").slice(1, 4).join("\n") : ""}`);
+    return redactSecrets(
+      `${err.name}: ${err.message}${err.stack ? "\n" + err.stack.split("\n").slice(1, 4).join("\n") : ""}`,
+    );
   }
   return redactSecrets(String(err));
 }
@@ -78,7 +80,10 @@ async function main(): Promise<void> {
     "Scenario 2: recent_bills cold us-tx days=365 (expect upstream OpenStates)",
     async () => {
       const t0 = Date.now();
-      const r = (await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 365 })) as RecentBillsResponse;
+      const r = (await handleRecentBills(store.db, {
+        jurisdiction: "us-tx",
+        days: 365,
+      })) as RecentBillsResponse;
       const dt = Date.now() - t0;
       console.log(`  elapsed: ${dt}ms`);
       console.log(`  total: ${r.total}`);
@@ -102,7 +107,10 @@ async function main(): Promise<void> {
     "Scenario 3: recent_bills warm us-tx days=365 (expect cache hit <100ms)",
     async () => {
       const t0 = Date.now();
-      const r = (await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 365 })) as RecentBillsResponse;
+      const r = (await handleRecentBills(store.db, {
+        jurisdiction: "us-tx",
+        days: 365,
+      })) as RecentBillsResponse;
       const dt = Date.now() - t0;
       console.log(`  elapsed: ${dt}ms`);
       console.log(`  total: ${r.total}`);
@@ -115,7 +123,10 @@ async function main(): Promise<void> {
     "Scenario 4: recent_bills cold us-federal days=30 (Congress.gov; validates fromDateTime fix)",
     async () => {
       const t0 = Date.now();
-      const r = (await handleRecentBills(store.db, { jurisdiction: "us-federal", days: 30 })) as RecentBillsResponse;
+      const r = (await handleRecentBills(store.db, {
+        jurisdiction: "us-federal",
+        days: 30,
+      })) as RecentBillsResponse;
       const dt = Date.now() - t0;
       console.log(`  elapsed: ${dt}ms`);
       console.log(`  total: ${r.total}`);
@@ -176,9 +187,14 @@ async function main(): Promise<void> {
 
   // ── Final tallies ──────────────────────────────────────────────────
   console.log("\n=== Final store tallies ===");
-  const fetchLogCount = (store.db.prepare("SELECT COUNT(*) AS n FROM fetch_log").get() as { n: number }).n;
-  const docsCount = (store.db.prepare("SELECT COUNT(*) AS n FROM documents").get() as { n: number }).n;
-  const entitiesCount = (store.db.prepare("SELECT COUNT(*) AS n FROM entities").get() as { n: number }).n;
+  const fetchLogCount = (
+    store.db.prepare("SELECT COUNT(*) AS n FROM fetch_log").get() as { n: number }
+  ).n;
+  const docsCount = (store.db.prepare("SELECT COUNT(*) AS n FROM documents").get() as { n: number })
+    .n;
+  const entitiesCount = (
+    store.db.prepare("SELECT COUNT(*) AS n FROM entities").get() as { n: number }
+  ).n;
   console.log(`  fetch_log rows: ${fetchLogCount}`);
   console.log(`  documents rows: ${docsCount}`);
   console.log(`  entities rows:  ${entitiesCount}`);
@@ -188,7 +204,13 @@ async function main(): Promise<void> {
       `SELECT source, endpoint_path, scope, last_rowcount, fetched_at
          FROM fetch_log ORDER BY fetched_at`,
     )
-    .all() as Array<{ source: string; endpoint_path: string; scope: string; last_rowcount: number; fetched_at: string }>;
+    .all() as Array<{
+    source: string;
+    endpoint_path: string;
+    scope: string;
+    last_rowcount: number;
+    fetched_at: string;
+  }>;
   console.log("  fetch_log detail:");
   for (const row of fetchLogDetail) {
     console.log(

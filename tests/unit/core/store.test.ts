@@ -72,12 +72,12 @@ describe("seedJurisdictions", () => {
       .get() as { c: number };
     expect(stateCount.c).toBe(50);
     // Spot-check a few specific states across the alphabet.
-    expect(
-      s.db.prepare("SELECT name FROM jurisdictions WHERE id = ?").get("us-tx"),
-    ).toEqual({ name: "Texas" });
-    expect(
-      s.db.prepare("SELECT name FROM jurisdictions WHERE id = ?").get("us-wy"),
-    ).toEqual({ name: "Wyoming" });
+    expect(s.db.prepare("SELECT name FROM jurisdictions WHERE id = ?").get("us-tx")).toEqual({
+      name: "Texas",
+    });
+    expect(s.db.prepare("SELECT name FROM jurisdictions WHERE id = ?").get("us-wy")).toEqual({
+      name: "Wyoming",
+    });
     s.close();
   });
 
@@ -112,7 +112,9 @@ describe("schema.sql: bioguide expression index", () => {
   }
 
   it("query plan with quoted '$.\"bioguide\"' path uses idx_entities_bioguide (after federal schema)", async () => {
-    const federalSqlPath = fileURLToPath(new URL("../../../src/federal/schema.sql", import.meta.url));
+    const federalSqlPath = fileURLToPath(
+      new URL("../../../src/federal/schema.sql", import.meta.url),
+    );
     const s = openStore(TEST_DB, coreSqlPath, federalSqlPath);
     seedJurisdictions(s.db);
     seedEntity(s, "p1", "A000001");
@@ -133,7 +135,9 @@ describe("schema.sql: bioguide expression index", () => {
   });
 
   it("query plan with unquoted '$.bioguide' path does NOT use idx_entities_bioguide", async () => {
-    const federalSqlPath = fileURLToPath(new URL("../../../src/federal/schema.sql", import.meta.url));
+    const federalSqlPath = fileURLToPath(
+      new URL("../../../src/federal/schema.sql", import.meta.url),
+    );
     const s = openStore(TEST_DB, coreSqlPath, federalSqlPath);
     seedJurisdictions(s.db);
     seedEntity(s, "p1", "A000001");
@@ -176,7 +180,9 @@ describe("schema.sql: fec_committee expression index", () => {
   }
 
   it("query plan with quoted '$.\"fec_committee\"' path uses idx_entities_fec_committee", async () => {
-    const federalSqlPath = fileURLToPath(new URL("../../../src/federal/schema.sql", import.meta.url));
+    const federalSqlPath = fileURLToPath(
+      new URL("../../../src/federal/schema.sql", import.meta.url),
+    );
     const s = openStore(TEST_DB, coreSqlPath, federalSqlPath);
     seedJurisdictions(s.db);
     seedEntity(s, "c1", "fec_committee", "C00111111");

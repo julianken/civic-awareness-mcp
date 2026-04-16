@@ -36,14 +36,24 @@ afterEach(() => {
 describe("get_entity — projection", () => {
   it("returns entity with recent documents", async () => {
     const { entity } = upsertEntity(store.db, {
-      kind: "person", name: "Jane Doe", jurisdiction: undefined,
+      kind: "person",
+      name: "Jane Doe",
+      jurisdiction: undefined,
       metadata: {
-        roles: [{ jurisdiction: "us-tx", role: "state_legislator",
-                  from: new Date().toISOString(), to: null }],
+        roles: [
+          {
+            jurisdiction: "us-tx",
+            role: "state_legislator",
+            from: new Date().toISOString(),
+            to: null,
+          },
+        ],
       },
     });
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HB1",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HB1",
       occurred_at: new Date().toISOString(),
       source: { name: "openstates", id: "1", url: "https://openstates.org/tx/bills/HB1" },
       references: [{ entity_id: entity.id, role: "sponsor" }],
@@ -63,13 +73,25 @@ describe("get_entity — projection", () => {
       external_ids: { bioguide: "S000148" },
       metadata: {
         roles: [
-          { jurisdiction: "us-ny",      role: "state_legislator", from: "1981-01-01T00:00:00.000Z", to: "1999-01-03T00:00:00.000Z" },
-          { jurisdiction: "us-federal", role: "senator",          from: "1999-01-03T00:00:00.000Z", to: null },
+          {
+            jurisdiction: "us-ny",
+            role: "state_legislator",
+            from: "1981-01-01T00:00:00.000Z",
+            to: "1999-01-03T00:00:00.000Z",
+          },
+          {
+            jurisdiction: "us-federal",
+            role: "senator",
+            from: "1999-01-03T00:00:00.000Z",
+            to: null,
+          },
         ],
       },
     });
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-federal", title: "HR1 — A federal bill",
+      kind: "bill",
+      jurisdiction: "us-federal",
+      title: "HR1 — A federal bill",
       occurred_at: new Date().toISOString(),
       source: {
         name: "congress",
@@ -80,8 +102,7 @@ describe("get_entity — projection", () => {
     });
 
     // Stub the fetchMember call triggered by the bioguide external ID.
-    vi.spyOn(CongressAdapter.prototype, "fetchMember")
-      .mockResolvedValue({ entitiesUpserted: 0 });
+    vi.spyOn(CongressAdapter.prototype, "fetchMember").mockResolvedValue({ entitiesUpserted: 0 });
 
     const res = await handleGetEntity(store.db, { id: entity.id });
     const roles = (res.entity.metadata.roles ?? []) as Array<{ jurisdiction: string }>;
@@ -105,10 +126,8 @@ describe("get_entity — projection", () => {
     });
 
     // Stub fanout — we only care about projection here.
-    vi.spyOn(CongressAdapter.prototype, "fetchMember")
-      .mockResolvedValue({ entitiesUpserted: 0 });
-    vi.spyOn(OpenFecAdapter.prototype, "fetchCandidate")
-      .mockResolvedValue({ entitiesUpserted: 0 });
+    vi.spyOn(CongressAdapter.prototype, "fetchMember").mockResolvedValue({ entitiesUpserted: 0 });
+    vi.spyOn(OpenFecAdapter.prototype, "fetchCandidate").mockResolvedValue({ entitiesUpserted: 0 });
 
     const res = await handleGetEntity(store.db, { id: entity.id });
     const fecSource = res.sources.find((s) => s.url.includes("fec.gov/data/candidate"));
@@ -118,18 +137,23 @@ describe("get_entity — projection", () => {
 
   it("recent_documents exposes action_date on each item and sorts by it", async () => {
     const { entity } = upsertEntity(store.db, {
-      kind: "person", name: "Sen. B",
+      kind: "person",
+      name: "Sen. B",
       external_ids: { openstates_person: "ocd-person/b" },
     });
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "SB 1 — Older action",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "SB 1 — Older action",
       occurred_at: "2025-06-01T00:00:00Z",
       source: { name: "openstates", id: "1", url: "https://example.com/1" },
       references: [{ entity_id: entity.id, role: "sponsor" }],
       raw: { actions: [{ date: "2025-06-01", description: "intro" }] },
     });
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "SB 2 — Newer action",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "SB 2 — Newer action",
       occurred_at: "2025-09-18T00:00:00Z",
       source: { name: "openstates", id: "2", url: "https://example.com/2" },
       references: [{ entity_id: entity.id, role: "sponsor" }],
@@ -138,8 +162,7 @@ describe("get_entity — projection", () => {
 
     // The openstates_person external ID triggers a fetchPerson call —
     // stub it so the test is projection-only.
-    vi.spyOn(OpenStatesAdapter.prototype, "fetchPerson")
-      .mockResolvedValue({ entitiesUpserted: 0 });
+    vi.spyOn(OpenStatesAdapter.prototype, "fetchPerson").mockResolvedValue({ entitiesUpserted: 0 });
 
     const res = await handleGetEntity(store.db, { id: entity.id });
     expect(res.recent_documents.map((d) => d.title)).toEqual([
@@ -167,11 +190,14 @@ describe("get_entity — projection", () => {
 
 describe("get_entity — R15 fanout", () => {
   it("entity with no external IDs → zero adapter calls", async () => {
-    const openstatesSpy = vi.spyOn(OpenStatesAdapter.prototype, "fetchPerson")
+    const openstatesSpy = vi
+      .spyOn(OpenStatesAdapter.prototype, "fetchPerson")
       .mockResolvedValue({ entitiesUpserted: 0 });
-    const congressSpy = vi.spyOn(CongressAdapter.prototype, "fetchMember")
+    const congressSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchMember")
       .mockResolvedValue({ entitiesUpserted: 0 });
-    const fecSpy = vi.spyOn(OpenFecAdapter.prototype, "fetchCandidate")
+    const fecSpy = vi
+      .spyOn(OpenFecAdapter.prototype, "fetchCandidate")
       .mockResolvedValue({ entitiesUpserted: 0 });
 
     const { entity } = upsertEntity(store.db, {
@@ -193,11 +219,14 @@ describe("get_entity — R15 fanout", () => {
   });
 
   it("bioguide only → only CongressAdapter.fetchMember is invoked", async () => {
-    const openstatesSpy = vi.spyOn(OpenStatesAdapter.prototype, "fetchPerson")
+    const openstatesSpy = vi
+      .spyOn(OpenStatesAdapter.prototype, "fetchPerson")
       .mockResolvedValue({ entitiesUpserted: 0 });
-    const congressSpy = vi.spyOn(CongressAdapter.prototype, "fetchMember")
+    const congressSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchMember")
       .mockResolvedValue({ entitiesUpserted: 0 });
-    const fecSpy = vi.spyOn(OpenFecAdapter.prototype, "fetchCandidate")
+    const fecSpy = vi
+      .spyOn(OpenFecAdapter.prototype, "fetchCandidate")
       .mockResolvedValue({ entitiesUpserted: 0 });
 
     const { entity } = upsertEntity(store.db, {
@@ -218,11 +247,14 @@ describe("get_entity — R15 fanout", () => {
   });
 
   it("openstates_person only → only OpenStatesAdapter.fetchPerson is invoked", async () => {
-    const openstatesSpy = vi.spyOn(OpenStatesAdapter.prototype, "fetchPerson")
+    const openstatesSpy = vi
+      .spyOn(OpenStatesAdapter.prototype, "fetchPerson")
       .mockResolvedValue({ entitiesUpserted: 0 });
-    const congressSpy = vi.spyOn(CongressAdapter.prototype, "fetchMember")
+    const congressSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchMember")
       .mockResolvedValue({ entitiesUpserted: 0 });
-    const fecSpy = vi.spyOn(OpenFecAdapter.prototype, "fetchCandidate")
+    const fecSpy = vi
+      .spyOn(OpenFecAdapter.prototype, "fetchCandidate")
       .mockResolvedValue({ entitiesUpserted: 0 });
 
     const { entity } = upsertEntity(store.db, {
@@ -243,11 +275,14 @@ describe("get_entity — R15 fanout", () => {
   });
 
   it("fec_candidate only → only OpenFecAdapter.fetchCandidate is invoked", async () => {
-    const openstatesSpy = vi.spyOn(OpenStatesAdapter.prototype, "fetchPerson")
+    const openstatesSpy = vi
+      .spyOn(OpenStatesAdapter.prototype, "fetchPerson")
       .mockResolvedValue({ entitiesUpserted: 0 });
-    const congressSpy = vi.spyOn(CongressAdapter.prototype, "fetchMember")
+    const congressSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchMember")
       .mockResolvedValue({ entitiesUpserted: 0 });
-    const fecSpy = vi.spyOn(OpenFecAdapter.prototype, "fetchCandidate")
+    const fecSpy = vi
+      .spyOn(OpenFecAdapter.prototype, "fetchCandidate")
       .mockResolvedValue({ entitiesUpserted: 0 });
 
     const { entity } = upsertEntity(store.db, {
@@ -268,11 +303,14 @@ describe("get_entity — R15 fanout", () => {
   });
 
   it("all three external IDs → all three adapters are invoked exactly once", async () => {
-    const openstatesSpy = vi.spyOn(OpenStatesAdapter.prototype, "fetchPerson")
+    const openstatesSpy = vi
+      .spyOn(OpenStatesAdapter.prototype, "fetchPerson")
       .mockResolvedValue({ entitiesUpserted: 0 });
-    const congressSpy = vi.spyOn(CongressAdapter.prototype, "fetchMember")
+    const congressSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchMember")
       .mockResolvedValue({ entitiesUpserted: 0 });
-    const fecSpy = vi.spyOn(OpenFecAdapter.prototype, "fetchCandidate")
+    const fecSpy = vi
+      .spyOn(OpenFecAdapter.prototype, "fetchCandidate")
       .mockResolvedValue({ entitiesUpserted: 0 });
 
     const { entity } = upsertEntity(store.db, {
@@ -296,7 +334,8 @@ describe("get_entity — R15 fanout", () => {
   });
 
   it("cache hit: second call within TTL skips the adapter", async () => {
-    const congressSpy = vi.spyOn(CongressAdapter.prototype, "fetchMember")
+    const congressSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchMember")
       .mockResolvedValue({ entitiesUpserted: 0 });
 
     const { entity } = upsertEntity(store.db, {
@@ -326,7 +365,8 @@ describe("get_entity — R15 fanout", () => {
       fetched_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
       last_rowcount: 1,
     });
-    const congressSpy = vi.spyOn(CongressAdapter.prototype, "fetchMember")
+    const congressSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchMember")
       .mockRejectedValue(new Error("simulated upstream failure"));
 
     const res = await handleGetEntity(store.db, { id: entity.id });
@@ -341,7 +381,8 @@ describe("get_entity — R15 fanout", () => {
       name: "Cold-Fail Person",
       external_ids: { bioguide: "S000148" },
     });
-    const congressSpy = vi.spyOn(CongressAdapter.prototype, "fetchMember")
+    const congressSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchMember")
       .mockRejectedValue(new Error("network down"));
 
     await expect(handleGetEntity(store.db, { id: entity.id })).rejects.toThrow(/network down/);
@@ -349,7 +390,8 @@ describe("get_entity — R15 fanout", () => {
   });
 
   it("endpoint_path includes the ID → different entities get different cache rows", async () => {
-    const congressSpy = vi.spyOn(CongressAdapter.prototype, "fetchMember")
+    const congressSpy = vi
+      .spyOn(CongressAdapter.prototype, "fetchMember")
       .mockResolvedValue({ entitiesUpserted: 0 });
 
     const { entity: e1 } = upsertEntity(store.db, {

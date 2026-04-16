@@ -70,7 +70,9 @@ beforeEach(() => {
     jurisdiction: undefined,
     external_ids: { bioguide: "S000148" },
     metadata: {
-      roles: [{ jurisdiction: "us-federal", role: "senator", from: "1999-01-03T00:00:00.000Z", to: null }],
+      roles: [
+        { jurisdiction: "us-federal", role: "senator", from: "1999-01-03T00:00:00.000Z", to: null },
+      ],
     },
   });
   seedVote("42", RECENT, "House", "HR1234", "Passed");
@@ -84,13 +86,25 @@ afterEach(() => {
 
 describe("recent_votes tool — projection (TTL-hit path)", () => {
   it("returns only votes within the time window", async () => {
-    seedFetchLogFresh({ jurisdiction: "us-federal", days: 7, chamber: undefined, session: undefined, bill_identifier: undefined });
+    seedFetchLogFresh({
+      jurisdiction: "us-federal",
+      days: 7,
+      chamber: undefined,
+      session: undefined,
+      bill_identifier: undefined,
+    });
     const result = await handleRecentVotes(store.db, { jurisdiction: "us-federal", days: 7 });
     expect(result.results).toHaveLength(2);
   });
 
   it("filters by chamber", async () => {
-    seedFetchLogFresh({ jurisdiction: "us-federal", days: 7, chamber: "upper", session: undefined, bill_identifier: undefined });
+    seedFetchLogFresh({
+      jurisdiction: "us-federal",
+      days: 7,
+      chamber: "upper",
+      session: undefined,
+      bill_identifier: undefined,
+    });
     const result = await handleRecentVotes(store.db, {
       jurisdiction: "us-federal",
       days: 7,
@@ -101,7 +115,13 @@ describe("recent_votes tool — projection (TTL-hit path)", () => {
   });
 
   it("filters by bill_identifier", async () => {
-    seedFetchLogFresh({ jurisdiction: "us-federal", days: 7, chamber: undefined, session: undefined, bill_identifier: "HR1234" });
+    seedFetchLogFresh({
+      jurisdiction: "us-federal",
+      days: 7,
+      chamber: undefined,
+      session: undefined,
+      bill_identifier: "HR1234",
+    });
     const result = await handleRecentVotes(store.db, {
       jurisdiction: "us-federal",
       days: 7,
@@ -112,7 +132,13 @@ describe("recent_votes tool — projection (TTL-hit path)", () => {
   });
 
   it("returns tally from raw.totals", async () => {
-    seedFetchLogFresh({ jurisdiction: "us-federal", days: 7, chamber: undefined, session: undefined, bill_identifier: undefined });
+    seedFetchLogFresh({
+      jurisdiction: "us-federal",
+      days: 7,
+      chamber: undefined,
+      session: undefined,
+      bill_identifier: undefined,
+    });
     const result = await handleRecentVotes(store.db, { jurisdiction: "us-federal", days: 7 });
     const vote = result.results.find((v) => v.bill_identifier === "HR1234");
     expect(vote?.tally.yea).toBe(218);
@@ -122,24 +148,32 @@ describe("recent_votes tool — projection (TTL-hit path)", () => {
   });
 
   it("includes result field", async () => {
-    seedFetchLogFresh({ jurisdiction: "us-federal", days: 7, chamber: undefined, session: undefined, bill_identifier: undefined });
+    seedFetchLogFresh({
+      jurisdiction: "us-federal",
+      days: 7,
+      chamber: undefined,
+      session: undefined,
+      bill_identifier: undefined,
+    });
     const result = await handleRecentVotes(store.db, { jurisdiction: "us-federal", days: 7 });
     const passed = result.results.find((v) => v.bill_identifier === "HR1234");
     expect(passed?.result).toBe("Passed");
   });
 
   it("includes source provenance", async () => {
-    seedFetchLogFresh({ jurisdiction: "us-federal", days: 7, chamber: undefined, session: undefined, bill_identifier: undefined });
+    seedFetchLogFresh({
+      jurisdiction: "us-federal",
+      days: 7,
+      chamber: undefined,
+      session: undefined,
+      bill_identifier: undefined,
+    });
     const result = await handleRecentVotes(store.db, { jurisdiction: "us-federal", days: 7 });
-    expect(result.sources).toContainEqual(
-      expect.objectContaining({ name: "congress" }),
-    );
+    expect(result.sources).toContainEqual(expect.objectContaining({ name: "congress" }));
   });
 
   it("rejects input with no jurisdiction", async () => {
-    await expect(
-      handleRecentVotes(store.db, { days: 7 }),
-    ).rejects.toThrow();
+    await expect(handleRecentVotes(store.db, { days: 7 })).rejects.toThrow();
   });
 
   it("accepts days up to 365", async () => {
@@ -155,16 +189,22 @@ describe("recent_votes tool — projection (TTL-hit path)", () => {
 
   it("filters votes by session", async () => {
     upsertDocument(store.db, {
-      kind: "vote", jurisdiction: "us-tx", title: "Vote 892-1",
+      kind: "vote",
+      jurisdiction: "us-tx",
+      title: "Vote 892-1",
       occurred_at: "2025-09-18T00:00:00Z",
       source: { name: "openstates", id: "892v", url: "https://ex" },
-      references: [], raw: { session: "892" },
+      references: [],
+      raw: { session: "892" },
     });
     upsertDocument(store.db, {
-      kind: "vote", jurisdiction: "us-tx", title: "Vote 891-1",
+      kind: "vote",
+      jurisdiction: "us-tx",
+      title: "Vote 891-1",
       occurred_at: "2024-06-01T00:00:00Z",
       source: { name: "openstates", id: "891v", url: "https://ex" },
-      references: [], raw: { session: "891" },
+      references: [],
+      raw: { session: "891" },
     });
 
     const res = await handleRecentVotes(store.db, {
@@ -183,10 +223,13 @@ describe("recent_votes tool — projection (TTL-hit path)", () => {
 
   it("omits empty_reason on non-empty responses", async () => {
     upsertDocument(store.db, {
-      kind: "vote", jurisdiction: "us-or", title: "Vote 1",
+      kind: "vote",
+      jurisdiction: "us-or",
+      title: "Vote 1",
       occurred_at: new Date().toISOString(),
       source: { name: "openstates", id: "v1", url: "https://ex" },
-      references: [], raw: {},
+      references: [],
+      raw: {},
     });
     const res = await handleRecentVotes(store.db, { jurisdiction: "us-or", days: 7 });
     expect(res.results).toHaveLength(1);
@@ -269,8 +312,11 @@ describe("recent_votes tool — R15 hydration path", () => {
       source: "congress",
       endpoint_path: "/vote",
       args_hash: hashArgs("recent_votes", {
-        jurisdiction: "us-federal", days: 7,
-        chamber: undefined, session: undefined, bill_identifier: undefined,
+        jurisdiction: "us-federal",
+        days: 7,
+        chamber: undefined,
+        session: undefined,
+        bill_identifier: undefined,
       }),
       scope: "recent",
       fetched_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
@@ -292,14 +338,19 @@ describe("recent_votes tool — R15 hydration path", () => {
   it("stale_notice propagates into empty-results diagnostic response", async () => {
     // Wipe the federal vote fixtures so the projection is empty while
     // the stale-fallback path triggers on the /vote key.
-    store.db.prepare("DELETE FROM documents WHERE kind = 'vote' AND jurisdiction = 'us-federal'").run();
+    store.db
+      .prepare("DELETE FROM documents WHERE kind = 'vote' AND jurisdiction = 'us-federal'")
+      .run();
 
     upsertFetchLog(store.db, {
       source: "congress",
       endpoint_path: "/vote",
       args_hash: hashArgs("recent_votes", {
-        jurisdiction: "us-federal", days: 7,
-        chamber: undefined, session: undefined, bill_identifier: undefined,
+        jurisdiction: "us-federal",
+        days: 7,
+        chamber: undefined,
+        session: undefined,
+        bill_identifier: undefined,
       }),
       scope: "recent",
       fetched_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),

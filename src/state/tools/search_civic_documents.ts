@@ -22,8 +22,13 @@ export interface SearchDocumentsResponse {
 }
 
 interface Row {
-  id: string; kind: string; title: string; summary: string | null;
-  occurred_at: string; source_url: string; source_name: string;
+  id: string;
+  kind: string;
+  title: string;
+  summary: string | null;
+  occurred_at: string;
+  source_url: string;
+  source_name: string;
   jurisdiction: string;
 }
 
@@ -49,25 +54,37 @@ export async function handleSearchDocuments(
     clauses.push(`source_name IN (${qs})`);
     params.push(...input.sources);
   }
-  if (input.from) { clauses.push("occurred_at >= ?"); params.push(input.from); }
-  if (input.to)   { clauses.push("occurred_at <= ?"); params.push(input.to); }
+  if (input.from) {
+    clauses.push("occurred_at >= ?");
+    params.push(input.from);
+  }
+  if (input.to) {
+    clauses.push("occurred_at <= ?");
+    params.push(input.to);
+  }
   params.push(input.limit);
 
-  const rows = db.prepare(
-    `SELECT id, kind, title, summary, occurred_at, source_url, source_name, jurisdiction
+  const rows = db
+    .prepare(
+      `SELECT id, kind, title, summary, occurred_at, source_url, source_name, jurisdiction
      FROM documents WHERE ${clauses.join(" AND ")}
      ORDER BY occurred_at DESC LIMIT ?`,
-  ).all(...params) as Row[];
+    )
+    .all(...params) as Row[];
 
   const sourceKeys = new Map<string, { name: string; jurisdiction: string }>();
   const results: DocumentMatch[] = rows.map((r) => {
     sourceKeys.set(`${r.source_name}|${r.jurisdiction}`, {
-      name: r.source_name, jurisdiction: r.jurisdiction,
+      name: r.source_name,
+      jurisdiction: r.jurisdiction,
     });
     return {
-      id: r.id, kind: r.kind, title: r.title,
+      id: r.id,
+      kind: r.kind,
+      title: r.title,
       summary: r.summary ?? undefined,
-      occurred_at: r.occurred_at, source_url: r.source_url,
+      occurred_at: r.occurred_at,
+      source_url: r.source_url,
     };
   });
 
@@ -82,9 +99,11 @@ export async function handleSearchDocuments(
   const response: SearchDocumentsResponse = { results, total: results.length, sources };
 
   if (results.length === 0) {
-    const anyRow = db.prepare(
-      `SELECT 1 FROM documents ${input.jurisdiction ? "WHERE jurisdiction = ?" : ""} LIMIT 1`,
-    ).get(...(input.jurisdiction ? [input.jurisdiction] : [])) as unknown;
+    const anyRow = db
+      .prepare(
+        `SELECT 1 FROM documents ${input.jurisdiction ? "WHERE jurisdiction = ?" : ""} LIMIT 1`,
+      )
+      .get(...(input.jurisdiction ? [input.jurisdiction] : [])) as unknown;
     if (!anyRow) {
       response.empty_reason = "store_not_warmed";
       response.hint = input.jurisdiction

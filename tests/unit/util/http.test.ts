@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { RateLimiter, RATE_LIMIT_WAIT_THRESHOLD_MS, rateLimitedFetch } from "../../../src/util/http.js";
+import {
+  RateLimiter,
+  RATE_LIMIT_WAIT_THRESHOLD_MS,
+  rateLimitedFetch,
+} from "../../../src/util/http.js";
 import { logger } from "../../../src/util/logger.js";
 
 describe("RateLimiter", () => {

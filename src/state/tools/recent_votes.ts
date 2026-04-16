@@ -5,7 +5,11 @@ import { getLimiter } from "../limiters.js";
 import { withShapedFetch } from "../../core/tool_cache.js";
 import { requireEnv } from "../../util/env.js";
 import { RecentVotesInput } from "../schemas.js";
-import { emptyFeedDiagnostic, type EmptyFeedDiagnostic, type StaleNotice } from "../../core/shared.js";
+import {
+  emptyFeedDiagnostic,
+  type EmptyFeedDiagnostic,
+  type StaleNotice,
+} from "../../core/shared.js";
 
 export interface VoteTally {
   yes: number;
@@ -68,9 +72,8 @@ export async function handleRecentVotes(
         })
       : chamberFiltered;
 
-    const capped = input.limit !== undefined
-      ? sessionFiltered.slice(0, input.limit)
-      : sessionFiltered;
+    const capped =
+      input.limit !== undefined ? sessionFiltered.slice(0, input.limit) : sessionFiltered;
 
     const results: VoteSummary[] = capped.map((d) => {
       const raw = d.raw as {
@@ -99,9 +102,7 @@ export async function handleRecentVotes(
     });
 
     const abbr = isWildcard ? "" : input.jurisdiction.replace(/^us-/, "");
-    const sourceUrl = isWildcard
-      ? "https://openstates.org/"
-      : `https://openstates.org/${abbr}/`;
+    const sourceUrl = isWildcard ? "https://openstates.org/" : `https://openstates.org/${abbr}/`;
 
     const base: RecentVotesResponse = {
       results,

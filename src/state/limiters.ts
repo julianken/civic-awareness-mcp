@@ -3,10 +3,14 @@ import type { HydrationSource } from "./sources.js";
 
 const limiters: Partial<Record<HydrationSource, RateLimiter>> = {};
 
-function limiterConfigFor(source: HydrationSource): { tokensPerInterval: number; intervalMs: number } {
+function limiterConfigFor(source: HydrationSource): {
+  tokensPerInterval: number;
+  intervalMs: number;
+} {
   switch (source) {
     // OpenStates v3 public rate limit is ~30/min; 25 is conservative.
-    case "openstates": return { tokensPerInterval: 25, intervalMs: 60_000 };
+    case "openstates":
+      return { tokensPerInterval: 25, intervalMs: 60_000 };
   }
 }
 

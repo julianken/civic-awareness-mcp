@@ -3,14 +3,20 @@ import type { HydrationSource } from "./sources.js";
 
 const limiters: Partial<Record<HydrationSource, RateLimiter>> = {};
 
-function limiterConfigFor(source: HydrationSource): { tokensPerInterval: number; intervalMs: number } {
+function limiterConfigFor(source: HydrationSource): {
+  tokensPerInterval: number;
+  intervalMs: number;
+} {
   switch (source) {
     // OpenStates free tier is 10/min; 8 is conservative.
-    case "openstates": return { tokensPerInterval: 8,  intervalMs: 60_000 };
+    case "openstates":
+      return { tokensPerInterval: 8, intervalMs: 60_000 };
     // Congress.gov is ~5000/hr = ~83/min; 80 is conservative.
-    case "congress":   return { tokensPerInterval: 80, intervalMs: 60_000 };
+    case "congress":
+      return { tokensPerInterval: 80, intervalMs: 60_000 };
     // OpenFEC is 1000/hr = ~16/min; 15 is conservative.
-    case "openfec":    return { tokensPerInterval: 15, intervalMs: 60_000 };
+    case "openfec":
+      return { tokensPerInterval: 15, intervalMs: 60_000 };
   }
 }
 

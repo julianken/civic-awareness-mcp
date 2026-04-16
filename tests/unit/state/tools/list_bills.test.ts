@@ -90,30 +90,35 @@ describe("list_bills tool — R15 hydration", () => {
     expect(spy).toHaveBeenCalledOnce();
     spy.mockRestore();
   });
-
 });
 
 describe("list_bills tool — local projection (TTL-hit)", () => {
   it("filters by sponsor_entity_id", async () => {
     const { entity: sponsor } = upsertEntity(store.db, {
-      kind: "person", name: "Alpha Sponsor",
+      kind: "person",
+      name: "Alpha Sponsor",
       external_ids: { openstates_person: "ocd-person/aaa" },
       metadata: {},
     });
     const { entity: other } = upsertEntity(store.db, {
-      kind: "person", name: "Zeta Otherly",
+      kind: "person",
+      name: "Zeta Otherly",
       external_ids: { openstates_person: "ocd-person/bbb" },
       metadata: {},
     });
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HB1 — by A",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HB1 — by A",
       occurred_at: "2026-04-10T00:00:00Z",
       source: { name: "openstates", id: "1", url: "https://ex/1" },
       references: [{ entity_id: sponsor.id, role: "sponsor" }],
       raw: { actions: [] },
     });
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HB2 — by B",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HB2 — by B",
       occurred_at: "2026-04-10T00:00:00Z",
       source: { name: "openstates", id: "2", url: "https://ex/2" },
       references: [{ entity_id: other.id, role: "sponsor" }],
@@ -131,13 +136,17 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
 
   it("filters by classification via raw.classification", async () => {
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HB1 — bill",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HB1 — bill",
       occurred_at: "2026-04-10T00:00:00Z",
       source: { name: "openstates", id: "c1", url: "https://ex/c1" },
       raw: { classification: ["bill"], actions: [] },
     });
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HR1 — resolution",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HR1 — resolution",
       occurred_at: "2026-04-10T00:00:00Z",
       source: { name: "openstates", id: "c2", url: "https://ex/c2" },
       raw: { classification: ["resolution"], actions: [] },
@@ -154,13 +163,17 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
 
   it("filters by subject via raw.subjects[]", async () => {
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HB1 — vehicles",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HB1 — vehicles",
       occurred_at: "2026-04-10T00:00:00Z",
       source: { name: "openstates", id: "s1", url: "https://ex/s1" },
       raw: { subjects: ["Vehicles", "Repossession"], actions: [] },
     });
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HB2 — other",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HB2 — other",
       occurred_at: "2026-04-10T00:00:00Z",
       source: { name: "openstates", id: "s2", url: "https://ex/s2" },
       raw: { subjects: ["Education"], actions: [] },
@@ -177,13 +190,17 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
 
   it("filters by introduced_since/until using raw.actions[0].date", async () => {
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HB1 — jan",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HB1 — jan",
       occurred_at: "2026-04-10T00:00:00Z",
       source: { name: "openstates", id: "i1", url: "https://ex/i1" },
       raw: { actions: [{ date: "2026-01-10", description: "Introduced" }] },
     });
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HB2 — mar",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HB2 — mar",
       occurred_at: "2026-04-10T00:00:00Z",
       source: { name: "openstates", id: "i2", url: "https://ex/i2" },
       raw: { actions: [{ date: "2026-03-10", description: "Introduced" }] },
@@ -203,13 +220,17 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
 
   it("sorts by introduced_asc", async () => {
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HB1 — late",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HB1 — late",
       occurred_at: "2026-04-10T00:00:00Z",
       source: { name: "openstates", id: "o1", url: "https://ex/o1" },
       raw: { actions: [{ date: "2026-03-10", description: "Introduced" }] },
     });
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HB2 — early",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HB2 — early",
       occurred_at: "2026-04-10T00:00:00Z",
       source: { name: "openstates", id: "o2", url: "https://ex/o2" },
       raw: { actions: [{ date: "2026-01-10", description: "Introduced" }] },
@@ -225,19 +246,23 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
 
   it("filters by chamber via raw.from_organization.classification, not sponsor metadata", async () => {
     const { entity: upperMember } = upsertEntity(store.db, {
-      kind: "person", name: "Senator One",
+      kind: "person",
+      name: "Senator One",
       external_ids: { openstates_person: "ocd-person/u1" },
       metadata: { chamber: "upper" },
     });
     const { entity: lowerMember } = upsertEntity(store.db, {
-      kind: "person", name: "Rep One",
+      kind: "person",
+      name: "Rep One",
       external_ids: { openstates_person: "ocd-person/l1" },
       metadata: { chamber: "lower" },
     });
 
     // Convergent case: originating chamber == sponsor chamber (upper/upper).
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "SB1 — upper bill, upper sponsor",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "SB1 — upper bill, upper sponsor",
       occurred_at: "2026-04-10T00:00:00Z",
       source: { name: "openstates", id: "ch1", url: "https://ex/ch1" },
       references: [{ entity_id: upperMember.id, role: "sponsor" }],
@@ -248,7 +273,9 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
     // semantics this would be excluded from a chamber=upper query; with
     // originating-chamber semantics it must be included.
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "SB2 — upper bill, lower sponsor",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "SB2 — upper bill, lower sponsor",
       occurred_at: "2026-04-10T00:00:00Z",
       source: { name: "openstates", id: "ch2", url: "https://ex/ch2" },
       references: [{ entity_id: lowerMember.id, role: "sponsor" }],
@@ -256,7 +283,9 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
     });
     // A lower-origin bill that must be excluded from chamber=upper.
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HB1 — lower bill",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HB1 — lower bill",
       occurred_at: "2026-04-10T00:00:00Z",
       source: { name: "openstates", id: "ch3", url: "https://ex/ch3" },
       references: [{ entity_id: lowerMember.id, role: "sponsor" }],
@@ -276,7 +305,9 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
   it("respects limit", async () => {
     for (let i = 0; i < 5; i++) {
       upsertDocument(store.db, {
-        kind: "bill", jurisdiction: "us-tx", title: `HB${i} — t`,
+        kind: "bill",
+        jurisdiction: "us-tx",
+        title: `HB${i} — t`,
         occurred_at: `2026-04-${10 + i}T00:00:00Z`,
         source: { name: "openstates", id: `L${i}`, url: `https://ex/${i}` },
         raw: { actions: [] },
@@ -293,13 +324,17 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
 
   it("filters by session alone", async () => {
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HB1 — regular",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HB1 — regular",
       occurred_at: "2026-04-10T00:00:00Z",
       source: { name: "openstates", id: "ses1", url: "https://ex/ses1" },
       raw: { session: "2026R", actions: [] },
     });
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HB2 — special",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HB2 — special",
       occurred_at: "2026-04-10T00:00:00Z",
       source: { name: "openstates", id: "ses2", url: "https://ex/ses2" },
       raw: { session: "2026S1", actions: [] },
@@ -316,27 +351,31 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
 
   it("filters by updated_since/until using document.occurred_at", async () => {
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HB1 — old update",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HB1 — old update",
       occurred_at: "2026-01-10T00:00:00Z",
       source: { name: "openstates", id: "u1", url: "https://ex/u1" },
       raw: { actions: [] },
     });
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HB2 — mid update",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HB2 — mid update",
       occurred_at: "2026-03-10T00:00:00Z",
       source: { name: "openstates", id: "u2", url: "https://ex/u2" },
       raw: { actions: [] },
     });
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HB3 — new update",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HB3 — new update",
       occurred_at: "2026-05-10T00:00:00Z",
       source: { name: "openstates", id: "u3", url: "https://ex/u3" },
       raw: { actions: [] },
     });
 
-    seedFetchLogFresh(
-      defaultArgs({ updated_since: "2026-02-01", updated_until: "2026-04-01" }),
-    );
+    seedFetchLogFresh(defaultArgs({ updated_since: "2026-02-01", updated_until: "2026-04-01" }));
     const res = await callListBills(store.db, {
       jurisdiction: "us-tx",
       updated_since: "2026-02-01",
@@ -348,17 +387,21 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
 
   it("sponsor_entity_id matches role === 'cosponsor' too", async () => {
     const { entity: member } = upsertEntity(store.db, {
-      kind: "person", name: "Cosponsor Carla",
+      kind: "person",
+      name: "Cosponsor Carla",
       external_ids: { openstates_person: "ocd-person/co1" },
       metadata: {},
     });
     const { entity: other } = upsertEntity(store.db, {
-      kind: "person", name: "Primary Pete",
+      kind: "person",
+      name: "Primary Pete",
       external_ids: { openstates_person: "ocd-person/pri" },
       metadata: {},
     });
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HB1 — as cosponsor",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HB1 — as cosponsor",
       occurred_at: "2026-04-10T00:00:00Z",
       source: { name: "openstates", id: "cop1", url: "https://ex/cop1" },
       references: [
@@ -368,7 +411,9 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
       raw: { actions: [] },
     });
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HB2 — unrelated",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HB2 — unrelated",
       occurred_at: "2026-04-10T00:00:00Z",
       source: { name: "openstates", id: "cop2", url: "https://ex/cop2" },
       references: [{ entity_id: other.id, role: "sponsor" }],
@@ -386,7 +431,9 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
 
   it("combines subject + introduced_since on the same document", async () => {
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HB1 — vehicles, old",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HB1 — vehicles, old",
       occurred_at: "2026-04-10T00:00:00Z",
       source: { name: "openstates", id: "cmb1", url: "https://ex/cmb1" },
       raw: {
@@ -395,7 +442,9 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
       },
     });
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HB2 — vehicles, new",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HB2 — vehicles, new",
       occurred_at: "2026-04-10T00:00:00Z",
       source: { name: "openstates", id: "cmb2", url: "https://ex/cmb2" },
       raw: {
@@ -404,7 +453,9 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
       },
     });
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HB3 — education, new",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HB3 — education, new",
       occurred_at: "2026-04-10T00:00:00Z",
       source: { name: "openstates", id: "cmb3", url: "https://ex/cmb3" },
       raw: {
@@ -413,9 +464,7 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
       },
     });
 
-    seedFetchLogFresh(
-      defaultArgs({ subject: "Vehicles", introduced_since: "2026-02-01" }),
-    );
+    seedFetchLogFresh(defaultArgs({ subject: "Vehicles", introduced_since: "2026-02-01" }));
     const res = await callListBills(store.db, {
       jurisdiction: "us-tx",
       subject: "Vehicles",
@@ -429,7 +478,8 @@ describe("list_bills tool — local projection (TTL-hit)", () => {
 describe("list_bills tool — sponsor_entity_id edge handling", () => {
   it("returns empty with empty_reason when entity exists but lacks openstates_person", async () => {
     const { entity: unlinked } = upsertEntity(store.db, {
-      kind: "person", name: "Unlinked Ursula",
+      kind: "person",
+      name: "Unlinked Ursula",
       external_ids: {},
       metadata: {},
     });
@@ -473,21 +523,27 @@ describe("list_bills tool — date filter AND-semantics", () => {
   it("ANDs introduced_* and updated_* windows (only bills inside both)", async () => {
     // Bill X: introduced 2026-01-15, updated 2026-03-10
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HBX — x",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HBX — x",
       occurred_at: "2026-03-10T00:00:00Z",
       source: { name: "openstates", id: "and-x", url: "https://ex/and-x" },
       raw: { actions: [{ date: "2026-01-15", description: "Introduced" }] },
     });
     // Bill Y: introduced 2026-02-20, updated 2026-03-15
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HBY — y",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HBY — y",
       occurred_at: "2026-03-15T00:00:00Z",
       source: { name: "openstates", id: "and-y", url: "https://ex/and-y" },
       raw: { actions: [{ date: "2026-02-20", description: "Introduced" }] },
     });
     // Bill Z: introduced 2026-03-25, updated 2026-04-01
     upsertDocument(store.db, {
-      kind: "bill", jurisdiction: "us-tx", title: "HBZ — z",
+      kind: "bill",
+      jurisdiction: "us-tx",
+      title: "HBZ — z",
       occurred_at: "2026-04-01T00:00:00Z",
       source: { name: "openstates", id: "and-z", url: "https://ex/and-z" },
       raw: { actions: [{ date: "2026-03-25", description: "Introduced" }] },

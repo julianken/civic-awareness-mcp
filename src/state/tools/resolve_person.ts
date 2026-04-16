@@ -79,8 +79,8 @@ function hasRoleSignal(row: PersonRow, roleHint: string | undefined): boolean {
   const roles = metadata.roles;
   if (!Array.isArray(roles)) return false;
   const needle = roleHint.toLowerCase();
-  return roles.some(
-    (r: unknown) => ((r as { role?: string }).role ?? "").toLowerCase().includes(needle),
+  return roles.some((r: unknown) =>
+    ((r as { role?: string }).role ?? "").toLowerCase().includes(needle),
   );
 }
 
@@ -139,9 +139,7 @@ export async function handleResolvePerson(
 
   // Step 2: Alias match
   const aliasPreFilter = db
-    .prepare(
-      "SELECT * FROM entities WHERE kind = 'person' AND aliases LIKE ? ESCAPE '\\'",
-    )
+    .prepare("SELECT * FROM entities WHERE kind = 'person' AND aliases LIKE ? ESCAPE '\\'")
     .all(`%${escapeLike(input.name)}%`) as PersonRow[];
 
   for (const row of aliasPreFilter) {
@@ -163,9 +161,7 @@ export async function handleResolvePerson(
     .prepare("SELECT * FROM entities WHERE kind = 'person'")
     .all() as PersonRow[];
 
-  const hintJurisdictions: string[] = input.jurisdiction_hint
-    ? [input.jurisdiction_hint]
-    : [];
+  const hintJurisdictions: string[] = input.jurisdiction_hint ? [input.jurisdiction_hint] : [];
 
   for (const row of fuzzyCandidateRows) {
     if (best.has(row.id)) continue;
@@ -177,21 +173,24 @@ export async function handleResolvePerson(
       metadataParsed = {};
     }
     const roles = Array.isArray(metadataParsed.roles) ? metadataParsed.roles : [];
-    const roleJurisdictions = roles.map(
-      (r: unknown) => (r as { jurisdiction?: string }).jurisdiction ?? "",
-    ).filter(Boolean);
+    const roleJurisdictions = roles
+      .map((r: unknown) => (r as { jurisdiction?: string }).jurisdiction ?? "")
+      .filter(Boolean);
 
     const dist = levenshtein(queryNorm, row.name_normalized);
     if (dist > 1) continue;
 
     let hasSignal = false;
     for (const j of hintJurisdictions) {
-      if (roleJurisdictions.includes(j)) { hasSignal = true; break; }
+      if (roleJurisdictions.includes(j)) {
+        hasSignal = true;
+        break;
+      }
     }
     if (!hasSignal && input.role_hint) {
       const needle = input.role_hint.toLowerCase();
-      hasSignal = roles.some(
-        (r: unknown) => ((r as { role?: string }).role ?? "").toLowerCase().includes(needle),
+      hasSignal = roles.some((r: unknown) =>
+        ((r as { role?: string }).role ?? "").toLowerCase().includes(needle),
       );
     }
     if (!hasSignal) continue;

@@ -27,7 +27,8 @@ function canonicalize(v: unknown): unknown {
         cv !== null &&
         !Array.isArray(cv) &&
         Object.keys(cv).length === 0
-      ) continue;
+      )
+        continue;
       out[k] = cv;
     }
     return out;

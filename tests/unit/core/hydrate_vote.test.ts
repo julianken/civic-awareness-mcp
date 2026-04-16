@@ -124,9 +124,7 @@ describe("ensureVoteFresh", () => {
   });
 
   it("returns not_found on VoteNotFoundError", async () => {
-    fetchVoteSpy.mockRejectedValueOnce(
-      new VoteNotFoundError(119, "lower", 1, 9999),
-    );
+    fetchVoteSpy.mockRejectedValueOnce(new VoteNotFoundError(119, "lower", 1, 9999));
     const result = await ensureVoteFresh(store.db, {
       composite: { congress: 119, chamber: "lower", session: 1, roll_number: 9999 },
     });
@@ -147,9 +145,11 @@ describe("ensureVoteFresh", () => {
       },
       raw: { congress: 119, chamber: "Senate", rollNumber: 42, positions: [] },
     });
-    const localId = (store.db
-      .prepare("SELECT id FROM documents WHERE source_id = ?")
-      .get("vote-119-senate-42") as { id: string }).id;
+    const localId = (
+      store.db
+        .prepare("SELECT id FROM documents WHERE source_id = ?")
+        .get("vote-119-senate-42") as { id: string }
+    ).id;
 
     const result = await ensureVoteFresh(store.db, { vote_id: localId });
     expect(fetchVoteSpy).not.toHaveBeenCalled();

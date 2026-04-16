@@ -92,12 +92,15 @@ function expandOne(
   const kindRows = kindStmt.all(rootId);
 
   // Group rows by (from_id, to_id) pair.
-  const pairMap = new Map<string, {
-    from_id: string;
-    to_id: string;
-    kinds: Set<string>;
-    roles: Set<string>;
-  }>();
+  const pairMap = new Map<
+    string,
+    {
+      from_id: string;
+      to_id: string;
+      kinds: Set<string>;
+      roles: Set<string>;
+    }
+  >();
   for (const row of kindRows) {
     const key = `${row.from_id}|${row.to_id}`;
     if (!pairMap.has(key)) {
@@ -150,7 +153,11 @@ export function findConnections(
 
   // Depth-1 expansion.
   const { edges: d1Edges, neighborIds } = expandOne(
-    db, rootId, minCoOccurrences, existingPairs, MAX_EDGES,
+    db,
+    rootId,
+    minCoOccurrences,
+    existingPairs,
+    MAX_EDGES,
   );
   allEdges.push(...d1Edges);
 
@@ -171,7 +178,11 @@ export function findConnections(
       if (allEdges.length >= MAX_EDGES) break;
       const remaining = MAX_EDGES - allEdges.length;
       const { edges: d2Edges } = expandOne(
-        db, neighborId, minCoOccurrences, existingPairs, remaining,
+        db,
+        neighborId,
+        minCoOccurrences,
+        existingPairs,
+        remaining,
       );
       allEdges.push(...d2Edges);
     }

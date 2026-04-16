@@ -24,10 +24,11 @@ afterEach(() => {
 
 describe("refreshSource — source dispatch", () => {
   it("dispatches openfec to OpenFecAdapter and returns aggregated result", async () => {
-    vi.spyOn(global, "fetch").mockImplementation(async () =>
-      new Response(JSON.stringify({ results: [], pagination: { pages: 1 } }), {
-        status: 200,
-      }),
+    vi.spyOn(global, "fetch").mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ results: [], pagination: { pages: 1 } }), {
+          status: 200,
+        }),
     );
     const result = await refreshSource(store.db, {
       source: "openfec",
@@ -40,10 +41,11 @@ describe("refreshSource — source dispatch", () => {
   });
 
   it("dispatches congress to CongressAdapter", async () => {
-    vi.spyOn(global, "fetch").mockImplementation(async () =>
-      new Response(JSON.stringify({ members: [], bills: [], votes: [], pagination: {} }), {
-        status: 200,
-      }),
+    vi.spyOn(global, "fetch").mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ members: [], bills: [], votes: [], pagination: {} }), {
+          status: 200,
+        }),
     );
     const result = await refreshSource(store.db, {
       source: "congress",
@@ -54,10 +56,11 @@ describe("refreshSource — source dispatch", () => {
   });
 
   it("iterates jurisdictions for openstates and aggregates counts", async () => {
-    vi.spyOn(global, "fetch").mockImplementation(async () =>
-      new Response(JSON.stringify({ results: [], pagination: { max_page: 1 } }), {
-        status: 200,
-      }),
+    vi.spyOn(global, "fetch").mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ results: [], pagination: { max_page: 1 } }), {
+          status: 200,
+        }),
     );
     const result = await refreshSource(store.db, {
       source: "openstates",

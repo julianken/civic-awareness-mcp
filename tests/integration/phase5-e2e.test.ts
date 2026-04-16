@@ -40,20 +40,27 @@ beforeEach(() => {
   // Tests that pass a `jurisdiction_hint` or hit entity_connections would
   // otherwise trigger live fetches via the withShapedFetch fanout, so we
   // stub all narrow adapter methods the handlers might invoke.
-  vi.spyOn(OpenStatesAdapter.prototype, "searchPeople")
-    .mockImplementation(async () => ({ entitiesUpserted: 0 }));
-  vi.spyOn(CongressAdapter.prototype, "searchMembers")
-    .mockImplementation(async () => ({ entitiesUpserted: 0 }));
-  vi.spyOn(OpenFecAdapter.prototype, "searchCandidates")
-    .mockImplementation(async () => ({ entitiesUpserted: 0 }));
-  vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills")
-    .mockImplementation(async () => ({ documentsUpserted: 0 }));
-  vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills")
-    .mockImplementation(async () => ({ documentsUpserted: 0 }));
-  vi.spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor")
-    .mockImplementation(async () => ({ documentsUpserted: 0 }));
-  vi.spyOn(OpenFecAdapter.prototype, "fetchContributionsToCandidate")
-    .mockImplementation(async () => ({ documentsUpserted: 0 }));
+  vi.spyOn(OpenStatesAdapter.prototype, "searchPeople").mockImplementation(async () => ({
+    entitiesUpserted: 0,
+  }));
+  vi.spyOn(CongressAdapter.prototype, "searchMembers").mockImplementation(async () => ({
+    entitiesUpserted: 0,
+  }));
+  vi.spyOn(OpenFecAdapter.prototype, "searchCandidates").mockImplementation(async () => ({
+    entitiesUpserted: 0,
+  }));
+  vi.spyOn(CongressAdapter.prototype, "fetchMemberSponsoredBills").mockImplementation(async () => ({
+    documentsUpserted: 0,
+  }));
+  vi.spyOn(CongressAdapter.prototype, "fetchMemberCosponsoredBills").mockImplementation(
+    async () => ({ documentsUpserted: 0 }),
+  );
+  vi.spyOn(OpenStatesAdapter.prototype, "fetchBillsBySponsor").mockImplementation(async () => ({
+    documentsUpserted: 0,
+  }));
+  vi.spyOn(OpenFecAdapter.prototype, "fetchContributionsToCandidate").mockImplementation(
+    async () => ({ documentsUpserted: 0 }),
+  );
 
   if (existsSync(TEST_DB)) rmSync(TEST_DB);
   store = openStore(TEST_DB);
@@ -109,7 +116,12 @@ beforeEach(() => {
     external_ids: { bioguide: "O100001" },
     metadata: {
       roles: [
-        { jurisdiction: "us-federal", role: "representative", from: "2015-01-03T00:00:00.000Z", to: null },
+        {
+          jurisdiction: "us-federal",
+          role: "representative",
+          from: "2015-01-03T00:00:00.000Z",
+          to: null,
+        },
       ],
     },
   }).entity;
@@ -138,7 +150,11 @@ beforeEach(() => {
     jurisdiction: "us-il",
     title: "IL HB 1234 — Energy Efficiency Standards",
     occurred_at: "2013-03-15T00:00:00.000Z",
-    source: { name: "openstates", id: "ocd-bill/il-2013-hb1234", url: "https://openstates.org/il/bills/il-2013-hb1234/" },
+    source: {
+      name: "openstates",
+      id: "ocd-bill/il-2013-hb1234",
+      url: "https://openstates.org/il/bills/il-2013-hb1234/",
+    },
     references: [
       { entity_id: personId, role: "sponsor" },
       { entity_id: coSponsorId, role: "cosponsor" },
@@ -149,7 +165,11 @@ beforeEach(() => {
     jurisdiction: "us-il",
     title: "IL SB 567 — Water Conservation Act",
     occurred_at: "2014-01-20T00:00:00.000Z",
-    source: { name: "openstates", id: "ocd-bill/il-2014-sb567", url: "https://openstates.org/il/bills/il-2014-sb567/" },
+    source: {
+      name: "openstates",
+      id: "ocd-bill/il-2014-sb567",
+      url: "https://openstates.org/il/bills/il-2014-sb567/",
+    },
     references: [
       { entity_id: personId, role: "sponsor" },
       { entity_id: coSponsorId, role: "cosponsor" },
@@ -163,7 +183,11 @@ beforeEach(() => {
     jurisdiction: "us-federal",
     title: "HR 4500 — National Infrastructure Renewal Act",
     occurred_at: "2021-06-10T00:00:00.000Z",
-    source: { name: "congress", id: "congress-hr4500-117", url: "https://www.congress.gov/bill/117th-congress/house-bill/4500" },
+    source: {
+      name: "congress",
+      id: "congress-hr4500-117",
+      url: "https://www.congress.gov/bill/117th-congress/house-bill/4500",
+    },
     references: [
       { entity_id: personId, role: "sponsor" },
       { entity_id: voterColleagueId, role: "cosponsor" },
@@ -174,7 +198,11 @@ beforeEach(() => {
     jurisdiction: "us-federal",
     title: "HR 7890 — Clean Water Modernization Act",
     occurred_at: "2022-03-05T00:00:00.000Z",
-    source: { name: "congress", id: "congress-hr7890-117", url: "https://www.congress.gov/bill/117th-congress/house-bill/7890" },
+    source: {
+      name: "congress",
+      id: "congress-hr7890-117",
+      url: "https://www.congress.gov/bill/117th-congress/house-bill/7890",
+    },
     references: [
       { entity_id: personId, role: "sponsor" },
       { entity_id: voterColleagueId, role: "cosponsor" },
@@ -188,7 +216,11 @@ beforeEach(() => {
     jurisdiction: "us-federal",
     title: "Roll Call 312 — HR 4500 Passage",
     occurred_at: "2021-09-30T00:00:00.000Z",
-    source: { name: "congress", id: "congress-vote-117-312", url: "https://www.congress.gov/roll-call-votes/117/312" },
+    source: {
+      name: "congress",
+      id: "congress-vote-117-312",
+      url: "https://www.congress.gov/roll-call-votes/117/312",
+    },
     references: [
       { entity_id: personId, role: "voter", qualifier: "yea" },
       { entity_id: voterColleagueId, role: "voter", qualifier: "yea" },
@@ -199,7 +231,11 @@ beforeEach(() => {
     jurisdiction: "us-federal",
     title: "Roll Call 489 — HR 7890 Passage",
     occurred_at: "2022-05-12T00:00:00.000Z",
-    source: { name: "congress", id: "congress-vote-117-489", url: "https://www.congress.gov/roll-call-votes/117/489" },
+    source: {
+      name: "congress",
+      id: "congress-vote-117-489",
+      url: "https://www.congress.gov/roll-call-votes/117/489",
+    },
     references: [
       { entity_id: personId, role: "voter", qualifier: "yea" },
       { entity_id: voterColleagueId, role: "voter", qualifier: "yea" },
@@ -213,7 +249,11 @@ beforeEach(() => {
     jurisdiction: "us-federal",
     title: "Contribution: Alvarez → Callahan for Congress (2024-02-10)",
     occurred_at: "2024-02-10T00:00:00.000Z",
-    source: { name: "openfec", id: "fec-sa17-001", url: "https://www.fec.gov/data/receipts/?committee_id=C00999001" },
+    source: {
+      name: "openfec",
+      id: "fec-sa17-001",
+      url: "https://www.fec.gov/data/receipts/?committee_id=C00999001",
+    },
     references: [
       { entity_id: donorId, role: "contributor" },
       { entity_id: personId, role: "recipient" },
@@ -224,7 +264,11 @@ beforeEach(() => {
     jurisdiction: "us-federal",
     title: "Contribution: Alvarez → Callahan for Congress (2024-03-22)",
     occurred_at: "2024-03-22T00:00:00.000Z",
-    source: { name: "openfec", id: "fec-sa17-002", url: "https://www.fec.gov/data/receipts/?committee_id=C00999001" },
+    source: {
+      name: "openfec",
+      id: "fec-sa17-002",
+      url: "https://www.fec.gov/data/receipts/?committee_id=C00999001",
+    },
     references: [
       { entity_id: donorId, role: "contributor" },
       { entity_id: personId, role: "recipient" },
@@ -235,7 +279,11 @@ beforeEach(() => {
     jurisdiction: "us-federal",
     title: "Contribution: Illinois Forward PAC → Callahan for Congress (2024-04-01)",
     occurred_at: "2024-04-01T00:00:00.000Z",
-    source: { name: "openfec", id: "fec-sb23-003", url: "https://www.fec.gov/data/disbursements/?committee_id=C00999001" },
+    source: {
+      name: "openfec",
+      id: "fec-sb23-003",
+      url: "https://www.fec.gov/data/disbursements/?committee_id=C00999001",
+    },
     references: [
       { entity_id: pacId, role: "contributor" },
       { entity_id: personId, role: "recipient" },
@@ -274,9 +322,7 @@ describe("entity_connections — 3-source graph (Phase 5 E2E)", () => {
       depth: 1,
       min_co_occurrences: 2,
     });
-    const edge = result.edges.find(
-      (e) => e.to === coSponsorId || e.from === coSponsorId,
-    );
+    const edge = result.edges.find((e) => e.to === coSponsorId || e.from === coSponsorId);
     expect(edge).toBeDefined();
     expect(edge!.via_kinds).toContain("bill");
     expect(edge!.co_occurrence_count).toBe(2);
@@ -288,9 +334,7 @@ describe("entity_connections — 3-source graph (Phase 5 E2E)", () => {
       depth: 1,
       min_co_occurrences: 2,
     });
-    const edge = result.edges.find(
-      (e) => e.to === voterColleagueId || e.from === voterColleagueId,
-    );
+    const edge = result.edges.find((e) => e.to === voterColleagueId || e.from === voterColleagueId);
     expect(edge).toBeDefined();
     expect(edge!.via_kinds).toContain("bill");
     expect(edge!.via_kinds).toContain("vote");
@@ -304,9 +348,7 @@ describe("entity_connections — 3-source graph (Phase 5 E2E)", () => {
       depth: 1,
       min_co_occurrences: 2,
     });
-    const edge = result.edges.find(
-      (e) => e.to === donorId || e.from === donorId,
-    );
+    const edge = result.edges.find((e) => e.to === donorId || e.from === donorId);
     expect(edge).toBeDefined();
     expect(edge!.via_kinds).toContain("contribution");
     expect(edge!.co_occurrence_count).toBe(2);
@@ -347,7 +389,9 @@ describe("entity_connections — 3-source graph (Phase 5 E2E)", () => {
     });
     const sourceNames = result.sources.map((s) => s.name);
     // At minimum congress and openfec docs appear as sample documents
-    expect(sourceNames.some((n) => n === "congress" || n === "openstates" || n === "openfec")).toBe(true);
+    expect(sourceNames.some((n) => n === "congress" || n === "openstates" || n === "openfec")).toBe(
+      true,
+    );
   });
 
   it("depth=2 from Benitez reaches Okonkwo through Callahan", async () => {
