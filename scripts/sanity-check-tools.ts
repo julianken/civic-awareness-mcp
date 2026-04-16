@@ -23,6 +23,8 @@
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { openStore } from "../src/core/store.js";
+import { seedJurisdictions as seedFederal } from "../src/federal/seeds.js";
+import { seedJurisdictions as seedState } from "../src/state/seeds.js";
 
 // Federal handlers
 import { handleRecentBills as fedRecentBills } from "../src/federal/tools/recent_bills.js";
@@ -106,7 +108,9 @@ async function run(
 
 async function main() {
   const fedStore = openStore(FEDERAL_DB, coreSqlPath, federalSqlPath);
+  seedFederal(fedStore.db);
   const stateStore = openStore(STATE_DB, coreSqlPath, stateSqlPath);
+  seedState(stateStore.db);
 
   // Federal: search for a real entity id to chain get_entity / entity_connections
   let fedEntityId: string | undefined;
