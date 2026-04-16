@@ -6,13 +6,7 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    ignores: [
-      "dist/**",
-      "node_modules/**",
-      "coverage/**",
-      ".pnpm-store/**",
-      "data/**",
-    ],
+    ignores: ["dist/**", "node_modules/**", "coverage/**", ".pnpm-store/**", "data/**"],
   },
   {
     files: ["src/**/*.ts", "scripts/**/*.ts", "vitest.config.ts"],
