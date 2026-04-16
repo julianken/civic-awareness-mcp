@@ -4,9 +4,8 @@ All tools read/write-through to a local SQLite store as a TTL cache.
 
 ## Feeds
 
-- `recent_bills` — recently-updated state legislative bills via OpenStates
+- `recent_bills` — state legislative bills via OpenStates; defaults to recently-updated, plus optional filters for session, chamber, sponsor, classification, subject, and date ranges
 - `recent_votes` — recent state roll-call votes (embedded in bill responses via OpenStates `include=votes`)
-- `list_bills` — structured-predicate bill search (session, chamber, sponsor, subject, date ranges)
 - `search_civic_documents` — title search across cached state documents
 
 ## Entities

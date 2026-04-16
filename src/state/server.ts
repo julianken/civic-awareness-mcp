@@ -3,7 +3,6 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { openStore, type Store } from "../core/store.js";
 import { handleRecentBills } from "./tools/recent_bills.js";
 import { handleGetBill } from "./tools/get_bill.js";
-import { handleListBills } from "./tools/list_bills.js";
 import { handleSearchDocuments } from "./tools/search_civic_documents.js";
 import { handleSearchEntities } from "./tools/search_entities.js";
 import { handleResolvePerson } from "./tools/resolve_person.js";
@@ -13,7 +12,6 @@ import { handleRecentVotes } from "./tools/recent_votes.js";
 import {
   RecentBillsInput,
   GetBillInput,
-  ListBillsInput,
   SearchDocumentsInput,
   SearchEntitiesInput,
   ResolvePersonInput,
@@ -44,8 +42,14 @@ export function buildServer(opts: BuildServerOptions): CivicStateServer {
     "recent_bills",
     {
       description:
-        "List recently-updated U.S. state legislative bills from OpenStates. " +
-        "Pass a jurisdiction like 'us-tx' or 'us-ca'. Use '*' to query all cached jurisdictions locally.",
+        "List U.S. state legislative bills from OpenStates. Defaults to the last " +
+        "`days` (default 7) of recently-updated bills. Optional filters: " +
+        "chamber, session, sponsor_entity_id (civic entity UUID, resolved to " +
+        "OpenStates OCD id), classification, subject, introduced_since/until, " +
+        "updated_since/until, sort. Any explicit date range overrides `days`. " +
+        "Pass a jurisdiction like 'us-tx' or 'us-ca'; '*' queries all cached " +
+        "jurisdictions locally. Useful for 'what did this legislator introduce' " +
+        "and 'recent bills on <subject>' queries.",
       inputSchema: RecentBillsInput.shape,
     },
     async (input) => {
@@ -64,20 +68,6 @@ export function buildServer(opts: BuildServerOptions): CivicStateServer {
     },
     async (input) => {
       const data = await handleGetBill(store.db, input);
-      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-    },
-  );
-
-  mcp.registerTool(
-    "list_bills",
-    {
-      description:
-        "List state bills with structured filters: session, chamber, sponsor, " +
-        "classification, subject, date ranges. Backed by OpenStates.",
-      inputSchema: ListBillsInput.shape,
-    },
-    async (input) => {
-      const data = await handleListBills(store.db, input);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     },
   );

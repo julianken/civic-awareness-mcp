@@ -1125,7 +1125,7 @@ describe("OpenStatesAdapter.fetchPerson", () => {
   });
 });
 
-describe("OpenStatesAdapter.listBills", () => {
+describe("OpenStatesAdapter.fetchRecentBills — extended filters", () => {
   const LB_PARAMS_DB = "./data/test-openstates-lb-params.db";
   const LB_DATES_DB = "./data/test-openstates-lb-dates.db";
   const LB_SORT_DB = "./data/test-openstates-lb-sort.db";
@@ -1161,7 +1161,7 @@ describe("OpenStatesAdapter.listBills", () => {
     seedJurisdictions(db.db);
     try {
       const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
-      await adapter.listBills(db.db, {
+      await adapter.fetchRecentBills(db.db, {
         jurisdiction: "us-tx",
         session: "89R",
         chamber: "upper",
@@ -1175,9 +1175,8 @@ describe("OpenStatesAdapter.listBills", () => {
       const params = new URL(capturedUrl!).searchParams;
       expect(params.get("jurisdiction")).toBe("tx");
       expect(params.get("session")).toBe("89R");
-      // chamber is applied client-side on from_organization.classification
-      // (see the listBills chamber-filter regression test below) and is
-      // deliberately NOT forwarded as a server-side query param.
+      // OpenStates v3 `/bills` does not filter by origin chamber server-side;
+      // the adapter applies chamber client-side on from_organization.classification.
       expect(params.has("chamber")).toBe(false);
       expect(params.get("classification")).toBe("bill");
       expect(params.get("subject")).toBe("Vehicles");
@@ -1185,68 +1184,6 @@ describe("OpenStatesAdapter.listBills", () => {
       expect(params.get("per_page")).toBe("20");
     } finally {
       db.close();
-    }
-  });
-
-  it("client-side filters listBills results by from_organization.classification when chamber is set", async () => {
-    vi.spyOn(global, "fetch").mockImplementation(
-      async () =>
-        new Response(
-          JSON.stringify({
-            results: [
-              {
-                id: "ocd-bill/upper-lb",
-                identifier: "SB1",
-                title: "Senate Bill",
-                session: "89R",
-                updated_at: "2026-04-10T00:00:00Z",
-                openstates_url: "https://openstates.org/tx/bills/89R/SB1",
-                jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
-                from_organization: { classification: "upper" },
-                sponsorships: [],
-                actions: [{ date: "2026-04-10", description: "Introduced" }],
-              },
-              {
-                id: "ocd-bill/lower-lb",
-                identifier: "HB1",
-                title: "House Bill",
-                session: "89R",
-                updated_at: "2026-04-10T00:00:00Z",
-                openstates_url: "https://openstates.org/tx/bills/89R/HB1",
-                jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
-                from_organization: { classification: "lower" },
-                sponsorships: [],
-                actions: [{ date: "2026-04-10", description: "Introduced" }],
-              },
-            ],
-            pagination: { max_page: 1, page: 1 },
-          }),
-          { status: 200 },
-        ),
-    );
-
-    const LB_CHAMBER_DB = "./data/test-openstates-lb-chamber.db";
-    if (existsSync(LB_CHAMBER_DB)) rmSync(LB_CHAMBER_DB, { force: true });
-    const db = openStore(LB_CHAMBER_DB);
-    seedJurisdictions(db.db);
-    try {
-      const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
-      const result = await adapter.listBills(db.db, {
-        jurisdiction: "us-tx",
-        chamber: "upper",
-        sort: "updated_desc",
-        limit: 20,
-      });
-
-      expect(result.documentsUpserted).toBe(1);
-      const rows = db.db
-        .prepare("SELECT title FROM documents WHERE source_name='openstates' AND kind='bill'")
-        .all() as Array<{ title: string }>;
-      expect(rows).toHaveLength(1);
-      expect(rows[0].title).toMatch(/^SB1 — /);
-    } finally {
-      db.close();
-      if (existsSync(LB_CHAMBER_DB)) rmSync(LB_CHAMBER_DB, { force: true });
     }
   });
 
@@ -1264,7 +1201,7 @@ describe("OpenStatesAdapter.listBills", () => {
     seedJurisdictions(db.db);
     try {
       const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
-      await adapter.listBills(db.db, {
+      await adapter.fetchRecentBills(db.db, {
         jurisdiction: "us-tx",
         introduced_since: "2026-01-01",
         updated_since: "2026-03-01",
@@ -1297,7 +1234,7 @@ describe("OpenStatesAdapter.listBills", () => {
     seedJurisdictions(db.db);
     try {
       const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
-      await adapter.listBills(db.db, {
+      await adapter.fetchRecentBills(db.db, {
         jurisdiction: "us-tx",
         introduced_until: "2026-01-01",
         updated_until: "2026-04-01",
@@ -1330,7 +1267,7 @@ describe("OpenStatesAdapter.listBills", () => {
     seedJurisdictions(db.db);
     try {
       const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
-      await adapter.listBills(db.db, {
+      await adapter.fetchRecentBills(db.db, {
         jurisdiction: "us-tx",
         sort: "introduced_desc",
         limit: 20,
@@ -1338,52 +1275,6 @@ describe("OpenStatesAdapter.listBills", () => {
 
       expect(capturedUrl).toBeDefined();
       expect(new URL(capturedUrl!).searchParams.get("sort")).toBe("first_action_desc");
-    } finally {
-      db.close();
-    }
-  });
-
-  it("writes through with upsertBill on successful fetch", async () => {
-    vi.spyOn(global, "fetch").mockImplementation(
-      async () =>
-        new Response(
-          JSON.stringify({
-            results: [
-              {
-                id: "ocd-bill/tx/listbills-1",
-                identifier: "HB42",
-                title: "Listed Test",
-                session: "89R",
-                updated_at: "2026-04-10T00:00:00Z",
-                openstates_url: "https://openstates.org/tx/bills/89R/HB42",
-                jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
-                sponsorships: [],
-                actions: [{ date: "2026-04-10", description: "Introduced" }],
-              },
-            ],
-            pagination: { max_page: 1, page: 1 },
-          }),
-          { status: 200 },
-        ),
-    );
-
-    if (existsSync(LB_WRITE_DB)) rmSync(LB_WRITE_DB, { force: true });
-    const db = openStore(LB_WRITE_DB);
-    seedJurisdictions(db.db);
-    try {
-      const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
-      const result = await adapter.listBills(db.db, {
-        jurisdiction: "us-tx",
-        sort: "updated_desc",
-        limit: 20,
-      });
-
-      expect(result.documentsUpserted).toBe(1);
-      const rows = db.db
-        .prepare("SELECT title FROM documents WHERE source_name='openstates' AND kind='bill'")
-        .all() as Array<{ title: string }>;
-      expect(rows).toHaveLength(1);
-      expect(rows[0].title).toMatch(/^HB42 — /);
     } finally {
       db.close();
     }
@@ -1403,7 +1294,7 @@ describe("OpenStatesAdapter.listBills", () => {
     seedJurisdictions(db.db);
     try {
       const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
-      await adapter.listBills(db.db, {
+      await adapter.fetchRecentBills(db.db, {
         jurisdiction: "us-tx",
         sponsor: "ocd-person/abc",
         sort: "updated_desc",
@@ -1426,7 +1317,7 @@ describe("OpenStatesAdapter.listBills", () => {
     try {
       const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
       await expect(
-        adapter.listBills(db.db, { jurisdiction: "us-tx", sort: "updated_desc", limit: 20 }),
+        adapter.fetchRecentBills(db.db, { jurisdiction: "us-tx", sort: "updated_desc", limit: 20 }),
       ).rejects.toThrow(/OpenStates \/bills returned 500/);
     } finally {
       db.close();

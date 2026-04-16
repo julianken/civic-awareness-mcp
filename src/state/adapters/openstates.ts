@@ -308,17 +308,28 @@ export class OpenStatesAdapter implements Adapter {
     });
   }
 
-  /** Narrow per-tool fetch for R15 `recent_bills` — one page of
-   *  recently-updated bills for a jurisdiction, with optional
-   *  `updated_since` filter, optional chamber filter, and optional
-   *  row `limit` (1..20, mapped to OpenStates `per_page`). Writes
-   *  through to `documents` via `upsertBill`. Returns telemetry
-   *  count for `withShapedFetch`'s primary_rows_written contract. */
+  /** Narrow per-tool fetch for `recent_bills` — one page of bills for a
+   *  jurisdiction, filtered by any combination of date windows
+   *  (`updated_since`/`updated_until` → OpenStates `updated_since`/
+   *  `updated_before`; `introduced_since`/`introduced_until` →
+   *  `created_since`/`created_before`), `session`, `sponsor` (OCD id),
+   *  `classification`, `subject`, and `sort`. Writes through to
+   *  `documents` via `upsertBill`. Chamber is filtered client-side on
+   *  `from_organization.classification` — OpenStates v3 `/bills` does
+   *  not filter by origin chamber server-side. */
   async fetchRecentBills(
     db: Database.Database,
     opts: {
       jurisdiction: string;
       updated_since?: string;
+      updated_until?: string;
+      introduced_since?: string;
+      introduced_until?: string;
+      session?: string;
+      sponsor?: string;
+      classification?: string;
+      subject?: string;
+      sort?: "updated_desc" | "updated_asc" | "introduced_desc" | "introduced_asc";
       chamber?: "upper" | "lower";
       limit?: number;
     },
@@ -326,63 +337,19 @@ export class OpenStatesAdapter implements Adapter {
     const abbr = opts.jurisdiction.replace(/^us-/, "").toLowerCase();
     const url = new URL(`${BASE_URL}/bills`);
     url.searchParams.set("jurisdiction", abbr);
-    url.searchParams.set("sort", "updated_desc");
+    url.searchParams.set("sort", mapSort(opts.sort ?? "updated_desc"));
     url.searchParams.set("per_page", String(opts.limit ?? 20));
     if (opts.updated_since) url.searchParams.set("updated_since", opts.updated_since);
-    for (const inc of ["sponsorships", "abstracts", "actions"]) {
-      url.searchParams.append("include", inc);
-    }
-    return this.fetchAndUpsertBillsFromUrl(db, url, {
-      chamber: opts.chamber,
-      target: opts.limit,
-    });
-  }
-
-  /** Narrow per-tool fetch for R15 `list_bills` — one page of bills
-   *  matching a set of structured predicates (session, chamber,
-   *  sponsor, classification, subject, date windows). Writes through
-   *  to `documents` via `upsertBill`. Uses distinct endpoint_path
-   *  `/bills/list` in the shaped-fetch key so cache rows never
-   *  collide with `recent_bills` (endpoint_path `/bills`). Note that
-   *  OpenStates itself exposes only one `/bills` endpoint — the
-   *  `/list` suffix is a cache-key discriminator, not a path the
-   *  upstream sees. */
-  async listBills(
-    db: Database.Database,
-    opts: {
-      jurisdiction: string;
-      session?: string;
-      chamber?: "upper" | "lower";
-      sponsor?: string;
-      classification?: string;
-      subject?: string;
-      introduced_since?: string;
-      introduced_until?: string;
-      updated_since?: string;
-      updated_until?: string;
-      sort: "updated_desc" | "updated_asc" | "introduced_desc" | "introduced_asc";
-      limit: number;
-    },
-  ): Promise<{ documentsUpserted: number }> {
-    const abbr = opts.jurisdiction.replace(/^us-/, "").toLowerCase();
-    const url = new URL(`${BASE_URL}/bills`);
-    url.searchParams.set("jurisdiction", abbr);
-    url.searchParams.set("sort", mapSort(opts.sort));
-    url.searchParams.set("per_page", String(opts.limit));
+    if (opts.updated_until) url.searchParams.set("updated_before", opts.updated_until);
+    if (opts.introduced_since) url.searchParams.set("created_since", opts.introduced_since);
+    if (opts.introduced_until) url.searchParams.set("created_before", opts.introduced_until);
     if (opts.session) url.searchParams.set("session", opts.session);
     if (opts.sponsor) url.searchParams.set("sponsor", opts.sponsor);
     if (opts.classification) url.searchParams.set("classification", opts.classification);
     if (opts.subject) url.searchParams.set("subject", opts.subject);
-    if (opts.introduced_since) url.searchParams.set("created_since", opts.introduced_since);
-    if (opts.introduced_until) url.searchParams.set("created_before", opts.introduced_until);
-    if (opts.updated_since) url.searchParams.set("updated_since", opts.updated_since);
-    if (opts.updated_until) url.searchParams.set("updated_before", opts.updated_until);
     for (const inc of ["sponsorships", "abstracts", "actions"]) {
       url.searchParams.append("include", inc);
     }
-    // chamber is filtered client-side on from_organization.classification
-    // to match fetchRecentBills semantics — OpenStates v3 `/bills` does not
-    // filter by origin chamber server-side.
     return this.fetchAndUpsertBillsFromUrl(db, url, {
       chamber: opts.chamber,
       target: opts.limit,

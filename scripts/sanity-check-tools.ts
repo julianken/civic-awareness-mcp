@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * Manual smoke gate — exercises all 18 MCP tool handlers end-to-end
+ * Manual smoke gate — exercises all MCP tool handlers end-to-end
  * against real upstream APIs (OpenStates, Congress.gov, OpenFEC).
  *
  * Run:
@@ -40,7 +40,6 @@ import { handleEntityConnections as fedEntityConnections } from "../src/federal/
 // State handlers
 import { handleRecentBills as stateRecentBills } from "../src/state/tools/recent_bills.js";
 import { handleGetBill as stateGetBill } from "../src/state/tools/get_bill.js";
-import { handleListBills as stateListBills } from "../src/state/tools/list_bills.js";
 import { handleSearchDocuments as stateSearchDocs } from "../src/state/tools/search_civic_documents.js";
 import { handleSearchEntities as stateSearchEntities } from "../src/state/tools/search_entities.js";
 import { handleResolvePerson as stateResolvePerson } from "../src/state/tools/resolve_person.js";
@@ -168,13 +167,15 @@ async function main() {
   await run("state", "recent_bills", () =>
     stateRecentBills(stateStore.db, { jurisdiction: "us-tx", days: 7, limit: 5 }),
   );
+  await run("state", "recent_bills (limit-only)", () =>
+    stateRecentBills(stateStore.db, { jurisdiction: "us-tx", limit: 5, sort: "updated_desc" }),
+  );
+  await run("state", "recent_bills (explicit window)", () =>
+    stateRecentBills(stateStore.db, { jurisdiction: "us-tx", introduced_since: "2025-01-01", limit: 5 }),
+  );
 
   await run("state", "get_bill", () =>
     stateGetBill(stateStore.db, { jurisdiction: "us-tx", session: "89R", identifier: "SB 11" }),
-  );
-
-  await run("state", "list_bills", () =>
-    stateListBills(stateStore.db, { jurisdiction: "us-tx", limit: 5 }),
   );
 
   await run("state", "search_civic_documents", () =>

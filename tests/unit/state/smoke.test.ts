@@ -9,18 +9,17 @@ describe("civic-state-mcp server", () => {
     server = null;
   });
 
-  it("boots and registers exactly 9 tools", () => {
+  it("boots and registers exactly 8 tools", () => {
     server = buildServer({ dbPath: ":memory:" });
     const { mcp } = server;
 
     const tools = (mcp as unknown as { _registeredTools: Record<string, unknown> })
       ._registeredTools;
-    expect(Object.keys(tools)).toHaveLength(9);
+    expect(Object.keys(tools)).toHaveLength(8);
 
     const expectedTools = [
       "recent_bills",
       "get_bill",
-      "list_bills",
       "search_civic_documents",
       "search_entities",
       "resolve_person",

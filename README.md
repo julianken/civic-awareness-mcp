@@ -31,19 +31,18 @@ Each server reads/writes-through to a local SQLite store as a TTL cache. Every r
 | `entity_connections`     | entity | Co-occurrence graph via bills, votes, contributions (depth 1–2)    |
 | `get_vote`               | detail | Full roll-call vote with per-legislator positions                  |
 
-### civic-state-mcp (9 tools)
+### civic-state-mcp (8 tools)
 
-| Tool                     | Kind   | What it answers                                                                    |
-| ------------------------ | ------ | ---------------------------------------------------------------------------------- |
-| `recent_bills`           | feed   | Bills introduced or acted on in the last N days (OpenStates, per jurisdiction)     |
-| `recent_votes`           | feed   | Roll-call votes in the last N days, chamber + tally (OpenStates, per jurisdiction) |
-| `get_bill`               | detail | Full bill detail: actions, versions, sponsors, subjects                            |
-| `list_bills`             | feed   | Predicate-first bill listing by sponsor / subject / classification / session       |
-| `search_civic_documents` | search | Title search across cached state bills                                             |
-| `search_entities`        | entity | Name search across state legislators (OpenStates)                                  |
-| `get_entity`             | entity | Entity detail + role history + recent documents                                    |
-| `resolve_person`         | entity | Disambiguate a name into one or more Person entity IDs                             |
-| `entity_connections`     | entity | Co-occurrence graph via shared sponsored bills (depth 1–2)                         |
+| Tool                     | Kind   | What it answers                                                                       |
+| ------------------------ | ------ | ------------------------------------------------------------------------------------- |
+| `recent_bills`           | feed   | Bills by jurisdiction; filters for sponsor, subject, classification, session, dates   |
+| `recent_votes`           | feed   | Roll-call votes in the last N days, chamber + tally (OpenStates, per jurisdiction)    |
+| `get_bill`               | detail | Full bill detail: actions, versions, sponsors, subjects                               |
+| `search_civic_documents` | search | Title search across cached state bills                                                |
+| `search_entities`        | entity | Name search across state legislators (OpenStates)                                     |
+| `get_entity`             | entity | Entity detail + role history + recent documents                                       |
+| `resolve_person`         | entity | Disambiguate a name into one or more Person entity IDs                                |
+| `entity_connections`     | entity | Co-occurrence graph via shared sponsored bills (depth 1–2)                            |
 
 ## Installation
 

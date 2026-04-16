@@ -1,9 +1,10 @@
 import type Database from "better-sqlite3";
 import { OpenStatesAdapter } from "../adapters/openstates.js";
 import { queryDocuments } from "../../core/documents.js";
+import { findEntityById } from "../../core/entities.js";
 import { getLimiter } from "../limiters.js";
 import { withShapedFetch } from "../../core/tool_cache.js";
-import type { EntityReference } from "../../core/types.js";
+import type { Document, EntityReference } from "../../core/types.js";
 import { requireEnv } from "../../util/env.js";
 import { logger } from "../../util/logger.js";
 import { RecentBillsInput } from "../schemas.js";
@@ -40,7 +41,7 @@ export interface RecentBillsResponse {
   total: number;
   sources: Array<{ name: string; url: string }>;
   window: { from: string; to: string };
-  empty_reason?: EmptyFeedDiagnostic["empty_reason"];
+  empty_reason?: EmptyFeedDiagnostic["empty_reason"] | "sponsor_not_linked_to_openstates";
   data_freshness?: EmptyFeedDiagnostic["data_freshness"];
   hint?: string;
   filters_applied?: EmptyFeedDiagnostic["filters_applied"];
@@ -107,52 +108,166 @@ export function buildSponsorSummary(
   return { count: filtered.length, by_party, top };
 }
 
+function introducedDate(raw: Record<string, unknown>): string | undefined {
+  const actions = raw.actions as Array<{ date: string }> | undefined;
+  return actions?.[0]?.date;
+}
+
+function matchesClassification(raw: Record<string, unknown>, filter: string): boolean {
+  const c = raw.classification;
+  if (Array.isArray(c)) return c.includes(filter);
+  if (typeof c === "string") return c === filter;
+  return false;
+}
+
+function matchesSubject(raw: Record<string, unknown>, filter: string): boolean {
+  const subjects = raw.subjects as string[] | undefined;
+  return Array.isArray(subjects) && subjects.includes(filter);
+}
+
+function compareSort(
+  a: { intro?: string; upd: string },
+  b: { intro?: string; upd: string },
+  sort: "updated_desc" | "updated_asc" | "introduced_desc" | "introduced_asc",
+): number {
+  if (sort === "updated_desc") return b.upd.localeCompare(a.upd);
+  if (sort === "updated_asc") return a.upd.localeCompare(b.upd);
+  const ai = a.intro ?? "";
+  const bi = b.intro ?? "";
+  if (sort === "introduced_desc") return bi.localeCompare(ai);
+  return ai.localeCompare(bi);
+}
+
 export async function handleRecentBills(
   db: Database.Database,
   rawInput: unknown,
 ): Promise<RecentBillsResponse> {
   const input = RecentBillsInput.parse(rawInput);
 
-  const to = new Date();
-  const from = new Date(to.getTime() - input.days * 86400 * 1000);
+  const hasExplicitWindow = !!(
+    input.introduced_since ||
+    input.introduced_until ||
+    input.updated_since ||
+    input.updated_until
+  );
+
+  const now = new Date();
+  const windowFrom = hasExplicitWindow
+    ? (input.introduced_since ?? input.updated_since ?? "1970-01-01T00:00:00Z")
+    : new Date(now.getTime() - input.days * 86400 * 1000).toISOString();
+  const windowTo = hasExplicitWindow
+    ? (input.introduced_until ?? input.updated_until ?? now.toISOString())
+    : now.toISOString();
+
+  // Resolve sponsor_entity_id → OCD person id. Entity with no
+  // openstates_person link can never match server-side — short-circuit
+  // before fanning out a broad, unfiltered fetch that would be rejected
+  // client-side anyway.
+  let sponsorOcd: string | undefined;
+  if (input.sponsor_entity_id) {
+    const ent = findEntityById(db, input.sponsor_entity_id);
+    if (!ent) {
+      logger.warn("recent_bills: sponsor entity not found", {
+        id: input.sponsor_entity_id,
+      });
+      throw new Error(`sponsor entity not found: ${input.sponsor_entity_id}`);
+    }
+    const xids = (ent.external_ids ?? {}) as Record<string, string>;
+    sponsorOcd = xids.openstates_person;
+    if (!sponsorOcd) {
+      const stateAbbr = input.jurisdiction.replace(/^us-/, "");
+      return {
+        results: [],
+        total: 0,
+        sources: [{ name: "openstates", url: `https://openstates.org/${stateAbbr}/` }],
+        window: { from: windowFrom, to: windowTo },
+        empty_reason: "sponsor_not_linked_to_openstates",
+        hint:
+          "This entity has no OpenStates person link; no bills can be found " +
+          "via this sponsor filter.",
+      };
+    }
+  }
 
   const projectLocal = (jurisdiction: string): RecentBillsResponse => {
     const isWildcard = jurisdiction === "*";
-    const ceiling = Math.max(50, (input.limit ?? 0) * 3);
+    // Headroom so client-side predicates (sponsor/subject/classification/
+    // date) don't starve the final limit.
+    const ceiling = Math.max(500, (input.limit ?? 20) * 3);
 
-    const docs = input.session
+    const docs = hasExplicitWindow
       ? queryDocuments(db, {
           kind: "bill",
           ...(isWildcard ? {} : { jurisdiction }),
-          limit: Math.max(100, ceiling),
+          limit: ceiling,
         })
-      : input.limit !== undefined
+      : input.session
         ? queryDocuments(db, {
             kind: "bill",
             ...(isWildcard ? {} : { jurisdiction }),
-            limit: ceiling,
+            limit: Math.max(100, ceiling),
           })
-        : queryDocuments(db, {
-            kind: "bill",
-            ...(isWildcard ? {} : { jurisdiction }),
-            from: from.toISOString(),
-            to: to.toISOString(),
-            limit: 50,
-          });
+        : input.limit !== undefined
+          ? queryDocuments(db, {
+              kind: "bill",
+              ...(isWildcard ? {} : { jurisdiction }),
+              limit: ceiling,
+            })
+          : queryDocuments(db, {
+              kind: "bill",
+              ...(isWildcard ? {} : { jurisdiction }),
+              from: windowFrom,
+              to: windowTo,
+              limit: 50,
+            });
 
-    const sessionFiltered = input.session
-      ? docs.filter((d) => (d.raw as { session?: string }).session === input.session)
-      : docs;
+    const filtered = docs.filter((d: Document) => {
+      if (input.session) {
+        const s = (d.raw as { session?: string }).session;
+        if (s !== input.session) return false;
+      }
+      if (input.chamber) {
+        const classification = (d.raw as { from_organization?: { classification?: string } })
+          .from_organization?.classification;
+        if (classification !== input.chamber) return false;
+      }
+      if (input.sponsor_entity_id) {
+        const hit = d.references.some(
+          (r) =>
+            r.entity_id === input.sponsor_entity_id &&
+            (r.role === "sponsor" || r.role === "cosponsor"),
+        );
+        if (!hit) return false;
+      }
+      if (input.classification && !matchesClassification(d.raw, input.classification)) {
+        return false;
+      }
+      if (input.subject && !matchesSubject(d.raw, input.subject)) {
+        return false;
+      }
+      if (input.introduced_since || input.introduced_until) {
+        const intro = introducedDate(d.raw);
+        if (!intro) return false;
+        if (input.introduced_since && intro < input.introduced_since) return false;
+        if (input.introduced_until && intro > input.introduced_until) return false;
+      }
+      if (input.updated_since || input.updated_until) {
+        const upd = d.occurred_at;
+        if (input.updated_since && upd < input.updated_since) return false;
+        if (input.updated_until && upd > input.updated_until) return false;
+      }
+      return true;
+    });
 
-    const filtered = input.chamber
-      ? sessionFiltered.filter((d) => {
-          const raw = d.raw as { from_organization?: { classification?: string } };
-          return raw.from_organization?.classification === input.chamber;
-        })
-      : sessionFiltered;
+    const sortable = filtered.map((d) => ({
+      doc: d,
+      intro: introducedDate(d.raw),
+      upd: d.occurred_at,
+    }));
+    sortable.sort((a, b) => compareSort(a, b, input.sort));
 
     let titleSplitWarns = 0;
-    const results: BillSummary[] = filtered.map((d) => {
+    const mapped: BillSummary[] = sortable.map(({ doc: d }) => {
       const [identifier, ...titleParts] = d.title.split(" — ");
       if (titleParts.length === 0 && titleSplitWarns < MAX_WARN_PER_CALL) {
         logger.warn(
@@ -174,7 +289,7 @@ export async function handleRecentBills(
       };
     });
 
-    const capped = input.limit !== undefined ? results.slice(0, input.limit) : results;
+    const capped = input.limit !== undefined ? mapped.slice(0, input.limit) : mapped;
 
     const abbr = isWildcard ? "" : jurisdiction.replace(/^us-/, "");
     const sourceUrl = isWildcard ? "https://openstates.org/" : `https://openstates.org/${abbr}/`;
@@ -183,12 +298,19 @@ export async function handleRecentBills(
       results: capped,
       total: capped.length,
       sources: [{ name: "openstates", url: sourceUrl }],
-      window: { from: from.toISOString(), to: to.toISOString() },
+      window: { from: windowFrom, to: windowTo },
     };
     if (capped.length === 0 && !isWildcard) {
       const filtersApplied: string[] = [];
       if (input.session) filtersApplied.push("session");
       if (input.chamber) filtersApplied.push("chamber");
+      if (input.sponsor_entity_id) filtersApplied.push("sponsor_entity_id");
+      if (input.classification) filtersApplied.push("classification");
+      if (input.subject) filtersApplied.push("subject");
+      if (input.introduced_since) filtersApplied.push("introduced_since");
+      if (input.introduced_until) filtersApplied.push("introduced_until");
+      if (input.updated_since) filtersApplied.push("updated_since");
+      if (input.updated_until) filtersApplied.push("updated_until");
       const diag = emptyFeedDiagnostic(db, {
         kind: "bill",
         jurisdiction,
@@ -200,7 +322,6 @@ export async function handleRecentBills(
     return base;
   };
 
-  // Wildcard short-circuits to local-only.
   if (input.jurisdiction === "*") {
     return projectLocal("*");
   }
@@ -213,13 +334,26 @@ export async function handleRecentBills(
       rateLimiter: getLimiter("openstates"),
     });
     const stateAbbr = jurisdiction.replace(/^us-/, "");
-    const fromDateTime =
-      input.limit !== undefined
-        ? new Date(to.getTime() - 365 * 86400 * 1000).toISOString().slice(0, 19)
-        : from.toISOString().slice(0, 19);
+    // OpenStates v3 rejects trailing `Z` on datetime filters; date-only
+    // strings are unaffected by the 19-char slice.
+    const stripZ = (s: string | undefined): string | undefined =>
+      s === undefined ? undefined : s.slice(0, 19);
+    const updatedSinceParam = hasExplicitWindow
+      ? stripZ(input.updated_since)
+      : input.limit !== undefined
+        ? stripZ(new Date(now.getTime() - 365 * 86400 * 1000).toISOString())
+        : stripZ(windowFrom);
     const { documentsUpserted } = await adapter.fetchRecentBills(db, {
       jurisdiction: stateAbbr,
-      updated_since: fromDateTime,
+      updated_since: updatedSinceParam,
+      updated_until: stripZ(input.updated_until),
+      introduced_since: stripZ(input.introduced_since),
+      introduced_until: stripZ(input.introduced_until),
+      session: input.session,
+      sponsor: sponsorOcd,
+      classification: input.classification,
+      subject: input.subject,
+      sort: input.sort,
       chamber: input.chamber,
       limit: input.limit,
     });
@@ -236,6 +370,14 @@ export async function handleRecentBills(
         days: input.days,
         chamber: input.chamber,
         session: input.session,
+        sponsor_entity_id: input.sponsor_entity_id,
+        classification: input.classification,
+        subject: input.subject,
+        introduced_since: input.introduced_since,
+        introduced_until: input.introduced_until,
+        updated_since: input.updated_since,
+        updated_until: input.updated_until,
+        sort: input.sort,
         limit: input.limit,
       },
       tool: "recent_bills",

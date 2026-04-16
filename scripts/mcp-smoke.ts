@@ -75,7 +75,6 @@ async function main(): Promise<void> {
       expectedTools: [
         "recent_bills",
         "get_bill",
-        "list_bills",
         "search_civic_documents",
         "search_entities",
         "resolve_person",

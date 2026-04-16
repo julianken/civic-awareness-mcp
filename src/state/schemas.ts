@@ -1,31 +1,30 @@
 import { z } from "zod";
 
 export const RecentBillsInput = z.object({
-  // Required. Accepts "us-tx", "us-ca", "*" for all jurisdictions, etc.
-  jurisdiction: z.string().min(1),
-  days: z.number().int().min(1).max(365).default(7),
+  jurisdiction: z
+    .string()
+    .min(1)
+    .describe(
+      "Jurisdiction like 'us-tx' or 'us-ca'. '*' queries all cached jurisdictions locally (no upstream fetch).",
+    ),
+  days: z
+    .number()
+    .int()
+    .min(1)
+    .max(365)
+    .default(7)
+    .describe(
+      "Look-back window in days. Ignored when any explicit introduced_since/until or updated_since/until is set.",
+    ),
   chamber: z.enum(["upper", "lower"]).optional(),
   session: z.string().min(1).optional(),
-  // Optional row cap. When set, the handler drops the days-derived
-  // `updated_since` upstream filter and returns top-N by
-  // OpenStates' native `sort=updated_desc`. Use to query biennial or
-  // off-session jurisdictions where the time window is empty.
-  limit: z.number().int().min(1).max(500).optional(),
-});
-export type RecentBillsInput = z.infer<typeof RecentBillsInput>;
-
-export const GetBillInput = z.object({
-  jurisdiction: z.string().min(1),
-  session: z.string().min(1),
-  identifier: z.string().min(1),
-});
-export type GetBillInput = z.infer<typeof GetBillInput>;
-
-export const ListBillsInput = z.object({
-  jurisdiction: z.string().min(1),
-  session: z.string().min(1).optional(),
-  chamber: z.enum(["upper", "lower"]).optional(),
-  sponsor_entity_id: z.string().min(1).optional(),
+  sponsor_entity_id: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Civic entity UUID; resolved to OpenStates OCD person id before upstream fetch.",
+    ),
   classification: z.string().min(1).optional(),
   subject: z.string().min(1).optional(),
   introduced_since: z.string().min(1).optional(),
@@ -35,9 +34,24 @@ export const ListBillsInput = z.object({
   sort: z
     .enum(["updated_desc", "updated_asc", "introduced_desc", "introduced_asc"])
     .default("updated_desc"),
-  limit: z.number().int().min(1).max(500).default(20),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(500)
+    .optional()
+    .describe(
+      "Optional row cap. Without explicit date filters, caps recency-sorted rows from a 365-day lookback.",
+    ),
 });
-export type ListBillsInput = z.infer<typeof ListBillsInput>;
+export type RecentBillsInput = z.infer<typeof RecentBillsInput>;
+
+export const GetBillInput = z.object({
+  jurisdiction: z.string().min(1),
+  session: z.string().min(1),
+  identifier: z.string().min(1),
+});
+export type GetBillInput = z.infer<typeof GetBillInput>;
 
 export const SearchDocumentsInput = z.object({
   q: z.string().min(1),
