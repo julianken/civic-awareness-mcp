@@ -41,9 +41,7 @@ export async function ensureVoteFresh(
 
   if (input.vote_id) {
     existing = db
-      .prepare(
-        "SELECT id, fetched_at FROM documents WHERE id = ? AND kind = 'vote'",
-      )
+      .prepare("SELECT id, fetched_at FROM documents WHERE id = ? AND kind = 'vote'")
       .get(input.vote_id) as Row | undefined;
 
     if (!existing && !input.composite) {

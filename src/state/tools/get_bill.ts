@@ -57,8 +57,13 @@ export interface GetBillResponse {
 }
 
 interface Row {
-  id: string; jurisdiction: string; title: string; summary: string | null;
-  fetched_at: string; source_url: string; raw: string;
+  id: string;
+  jurisdiction: string;
+  title: string;
+  summary: string | null;
+  fetched_at: string;
+  source_url: string;
+  raw: string;
 }
 
 interface RawSponsorship {
@@ -72,11 +77,14 @@ interface RawShape {
   actions?: BillAction[];
   subjects?: string[];
   versions?: Array<{
-    note?: string; date?: string;
+    note?: string;
+    date?: string;
     links?: Array<{ url?: string; media_type?: string }>;
   }>;
   related_bills?: Array<{
-    identifier?: string; legislative_session?: string; relation_type?: string;
+    identifier?: string;
+    legislative_session?: string;
+    relation_type?: string;
   }>;
   sponsorships?: RawSponsorship[];
 }
@@ -101,12 +109,15 @@ export async function handleGetBill(
     .get(input.jurisdiction, input.identifier, input.session) as Row | undefined;
 
   const abbr = input.jurisdiction.replace(/^us-/, "");
-  const sources = [{
-    name: "openstates",
-    url: input.jurisdiction === "us-federal"
-      ? "https://www.congress.gov/"
-      : `https://openstates.org/${abbr}/`,
-  }];
+  const sources = [
+    {
+      name: "openstates",
+      url:
+        input.jurisdiction === "us-federal"
+          ? "https://www.congress.gov/"
+          : `https://openstates.org/${abbr}/`,
+    },
+  ];
 
   if (!row) {
     return {

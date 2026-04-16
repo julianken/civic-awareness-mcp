@@ -114,8 +114,18 @@ describe("handleResolvePerson — resolution logic", () => {
       name: "Maria Lopez",
       metadata: {
         roles: [
-          { jurisdiction: "us-tx", role: "state_legislator", from: "2010-01-01T00:00:00.000Z", to: "2018-01-01T00:00:00.000Z" },
-          { jurisdiction: "us-federal", role: "representative", from: "2019-01-03T00:00:00.000Z", to: null },
+          {
+            jurisdiction: "us-tx",
+            role: "state_legislator",
+            from: "2010-01-01T00:00:00.000Z",
+            to: "2018-01-01T00:00:00.000Z",
+          },
+          {
+            jurisdiction: "us-federal",
+            role: "representative",
+            from: "2019-01-03T00:00:00.000Z",
+            to: null,
+          },
         ],
       },
     });

@@ -15,9 +15,9 @@ vi.mock("../../../../src/federal/hydrate_vote.js", async (orig) => {
 import * as hydrateVoteModule from "../../../../src/federal/hydrate_vote.js";
 import { ensureVoteFresh } from "../../../../src/federal/hydrate_vote.js";
 const mockEnsure = vi.mocked(ensureVoteFresh);
-const realEnsureVoteFresh = (await vi.importActual<typeof hydrateVoteModule>(
-  "../../../../src/federal/hydrate_vote.js",
-)).ensureVoteFresh;
+const realEnsureVoteFresh = (
+  await vi.importActual<typeof hydrateVoteModule>("../../../../src/federal/hydrate_vote.js")
+).ensureVoteFresh;
 
 const TEST_DB = "./data/test-get-vote.db";
 let store: Store;
@@ -30,12 +30,16 @@ beforeEach(() => {
   seedJurisdictions(store.db);
 
   const { entity: schumer } = upsertEntity(store.db, {
-    kind: "person", name: "Schumer, Charles E.", jurisdiction: undefined,
+    kind: "person",
+    name: "Schumer, Charles E.",
+    jurisdiction: undefined,
     external_ids: { bioguide: "S000148" },
     metadata: { party: "Democratic", state: "NY" },
   });
   upsertEntity(store.db, {
-    kind: "person", name: "McConnell, Mitch", jurisdiction: undefined,
+    kind: "person",
+    name: "McConnell, Mitch",
+    jurisdiction: undefined,
     external_ids: { bioguide: "M000355" },
     metadata: { party: "Republican", state: "KY" },
   });
@@ -60,14 +64,28 @@ beforeEach(() => {
       bill: { type: "HR", number: "1234" },
       totals: { yea: 1, nay: 1, present: 0, notVoting: 0 },
       positions: [
-        { bioguideId: "S000148", name: "Schumer, Charles E.", party: "Democratic", state: "NY", position: "yea" },
-        { bioguideId: "M000355", name: "McConnell, Mitch", party: "Republican", state: "KY", position: "nay" },
+        {
+          bioguideId: "S000148",
+          name: "Schumer, Charles E.",
+          party: "Democratic",
+          state: "NY",
+          position: "yea",
+        },
+        {
+          bioguideId: "M000355",
+          name: "McConnell, Mitch",
+          party: "Republican",
+          state: "KY",
+          position: "nay",
+        },
       ],
     },
   });
-  seededVoteId = (store.db
-    .prepare("SELECT id FROM documents WHERE source_id = ?")
-    .get("vote-119-senate-42") as { id: string }).id;
+  seededVoteId = (
+    store.db.prepare("SELECT id FROM documents WHERE source_id = ?").get("vote-119-senate-42") as {
+      id: string;
+    }
+  ).id;
 });
 afterEach(() => store.close());
 
@@ -97,7 +115,10 @@ describe("get_vote tool", () => {
   it("projects by composite and uses documentId from ensureVoteFresh", async () => {
     mockEnsure.mockResolvedValue({ ok: true, documentId: seededVoteId });
     const result = await handleGetVote(store.db, {
-      congress: 119, chamber: "upper", session: 1, roll_number: 42,
+      congress: 119,
+      chamber: "upper",
+      session: 1,
+      roll_number: 42,
     });
     expect(result.vote?.positions).toHaveLength(2);
   });
@@ -112,7 +133,10 @@ describe("get_vote tool", () => {
       },
     });
     const result = await handleGetVote(store.db, {
-      congress: 119, chamber: "lower", session: 1, roll_number: 9999,
+      congress: 119,
+      chamber: "lower",
+      session: 1,
+      roll_number: 9999,
     });
     expect(result.vote).toBeNull();
     expect(result.stale_notice?.reason).toBe("not_found");
@@ -124,7 +148,8 @@ describe("get_vote tool", () => {
       stale_notice: {
         as_of: new Date().toISOString(),
         reason: "not_found",
-        message: "Vote unknown not found in local store and no composite provided for upstream fetch.",
+        message:
+          "Vote unknown not found in local store and no composite provided for upstream fetch.",
       },
     });
     const result = await handleGetVote(store.db, { vote_id: "unknown" });
@@ -180,9 +205,11 @@ describe("get_vote tool", () => {
         positions: [],
       },
     });
-    const noResultId = (store.db
-      .prepare("SELECT id FROM documents WHERE source_id = ?")
-      .get("vote-119-senate-43") as { id: string }).id;
+    const noResultId = (
+      store.db
+        .prepare("SELECT id FROM documents WHERE source_id = ?")
+        .get("vote-119-senate-43") as { id: string }
+    ).id;
     mockEnsure.mockResolvedValue({ ok: true, documentId: noResultId });
 
     const result = await handleGetVote(store.db, { vote_id: noResultId });
@@ -234,17 +261,37 @@ describe("get_vote normalisePosition (defensive guard)", () => {
           { bioguideId: "B1", name: "Lower Yea", party: null, state: null, position: "yea" },
           { bioguideId: "B2", name: "Capital Yea", party: null, state: null, position: "Yea" },
           { bioguideId: "B3", name: "Capital Aye", party: null, state: null, position: "Aye" },
-          { bioguideId: "B4", name: "Capital Present", party: null, state: null, position: "Present" },
-          { bioguideId: "B5", name: "Not Voting Spaced", party: null, state: null, position: "Not Voting" },
+          {
+            bioguideId: "B4",
+            name: "Capital Present",
+            party: null,
+            state: null,
+            position: "Present",
+          },
+          {
+            bioguideId: "B5",
+            name: "Not Voting Spaced",
+            party: null,
+            state: null,
+            position: "Not Voting",
+          },
           { bioguideId: "B6", name: "Empty", party: null, state: null, position: "" },
           { bioguideId: "B7", name: "Excused", party: null, state: null, position: "Excused" },
-          { bioguideId: "B8", name: "Unknown", party: null, state: null, position: "unknown_value" },
+          {
+            bioguideId: "B8",
+            name: "Unknown",
+            party: null,
+            state: null,
+            position: "unknown_value",
+          },
         ],
       },
     });
-    edgeVoteId = (edgeStore.db
-      .prepare("SELECT id FROM documents WHERE source_id = ?")
-      .get("vote-119-senate-44") as { id: string }).id;
+    edgeVoteId = (
+      edgeStore.db
+        .prepare("SELECT id FROM documents WHERE source_id = ?")
+        .get("vote-119-senate-44") as { id: string }
+    ).id;
     mockEnsure.mockResolvedValue({ ok: true, documentId: edgeVoteId });
   });
   afterEach(() => edgeStore.close());
@@ -310,7 +357,13 @@ describe("get_vote with real ensureVoteFresh (handler ↔ hydrate contract)", ()
             result: "Passed",
             totals: { yea: 1, nay: 0, present: 0, notVoting: 0 },
             positions: [
-              { bioguideId: "Z000001", name: "Real Senator", party: "Independent", state: "VT", position: "yea" },
+              {
+                bioguideId: "Z000001",
+                name: "Real Senator",
+                party: "Independent",
+                state: "VT",
+                position: "yea",
+              },
             ],
           },
         });
@@ -364,7 +417,12 @@ describe("get_vote with real ensureVoteFresh (handler ↔ hydrate contract)", ()
         return { documentId: row.id };
       });
 
-    const args = { congress: 119, chamber: "upper" as const, session: 1 as const, roll_number: 100 };
+    const args = {
+      congress: 119,
+      chamber: "upper" as const,
+      session: 1 as const,
+      roll_number: 100,
+    };
     const first = await handleGetVote(realStore.db, args);
     expect(first.vote).not.toBeNull();
     await handleGetVote(realStore.db, args);

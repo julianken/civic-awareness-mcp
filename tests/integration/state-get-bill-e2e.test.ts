@@ -8,10 +8,7 @@ import { _resetLimitersForTesting } from "../../src/state/limiters.js";
 const TEST_DB = "./data/test-get-bill-e2e.db";
 let store: Store;
 
-const fixture = readFileSync(
-  "tests/integration/fixtures/openstates-bill-detail.json",
-  "utf-8",
-);
+const fixture = readFileSync("tests/integration/fixtures/openstates-bill-detail.json", "utf-8");
 
 beforeEach(() => {
   process.env.OPENSTATES_API_KEY = "test-key";

@@ -29,11 +29,16 @@ function extractStateAbbr(ocdId: string | undefined): string | undefined {
 
 function mapSort(sort: string): string {
   switch (sort) {
-    case "updated_desc": return "updated_desc";
-    case "updated_asc": return "updated_asc";
-    case "introduced_desc": return "first_action_desc";
-    case "introduced_asc": return "first_action_asc";
-    default: return "updated_desc";
+    case "updated_desc":
+      return "updated_desc";
+    case "updated_asc":
+      return "updated_asc";
+    case "introduced_desc":
+      return "first_action_desc";
+    case "introduced_asc":
+      return "first_action_asc";
+    default:
+      return "updated_desc";
   }
 }
 
@@ -148,8 +153,8 @@ export class OpenStatesAdapter implements Adapter {
   private readonly rateLimiter: RateLimiter;
 
   constructor(private readonly opts: OpenStatesAdapterOptions) {
-    this.rateLimiter = opts.rateLimiter
-      ?? new RateLimiter({ tokensPerInterval: 8, intervalMs: 60_000 });
+    this.rateLimiter =
+      opts.rateLimiter ?? new RateLimiter({ tokensPerInterval: 8, intervalMs: 60_000 });
   }
 
   async refresh(options: AdapterOptions & { jurisdiction: string }): Promise<RefreshResult> {
@@ -206,8 +211,15 @@ export class OpenStatesAdapter implements Adapter {
     const abbr = opts.jurisdiction.replace(/^us-/, "").toLowerCase();
     const path = `/bills/${abbr}/${encodeURIComponent(opts.session)}/${encodeURIComponent(opts.identifier)}`;
     const url = new URL(`${BASE_URL}${path}`);
-    for (const inc of ["sponsorships", "abstracts", "actions", "versions",
-                       "documents", "sources", "related_bills"]) {
+    for (const inc of [
+      "sponsorships",
+      "abstracts",
+      "actions",
+      "versions",
+      "documents",
+      "sources",
+      "related_bills",
+    ]) {
       url.searchParams.append("include", inc);
     }
     const res = await rateLimitedFetch(url.toString(), {
@@ -229,10 +241,7 @@ export class OpenStatesAdapter implements Adapter {
    *  Person by its OpenStates OCD ID via `/people/{ocd-id}`. Returns
    *  `entitiesUpserted: 0` on 404 so the handler can fan out across
    *  sources without worrying about which ones carry this entity. */
-  async fetchPerson(
-    db: Database.Database,
-    ocdId: string,
-  ): Promise<{ entitiesUpserted: number }> {
+  async fetchPerson(db: Database.Database, ocdId: string): Promise<{ entitiesUpserted: number }> {
     const url = `${BASE_URL}/people/${encodeURIComponent(ocdId)}`;
     const res = await rateLimitedFetch(url, {
       userAgent: "civic-awareness-mcp/0.1.0 (+github)",
@@ -570,17 +579,23 @@ export class OpenStatesAdapter implements Adapter {
     return all;
   }
 
-  private upsertPerson(db: Database.Database, p: OpenStatesPerson, fallbackStateAbbr?: string): string {
+  private upsertPerson(
+    db: Database.Database,
+    p: OpenStatesPerson,
+    fallbackStateAbbr?: string,
+  ): string {
     const chamber = p.current_role?.org_classification;
     const stateAbbr = extractStateAbbr(p.jurisdiction?.id) ?? fallbackStateAbbr;
     const now = new Date().toISOString();
     const roles = stateAbbr
-      ? [{
-          jurisdiction: `us-${stateAbbr}`,
-          role: "state_legislator",
-          from: now,
-          to: null as string | null,
-        }]
+      ? [
+          {
+            jurisdiction: `us-${stateAbbr}`,
+            role: "state_legislator",
+            from: now,
+            to: null as string | null,
+          },
+        ]
       : [];
     const { entity } = upsertEntity(db, {
       kind: "person",
@@ -600,8 +615,8 @@ export class OpenStatesAdapter implements Adapter {
 
   private upsertBill(db: Database.Database, b: OpenStatesBillDetail): void {
     const billStateAbbr =
-      extractStateAbbr(b.jurisdiction?.id)
-      ?? extractStateAbbr(b.sponsorships?.[0]?.person?.jurisdiction?.id);
+      extractStateAbbr(b.jurisdiction?.id) ??
+      extractStateAbbr(b.sponsorships?.[0]?.person?.jurisdiction?.id);
     if (!billStateAbbr) {
       // R15: a single malformed record must not abort the
       // surrounding write-through transaction (which would lose every
@@ -622,9 +637,9 @@ export class OpenStatesAdapter implements Adapter {
       return {
         entity_id: personId,
         // CA uses "author" for primary sponsor; treat both as "sponsor".
-      role: (s.classification === "primary" || s.classification === "author"
-        ? "sponsor"
-        : "cosponsor") as "sponsor" | "cosponsor",
+        role: (s.classification === "primary" || s.classification === "author"
+          ? "sponsor"
+          : "cosponsor") as "sponsor" | "cosponsor",
       };
     });
 

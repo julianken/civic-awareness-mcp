@@ -33,7 +33,7 @@ beforeEach(() => {
   vi.spyOn(global, "fetch").mockImplementation(async (url: string | URL | Request) => {
     const u = String(url);
     if (u.includes("/candidates/search")) return new Response(candidatesFixture, { status: 200 });
-    if (u.includes("/committees"))        return new Response(committeesFixture,  { status: 200 });
+    if (u.includes("/committees")) return new Response(committeesFixture, { status: 200 });
     if (u.includes("/schedules/schedule_b")) return new Response(scheduleBFixture, { status: 200 });
     if (u.includes("/schedules/schedule_a")) return new Response(scheduleAFixture, { status: 200 });
     return new Response("", { status: 404 });
@@ -51,9 +51,7 @@ describe("OpenFEC end-to-end", () => {
     await adapter.refresh({ db: store.db, maxPages: 1 });
 
     const rows = store.db
-      .prepare(
-        "SELECT name, external_ids, metadata FROM entities WHERE kind = 'person'",
-      )
+      .prepare("SELECT name, external_ids, metadata FROM entities WHERE kind = 'person'")
       .all() as Array<{ name: string; external_ids: string; metadata: string }>;
 
     // At least one candidate Person row.
@@ -109,9 +107,7 @@ describe("OpenFEC end-to-end", () => {
     // The merged row carries both external IDs.
     const row = store.db
       .prepare("SELECT external_ids, metadata FROM entities WHERE id = ?")
-      .get(congressPerson.id) as
-      | { external_ids: string; metadata: string }
-      | undefined;
+      .get(congressPerson.id) as { external_ids: string; metadata: string } | undefined;
 
     // If the merge happened, the existing row gains fec_candidate.
     // If upsertEntity created a new row instead (under-match), the test

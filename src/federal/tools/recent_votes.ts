@@ -5,7 +5,11 @@ import { getLimiter } from "../limiters.js";
 import { withShapedFetch } from "../../core/tool_cache.js";
 import { requireEnv } from "../../util/env.js";
 import { RecentVotesInput } from "../schemas.js";
-import { emptyFeedDiagnostic, type EmptyFeedDiagnostic, type StaleNotice } from "../../core/shared.js";
+import {
+  emptyFeedDiagnostic,
+  type EmptyFeedDiagnostic,
+  type StaleNotice,
+} from "../../core/shared.js";
 
 export interface VoteTally {
   yea: number;
@@ -111,7 +115,9 @@ export async function handleRecentVotes(
         absent: totals.notVoting ?? 0,
       };
       const bill = raw.bill;
-      const billIdentifier = bill ? `${bill.type ?? ""}${bill.number ?? ""}`.toUpperCase() : "unknown";
+      const billIdentifier = bill
+        ? `${bill.type ?? ""}${bill.number ?? ""}`.toUpperCase()
+        : "unknown";
       return {
         id: d.id,
         bill_identifier: billIdentifier,
@@ -133,9 +139,10 @@ export async function handleRecentVotes(
         sourceByName.set(d.source.name, "https://www.congress.gov/");
       } else if (d.source.name === "openstates") {
         const stateAbbr = d.jurisdiction.replace(/^us-/, "");
-        const url = d.jurisdiction === "*"
-          ? "https://openstates.org/"
-          : `https://openstates.org/${stateAbbr}/`;
+        const url =
+          d.jurisdiction === "*"
+            ? "https://openstates.org/"
+            : `https://openstates.org/${stateAbbr}/`;
         sourceByName.set(d.source.name, url);
       } else {
         sourceByName.set(d.source.name, "");

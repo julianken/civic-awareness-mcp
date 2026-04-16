@@ -47,11 +47,13 @@ const SAMPLE_VOTE = {
   totals: { yea: 218, nay: 210, present: 0, notVoting: 7 },
 };
 
-function makeMockFetch(opts: {
-  members?: object[];
-  bills?: object[];
-  votes?: object[];
-} = {}) {
+function makeMockFetch(
+  opts: {
+    members?: object[];
+    bills?: object[];
+    votes?: object[];
+  } = {},
+) {
   return vi.fn(async (url: string | URL | Request) => {
     const u = String(url);
     if (u.includes("/member")) {
@@ -109,7 +111,12 @@ describe("CongressAdapter", () => {
       .prepare(
         "SELECT name, external_ids, jurisdiction, metadata FROM entities WHERE kind = 'person'",
       )
-      .get() as { name: string; external_ids: string; jurisdiction: string | null; metadata: string };
+      .get() as {
+      name: string;
+      external_ids: string;
+      jurisdiction: string | null;
+      metadata: string;
+    };
 
     // Name is stored as returned by Congress.gov (canonical form).
     expect(row.name).toBe("Schumer, Charles E.");
@@ -119,7 +126,9 @@ describe("CongressAdapter", () => {
     expect(row.jurisdiction).toBeNull();
 
     // Federal role recorded in metadata.roles[].
-    const meta = JSON.parse(row.metadata) as { roles?: Array<{ jurisdiction: string; role: string }> };
+    const meta = JSON.parse(row.metadata) as {
+      roles?: Array<{ jurisdiction: string; role: string }>;
+    };
     expect(meta.roles?.some((r) => r.jurisdiction === "us-federal")).toBe(true);
     expect(meta.roles?.some((r) => r.role === "senator" || r.role === "representative")).toBe(true);
   });
@@ -131,9 +140,7 @@ describe("CongressAdapter", () => {
     await adapter.refresh({ db: store.db });
 
     const doc = store.db
-      .prepare(
-        "SELECT title, kind, jurisdiction, source_name FROM documents WHERE kind = 'bill'",
-      )
+      .prepare("SELECT title, kind, jurisdiction, source_name FROM documents WHERE kind = 'bill'")
       .get() as { title: string; kind: string; jurisdiction: string; source_name: string };
 
     expect(doc.kind).toBe("bill");
@@ -145,7 +152,9 @@ describe("CongressAdapter", () => {
 
     // Sponsor reference recorded.
     const refCount = (
-      store.db.prepare("SELECT COUNT(*) c FROM document_references WHERE role = 'sponsor'").get() as { c: number }
+      store.db
+        .prepare("SELECT COUNT(*) c FROM document_references WHERE role = 'sponsor'")
+        .get() as { c: number }
     ).c;
     expect(refCount).toBeGreaterThan(0);
   });
@@ -162,7 +171,7 @@ describe("CongressAdapter", () => {
       jurisdiction: undefined,
       external_ids: {
         openstates_person: "ocd-person/ny-schumer",
-        bioguide: "S000148",   // <-- linking signal: same bioguide
+        bioguide: "S000148", // <-- linking signal: same bioguide
       },
       metadata: {
         roles: [
@@ -172,17 +181,21 @@ describe("CongressAdapter", () => {
     });
 
     // Use a focused mock that only returns Schumer's data (no other members/votes)
-    vi.spyOn(global, "fetch").mockImplementation(makeMockFetch({
-      members: [SAMPLE_MEMBER],
-      bills: [],
-      votes: [],
-    }));
+    vi.spyOn(global, "fetch").mockImplementation(
+      makeMockFetch({
+        members: [SAMPLE_MEMBER],
+        bills: [],
+        votes: [],
+      }),
+    );
     const adapter = new CongressAdapter({ apiKey: "test-key" });
     await adapter.refresh({ db: store.db });
 
     // Exactly ONE Person row must exist — the adapter merged, not split.
     const personCount = (
-      store.db.prepare("SELECT COUNT(*) c FROM entities WHERE kind = 'person'").get() as { c: number }
+      store.db.prepare("SELECT COUNT(*) c FROM entities WHERE kind = 'person'").get() as {
+        c: number;
+      }
     ).c;
     expect(personCount).toBe(1);
 
@@ -195,7 +208,9 @@ describe("CongressAdapter", () => {
     expect(extIds.bioguide).toBe("S000148");
 
     // The merged row must have BOTH roles in metadata.roles[].
-    const meta = JSON.parse(row.metadata) as { roles?: Array<{ role: string; jurisdiction: string }> };
+    const meta = JSON.parse(row.metadata) as {
+      roles?: Array<{ role: string; jurisdiction: string }>;
+    };
     const jurisdictions = (meta.roles ?? []).map((r) => r.jurisdiction);
     expect(jurisdictions).toContain("us-ny");
     expect(jurisdictions).toContain("us-federal");
@@ -223,9 +238,7 @@ describe("CongressAdapter", () => {
     // Each voter is a document_references row with role='voter' and
     // qualifier='yea' or 'nay'. Check at least the Yea voters are there.
     const voters = store.db
-      .prepare(
-        "SELECT qualifier FROM document_references WHERE document_id = ? AND role = 'voter'",
-      )
+      .prepare("SELECT qualifier FROM document_references WHERE document_id = ? AND role = 'voter'")
       .all(voteDoc!.id) as Array<{ qualifier: string }>;
     expect(voters.length).toBeGreaterThan(0);
     const qualifiers = voters.map((v) => v.qualifier);
@@ -234,24 +247,18 @@ describe("CongressAdapter", () => {
   });
 
   // ── Test 5 (optional): Rate-limit resilience ─────────────────────
-  it(
-    "surfaces errors cleanly when Congress.gov returns a 429",
-    { timeout: 30_000 },
-    async () => {
-      // The adapter has three independent try/catches (members, bills,
-      // votes). A 429 on all three paths triggers rateLimitedFetch's
-      // exponential backoff per section (≈7s each, 21s total), so the
-      // default 10s vitest timeout isn't enough. Bump to 30s.
-      vi.spyOn(global, "fetch").mockResolvedValue(
-        new Response("Too Many Requests", { status: 429 }),
-      );
-      const adapter = new CongressAdapter({ apiKey: "test-key" });
-      const result = await adapter.refresh({ db: store.db });
-      // The adapter catches errors per-section; it does not throw.
-      expect(result.errors.length).toBeGreaterThan(0);
-      expect(result.errors[0]).toMatch(/429/);
-    },
-  );
+  it("surfaces errors cleanly when Congress.gov returns a 429", { timeout: 30_000 }, async () => {
+    // The adapter has three independent try/catches (members, bills,
+    // votes). A 429 on all three paths triggers rateLimitedFetch's
+    // exponential backoff per section (≈7s each, 21s total), so the
+    // default 10s vitest timeout isn't enough. Bump to 30s.
+    vi.spyOn(global, "fetch").mockResolvedValue(new Response("Too Many Requests", { status: 429 }));
+    const adapter = new CongressAdapter({ apiKey: "test-key" });
+    const result = await adapter.refresh({ db: store.db });
+    // The adapter catches errors per-section; it does not throw.
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors[0]).toMatch(/429/);
+  });
 
   // Characterization test for the storage chokepoint. Proves the
   // adapter's `if (!occurred.includes("T"))` shortcut at upsertBill
@@ -260,16 +267,18 @@ describe("CongressAdapter", () => {
   // passes both before and after deleting that shortcut, the
   // shortcut was dead weight.
   it("stores canonical millisecond Z form when updateDate is date-only", async () => {
-    vi.spyOn(global, "fetch").mockImplementation(makeMockFetch({
-      bills: [{ ...SAMPLE_BILL, updateDate: "2025-04-04" }],
-      members: [],
-      votes: [],
-    }));
+    vi.spyOn(global, "fetch").mockImplementation(
+      makeMockFetch({
+        bills: [{ ...SAMPLE_BILL, updateDate: "2025-04-04" }],
+        members: [],
+        votes: [],
+      }),
+    );
     const adapter = new CongressAdapter({ apiKey: "test-key" });
     await adapter.refresh({ db: store.db });
-    const doc = store.db
-      .prepare("SELECT occurred_at FROM documents WHERE kind = 'bill'")
-      .get() as { occurred_at: string };
+    const doc = store.db.prepare("SELECT occurred_at FROM documents WHERE kind = 'bill'").get() as {
+      occurred_at: string;
+    };
     expect(doc.occurred_at).toBe("2025-04-04T00:00:00.000Z");
   });
 
@@ -293,16 +302,14 @@ describe("CongressAdapter", () => {
         return new Response("Not Found", { status: 404 });
       }
       if (u.includes("/member")) {
-        return new Response(
-          JSON.stringify({ members: [], pagination: { count: 0 } }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify({ members: [], pagination: { count: 0 } }), {
+          status: 200,
+        });
       }
       if (u.includes("/bill")) {
-        return new Response(
-          JSON.stringify({ bills: [], pagination: { count: 0 } }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify({ bills: [], pagination: { count: 0 } }), {
+          status: 200,
+        });
       }
       return new Response("not found", { status: 404 });
     });
@@ -355,9 +362,7 @@ describe("CongressAdapter.fetchRecentBills", () => {
 
     expect(result.documentsUpserted).toBe(1);
     const bills = store.db
-      .prepare(
-        "SELECT id, title FROM documents WHERE source_name='congress' AND kind='bill'",
-      )
+      .prepare("SELECT id, title FROM documents WHERE source_name='congress' AND kind='bill'")
       .all() as Array<{ id: string; title: string }>;
     expect(bills).toHaveLength(1);
   });
@@ -402,9 +407,7 @@ describe("CongressAdapter.fetchRecentBills", () => {
 
     expect(result.documentsUpserted).toBe(1);
     const titles = store.db
-      .prepare(
-        "SELECT title FROM documents WHERE source_name='congress' AND kind='bill'",
-      )
+      .prepare("SELECT title FROM documents WHERE source_name='congress' AND kind='bill'")
       .all() as Array<{ title: string }>;
     expect(titles).toHaveLength(1);
     expect(titles[0].title).toMatch(/Senate Bill/);
@@ -414,10 +417,7 @@ describe("CongressAdapter.fetchRecentBills", () => {
     let capturedUrl: string | null = null;
     vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
       capturedUrl = String(url);
-      return new Response(
-        JSON.stringify({ bills: [], pagination: { count: 0 } }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify({ bills: [], pagination: { count: 0 } }), { status: 200 });
     });
 
     const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
@@ -461,13 +461,14 @@ describe("CongressAdapter.fetchRecentBills", () => {
     let calls = 0;
     const fetchMock = vi.fn().mockImplementation(async () => {
       calls += 1;
-      const bills = calls === 1
-        ? Array.from({ length: 250 }, (_, i) => ({
-            ...SAMPLE_BILL,
-            number: String(i + 1),
-            updateDate: "2026-04-01",
-          }))
-        : [];
+      const bills =
+        calls === 1
+          ? Array.from({ length: 250 }, (_, i) => ({
+              ...SAMPLE_BILL,
+              number: String(i + 1),
+              updateDate: "2026-04-01",
+            }))
+          : [];
       return new Response(JSON.stringify({ bills }), { status: 200 });
     });
     vi.spyOn(global, "fetch").mockImplementation(fetchMock);
@@ -489,18 +490,25 @@ describe("CongressAdapter.fetchRecentBills", () => {
 describe("CongressAdapter.fetchRecentVotes", () => {
   it("fetches votes for current congress and writes them", async () => {
     const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({
-        votes: [{
-          congress: 119, chamber: "Senate", rollNumber: 42,
-          date: "2026-04-10T12:00:00Z",
-          question: "Motion to proceed",
-          result: "Passed",
-          bill: { type: "S", number: "1234" },
-          positions: [],
-          totals: { yea: 60, nay: 40 },
-        }],
-        pagination: { count: 1 },
-      }), { status: 200 }),
+      new Response(
+        JSON.stringify({
+          votes: [
+            {
+              congress: 119,
+              chamber: "Senate",
+              rollNumber: 42,
+              date: "2026-04-10T12:00:00Z",
+              question: "Motion to proceed",
+              result: "Passed",
+              bill: { type: "S", number: "1234" },
+              positions: [],
+              totals: { yea: 60, nay: 40 },
+            },
+          ],
+          pagination: { count: 1 },
+        }),
+        { status: 200 },
+      ),
     );
 
     const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
@@ -511,17 +519,17 @@ describe("CongressAdapter.fetchRecentVotes", () => {
     expect(url).toMatch(/\/vote\?/);
     expect(url).toMatch(/congress=119/);
     expect(url).toMatch(/api_key=test-key/);
-    const written = store.db.prepare(
-      "SELECT kind FROM documents WHERE source_name='congress' AND kind='vote'",
-    ).all();
+    const written = store.db
+      .prepare("SELECT kind FROM documents WHERE source_name='congress' AND kind='vote'")
+      .all();
     expect(written).toHaveLength(1);
     fetchSpy.mockRestore();
   });
 
   it("gracefully degrades on 404 (free-tier API limitation) — logs warn and returns 0", async () => {
-    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({}), { status: 404 }),
-    );
+    const fetchSpy = vi
+      .spyOn(global, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({}), { status: 404 }));
     const { logger } = await import("../../../src/util/logger.js");
     const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
@@ -539,13 +547,30 @@ describe("CongressAdapter.fetchRecentVotes", () => {
 
   it("chamber filter selects senate/house votes client-side", async () => {
     const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({
-        votes: [
-          { congress: 119, chamber: "Senate", rollNumber: 1, date: "2026-04-10", positions: [], totals: {} },
-          { congress: 119, chamber: "House", rollNumber: 2, date: "2026-04-10", positions: [], totals: {} },
-        ],
-        pagination: { count: 2 },
-      }), { status: 200 }),
+      new Response(
+        JSON.stringify({
+          votes: [
+            {
+              congress: 119,
+              chamber: "Senate",
+              rollNumber: 1,
+              date: "2026-04-10",
+              positions: [],
+              totals: {},
+            },
+            {
+              congress: 119,
+              chamber: "House",
+              rollNumber: 2,
+              date: "2026-04-10",
+              positions: [],
+              totals: {},
+            },
+          ],
+          pagination: { count: 2 },
+        }),
+        { status: 200 },
+      ),
     );
 
     const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
@@ -559,10 +584,13 @@ describe("CongressAdapter.fetchRecentVotes", () => {
 describe("CongressAdapter.searchMembers", () => {
   it("fetches /member for the current congress and writes upserted members", async () => {
     const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({
-        members: [SAMPLE_MEMBER],
-        pagination: { count: 1 },
-      }), { status: 200 }),
+      new Response(
+        JSON.stringify({
+          members: [SAMPLE_MEMBER],
+          pagination: { count: 1 },
+        }),
+        { status: 200 },
+      ),
     );
 
     const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
@@ -576,9 +604,7 @@ describe("CongressAdapter.searchMembers", () => {
     expect(url).toMatch(/api_key=test-key/);
 
     const rows = store.db
-      .prepare(
-        "SELECT name FROM entities WHERE json_extract(external_ids, '$.bioguide') = ?",
-      )
+      .prepare("SELECT name FROM entities WHERE json_extract(external_ids, '$.bioguide') = ?")
       .all("S000148") as Array<{ name: string }>;
     expect(rows).toHaveLength(1);
     fetchSpy.mockRestore();
@@ -595,9 +621,11 @@ describe("CongressAdapter.searchMembers", () => {
   });
 
   it("translates opts.limit to upstream limit query param", async () => {
-    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ members: [], pagination: { count: 0 } }), { status: 200 }),
-    );
+    const fetchSpy = vi
+      .spyOn(global, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ members: [], pagination: { count: 0 } }), { status: 200 }),
+      );
     const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
     await adapter.searchMembers(store.db, { limit: 47 });
     const url = fetchSpy.mock.calls[0][0] as string;
@@ -608,9 +636,9 @@ describe("CongressAdapter.searchMembers", () => {
 
 describe("CongressAdapter.fetchMember", () => {
   it("fetches /member/{bioguideId} and upserts the returned Member", async () => {
-    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ member: SAMPLE_MEMBER }), { status: 200 }),
-    );
+    const fetchSpy = vi
+      .spyOn(global, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({ member: SAMPLE_MEMBER }), { status: 200 }));
 
     const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
     const result = await adapter.fetchMember(store.db, "S000148");
@@ -621,9 +649,7 @@ describe("CongressAdapter.fetchMember", () => {
     expect(url).toMatch(/api_key=test-key/);
 
     const rows = store.db
-      .prepare(
-        "SELECT name FROM entities WHERE json_extract(external_ids, '$.bioguide') = ?",
-      )
+      .prepare("SELECT name FROM entities WHERE json_extract(external_ids, '$.bioguide') = ?")
       .all("S000148") as Array<{ name: string }>;
     expect(rows).toHaveLength(1);
     fetchSpy.mockRestore();
@@ -647,9 +673,7 @@ describe("CongressAdapter.fetchMember", () => {
   });
 
   it("returns 0 when body omits the member field AND logs warn", async () => {
-    vi.spyOn(global, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({}), { status: 200 }),
-    );
+    vi.spyOn(global, "fetch").mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
     const { logger } = await import("../../../src/util/logger.js");
     const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
@@ -666,12 +690,11 @@ describe("CongressAdapter.fetchMember", () => {
 
 describe("CongressAdapter.fetchMemberSponsoredBills", () => {
   it("fetches /member/{bioguideId}/sponsored-legislation and upserts returned bills", async () => {
-    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify({ sponsoredLegislation: [SAMPLE_BILL] }),
-        { status: 200 },
-      ),
-    );
+    const fetchSpy = vi
+      .spyOn(global, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ sponsoredLegislation: [SAMPLE_BILL] }), { status: 200 }),
+      );
 
     const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
     const result = await adapter.fetchMemberSponsoredBills(store.db, "S000148");
@@ -708,12 +731,11 @@ describe("CongressAdapter.fetchMemberSponsoredBills", () => {
 
 describe("CongressAdapter.fetchMemberCosponsoredBills", () => {
   it("fetches /member/{bioguideId}/cosponsored-legislation and upserts returned bills", async () => {
-    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify({ cosponsoredLegislation: [SAMPLE_BILL] }),
-        { status: 200 },
-      ),
-    );
+    const fetchSpy = vi
+      .spyOn(global, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ cosponsoredLegislation: [SAMPLE_BILL] }), { status: 200 }),
+      );
 
     const adapter = new CongressAdapter({ apiKey: "test-key", congresses: [119] });
     const result = await adapter.fetchMemberCosponsoredBills(store.db, "S000148");
@@ -751,9 +773,11 @@ describe("CongressAdapter.fetchMemberCosponsoredBills", () => {
 describe("upsertVote persists per-member positions in raw.positions", () => {
   it("stores bioguideId, name, party, state, and position for each voter", async () => {
     const adapter = new CongressAdapter({ apiKey: "test" });
-    (adapter as unknown as {
-      upsertVote: (db: typeof store.db, v: unknown) => void;
-    }).upsertVote(store.db, {
+    (
+      adapter as unknown as {
+        upsertVote: (db: typeof store.db, v: unknown) => void;
+      }
+    ).upsertVote(store.db, {
       congress: 119,
       chamber: "Senate",
       rollNumber: 42,
@@ -848,7 +872,10 @@ describe("CongressAdapter.fetchVote", () => {
 
     const adapter = new CongressAdapter({ apiKey: "test-key" });
     const result = await adapter.fetchVote(store.db, {
-      congress: 119, chamber: "upper", session: 1, roll_number: 42,
+      congress: 119,
+      chamber: "upper",
+      session: 1,
+      roll_number: 42,
     });
 
     const calledUrl = String(fetchSpy.mock.calls[0][0]);
@@ -908,7 +935,10 @@ describe("CongressAdapter.fetchVote", () => {
 
     const adapter = new CongressAdapter({ apiKey: "test-key" });
     await adapter.fetchVote(store.db, {
-      congress: 119, chamber: "upper", session: 1, roll_number: 42,
+      congress: 119,
+      chamber: "upper",
+      session: 1,
+      roll_number: 42,
     });
 
     const row = store.db
@@ -928,7 +958,10 @@ describe("CongressAdapter.fetchVote", () => {
     const adapter = new CongressAdapter({ apiKey: "test-key" });
     await expect(
       adapter.fetchVote(store.db, {
-        congress: 119, chamber: "lower", session: 1, roll_number: 9999,
+        congress: 119,
+        chamber: "lower",
+        session: 1,
+        roll_number: 9999,
       }),
     ).rejects.toThrow(/not found/i);
   });

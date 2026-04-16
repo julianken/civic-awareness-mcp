@@ -17,7 +17,10 @@ describe("GetVoteInput", () => {
 
   it("accepts the full federal composite", () => {
     const parsed = GetVoteInput.parse({
-      congress: 119, chamber: "upper", session: 1, roll_number: 42,
+      congress: 119,
+      chamber: "upper",
+      session: 1,
+      roll_number: 42,
     });
     expect(parsed.congress).toBe(119);
     expect(parsed.roll_number).toBe(42);
@@ -28,15 +31,16 @@ describe("GetVoteInput", () => {
   });
 
   it("rejects a partial composite (missing roll_number)", () => {
-    expect(() =>
-      GetVoteInput.parse({ congress: 119, chamber: "upper", session: 1 }),
-    ).toThrow();
+    expect(() => GetVoteInput.parse({ congress: 119, chamber: "upper", session: 1 })).toThrow();
   });
 
   it("rejects session values other than 1 or 2", () => {
     expect(() =>
       GetVoteInput.parse({
-        congress: 119, chamber: "upper", session: 3, roll_number: 42,
+        congress: 119,
+        chamber: "upper",
+        session: 3,
+        roll_number: 42,
       }),
     ).toThrow();
   });
@@ -48,15 +52,11 @@ describe("GetVoteInput", () => {
 
 describe("optional-string min(1) bounds", () => {
   it("RecentBillsInput rejects empty session", () => {
-    expect(() =>
-      RecentBillsInput.parse({ session: "" }),
-    ).toThrow();
+    expect(() => RecentBillsInput.parse({ session: "" })).toThrow();
   });
 
   it("RecentVotesInput rejects empty session", () => {
-    expect(() =>
-      RecentVotesInput.parse({ jurisdiction: "us-federal", session: "" }),
-    ).toThrow();
+    expect(() => RecentVotesInput.parse({ jurisdiction: "us-federal", session: "" })).toThrow();
   });
 
   it("RecentVotesInput rejects empty bill_identifier", () => {
@@ -84,44 +84,30 @@ describe("optional-string min(1) bounds", () => {
   });
 
   it("SearchEntitiesInput rejects empty jurisdiction", () => {
-    expect(() =>
-      SearchEntitiesInput.parse({ q: "doe", jurisdiction: "" }),
-    ).toThrow();
+    expect(() => SearchEntitiesInput.parse({ q: "doe", jurisdiction: "" })).toThrow();
   });
 
   it("SearchEntitiesInput rejects empty had_role", () => {
-    expect(() =>
-      SearchEntitiesInput.parse({ q: "doe", had_role: "" }),
-    ).toThrow();
+    expect(() => SearchEntitiesInput.parse({ q: "doe", had_role: "" })).toThrow();
   });
 
   it("SearchEntitiesInput rejects empty had_jurisdiction", () => {
-    expect(() =>
-      SearchEntitiesInput.parse({ q: "doe", had_jurisdiction: "" }),
-    ).toThrow();
+    expect(() => SearchEntitiesInput.parse({ q: "doe", had_jurisdiction: "" })).toThrow();
   });
 
   it("SearchDocumentsInput rejects empty jurisdiction", () => {
-    expect(() =>
-      SearchDocumentsInput.parse({ q: "civic", jurisdiction: "" }),
-    ).toThrow();
+    expect(() => SearchDocumentsInput.parse({ q: "civic", jurisdiction: "" })).toThrow();
   });
 
   it("ResolvePersonInput rejects empty jurisdiction_hint", () => {
-    expect(() =>
-      ResolvePersonInput.parse({ name: "Jane Doe", jurisdiction_hint: "" }),
-    ).toThrow();
+    expect(() => ResolvePersonInput.parse({ name: "Jane Doe", jurisdiction_hint: "" })).toThrow();
   });
 
   it("ResolvePersonInput rejects empty role_hint", () => {
-    expect(() =>
-      ResolvePersonInput.parse({ name: "Jane Doe", role_hint: "" }),
-    ).toThrow();
+    expect(() => ResolvePersonInput.parse({ name: "Jane Doe", role_hint: "" })).toThrow();
   });
 
   it("ResolvePersonInput rejects empty context", () => {
-    expect(() =>
-      ResolvePersonInput.parse({ name: "Jane Doe", context: "" }),
-    ).toThrow();
+    expect(() => ResolvePersonInput.parse({ name: "Jane Doe", context: "" })).toThrow();
   });
 });

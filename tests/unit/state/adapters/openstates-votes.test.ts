@@ -140,14 +140,14 @@ describe("OpenStatesAdapter.fetchRecentVotes", () => {
     const voteRows = store.db
       .prepare("SELECT * FROM documents WHERE kind = 'vote' ORDER BY occurred_at")
       .all() as Array<{
-        source_name: string;
-        source_id: string;
-        jurisdiction: string;
-        occurred_at: string;
-        raw: string;
-        source_url: string;
-        title: string;
-      }>;
+      source_name: string;
+      source_id: string;
+      jurisdiction: string;
+      occurred_at: string;
+      raw: string;
+      source_url: string;
+      title: string;
+    }>;
 
     expect(voteRows).toHaveLength(2);
 
@@ -198,7 +198,9 @@ describe("OpenStatesAdapter.fetchRecentVotes", () => {
       .prepare("SELECT source_url FROM documents WHERE source_id = ?")
       .get("ocd-vote/a799d36a-ec30-4e86-bc3d-11cd7575c679") as { source_url: string } | undefined;
 
-    expect(vote1?.source_url).toBe("https://journals.senate.texas.gov/SJRNL/892/HTML/89S2SJ08-18-F.HTM");
+    expect(vote1?.source_url).toBe(
+      "https://journals.senate.texas.gov/SJRNL/892/HTML/89S2SJ08-18-F.HTM",
+    );
     // vote2 has empty sources — should fall back to parent bill's openstates_url
     expect(vote2?.source_url).toBe("https://openstates.org/tx/bills/892/SB11/");
   });
@@ -207,10 +209,9 @@ describe("OpenStatesAdapter.fetchRecentVotes", () => {
     let capturedUrl: string | undefined;
     vi.spyOn(global, "fetch").mockImplementation(async (input) => {
       capturedUrl = typeof input === "string" ? input : String(input);
-      return new Response(
-        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }), {
+        status: 200,
+      });
     });
 
     await adapter.fetchRecentVotes(store.db, {
@@ -240,9 +241,7 @@ describe("OpenStatesAdapter.fetchRecentVotes", () => {
     const result = await adapter.fetchRecentVotes(store.db, { jurisdiction: "tx" });
     expect(result.documentsUpserted).toBe(0);
 
-    const voteRows = store.db
-      .prepare("SELECT * FROM documents WHERE kind = 'vote'")
-      .all();
+    const voteRows = store.db.prepare("SELECT * FROM documents WHERE kind = 'vote'").all();
     expect(voteRows).toHaveLength(0);
   });
 });

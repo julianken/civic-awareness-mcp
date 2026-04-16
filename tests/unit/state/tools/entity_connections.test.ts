@@ -35,10 +35,9 @@ describe("state/entity_connections — Bug 2: fetchBillsBySponsor jurisdiction p
     let capturedUrl: string | undefined;
     vi.spyOn(global, "fetch").mockImplementation(async (input) => {
       capturedUrl = typeof input === "string" ? input : String(input);
-      return new Response(
-        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }), {
+        status: 200,
+      });
     });
 
     await handleEntityConnections(store.db, { id: entity.id, depth: 1 });

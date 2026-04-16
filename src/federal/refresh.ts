@@ -28,7 +28,10 @@ export async function refreshSource(
   opts: RefreshSourceOptions,
 ): Promise<RefreshSourceResult> {
   if (opts.source === "openfec") {
-    const adapter = new OpenFecAdapter({ apiKey: requireEnv("API_DATA_GOV_KEY"), rateLimiter: getLimiter("openfec") });
+    const adapter = new OpenFecAdapter({
+      apiKey: requireEnv("API_DATA_GOV_KEY"),
+      rateLimiter: getLimiter("openfec"),
+    });
     logger.info("refreshing source", { source: "openfec" });
     const r = await adapter.refresh({ db, maxPages: opts.maxPages, deadline: opts.deadline });
     return {
@@ -39,7 +42,10 @@ export async function refreshSource(
     };
   }
   if (opts.source === "congress") {
-    const adapter = new CongressAdapter({ apiKey: requireEnv("API_DATA_GOV_KEY"), rateLimiter: getLimiter("congress") });
+    const adapter = new CongressAdapter({
+      apiKey: requireEnv("API_DATA_GOV_KEY"),
+      rateLimiter: getLimiter("congress"),
+    });
     logger.info("refreshing source", { source: "congress" });
     const r = await adapter.refresh({ db, maxPages: opts.maxPages, deadline: opts.deadline });
     return {
@@ -50,14 +56,22 @@ export async function refreshSource(
     };
   }
   if (opts.source === "openstates") {
-    const adapter = new OpenStatesAdapter({ apiKey: requireEnv("OPENSTATES_API_KEY"), rateLimiter: getLimiter("openstates") });
+    const adapter = new OpenStatesAdapter({
+      apiKey: requireEnv("OPENSTATES_API_KEY"),
+      rateLimiter: getLimiter("openstates"),
+    });
     const targets = opts.jurisdictions ?? listStateJurisdictions(db);
     let entities = 0;
     let documents = 0;
     const errors: string[] = [];
     for (const state of targets) {
       logger.info("refreshing state", { state });
-      const r = await adapter.refresh({ db, maxPages: opts.maxPages, deadline: opts.deadline, jurisdiction: state });
+      const r = await adapter.refresh({
+        db,
+        maxPages: opts.maxPages,
+        deadline: opts.deadline,
+        jurisdiction: state,
+      });
       entities += r.entitiesUpserted;
       documents += r.documentsUpserted;
       for (const err of r.errors) errors.push(`${state}: ${err}`);

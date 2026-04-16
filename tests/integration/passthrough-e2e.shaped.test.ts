@@ -38,10 +38,7 @@ import { seedStaleCache } from "../helpers/seed_stale_cache.js";
 vi.stubEnv("OPENSTATES_API_KEY", "test-key");
 vi.stubEnv("API_DATA_GOV_KEY", "test-key");
 
-const billsFixture = readFileSync(
-  "tests/integration/fixtures/congress-bills-page1.json",
-  "utf-8",
-);
+const billsFixture = readFileSync("tests/integration/fixtures/congress-bills-page1.json", "utf-8");
 
 let store: Store;
 let upstreamHits = 0;
@@ -86,9 +83,7 @@ describe("passthrough shaped e2e — recent_bills (R15)", () => {
       return new Response(JSON.stringify({ detail: "server error" }), { status: 500 });
     });
 
-    await expect(
-      handleRecentBills(store.db, { days: 90 }),
-    ).rejects.toThrow();
+    await expect(handleRecentBills(store.db, { days: 90 })).rejects.toThrow();
 
     expect(upstreamHits).toBeGreaterThan(0);
   });
@@ -219,9 +214,7 @@ describe("passthrough shaped e2e — recent_votes (federal)", () => {
       ],
     });
 
-    const fetchSpy = vi
-      .spyOn(global, "fetch")
-      .mockRejectedValue(new Error("network down"));
+    const fetchSpy = vi.spyOn(global, "fetch").mockRejectedValue(new Error("network down"));
 
     const result = await handleRecentVotes(store.db, {
       jurisdiction: "us-federal",
@@ -246,8 +239,14 @@ describe("passthrough shaped e2e — recent_contributions", () => {
       to: "2026-04-14T00:00:00.000Z",
     };
     // Narrowing filter required — OpenFEC rejects date-only queries (Bug 3 guard).
-    await handleRecentContributions(store.db, { window, candidate_or_committee: "Warren Campaign" });
-    await handleRecentContributions(store.db, { window, candidate_or_committee: "Warren Campaign" });
+    await handleRecentContributions(store.db, {
+      window,
+      candidate_or_committee: "Warren Campaign",
+    });
+    await handleRecentContributions(store.db, {
+      window,
+      candidate_or_committee: "Warren Campaign",
+    });
 
     expect(upstreamHits).toBe(1);
     fetchSpy.mockRestore();
@@ -263,20 +262,28 @@ describe("passthrough shaped e2e — recent_contributions", () => {
       endpoint_path: "/schedules/schedule_a",
       scope: "recent",
       tool: "recent_contributions",
-      args: { window, candidate_or_committee, min_amount: undefined, contributor_entity_id: undefined, side: "recipient" },
-      documents: [{
-        kind: "contribution",
-        jurisdiction: "us-federal",
-        title: "Contribution from Jane Smith",
-        occurred_at: "2026-04-05T00:00:00Z",
-        source: {
-          name: "openfec",
-          id: "sa-T1",
-          url: "https://docquery.fec.gov/cgi-bin/fecimg/?T1",
+      args: {
+        window,
+        candidate_or_committee,
+        min_amount: undefined,
+        contributor_entity_id: undefined,
+        side: "recipient",
+      },
+      documents: [
+        {
+          kind: "contribution",
+          jurisdiction: "us-federal",
+          title: "Contribution from Jane Smith",
+          occurred_at: "2026-04-05T00:00:00Z",
+          source: {
+            name: "openfec",
+            id: "sa-T1",
+            url: "https://docquery.fec.gov/cgi-bin/fecimg/?T1",
+          },
+          references: [],
+          raw: { amount: 2500, date: "2026-04-05", contributor_name: "SMITH, JANE" },
         },
-        references: [],
-        raw: { amount: 2500, date: "2026-04-05", contributor_name: "SMITH, JANE" },
-      }],
+      ],
     });
 
     const fetchSpy = vi.spyOn(global, "fetch").mockRejectedValue(new Error("network down"));
@@ -294,17 +301,15 @@ describe("passthrough shaped e2e — search_entities (R15)", () => {
       const url = String(typeof input === "string" ? input : (input as URL | Request).toString());
       if (url.includes("api.congress.gov/v3/member")) {
         upstreamHits += 1;
-        return new Response(
-          JSON.stringify({ members: [], pagination: { count: 0 } }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify({ members: [], pagination: { count: 0 } }), {
+          status: 200,
+        });
       }
       if (url.includes("api.open.fec.gov/v1/candidates/search")) {
         upstreamHits += 1;
-        return new Response(
-          JSON.stringify({ results: [], pagination: { per_page: 20 } }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify({ results: [], pagination: { per_page: 20 } }), {
+          status: 200,
+        });
       }
       return new Response("", { status: 404 });
     });
@@ -325,10 +330,9 @@ describe("passthrough shaped e2e — resolve_person / search_entities shared cac
       const url = String(typeof input === "string" ? input : (input as URL | Request).toString());
       if (!url.includes("openstates.org/people")) return new Response("", { status: 404 });
       peopleHits += 1;
-      return new Response(
-        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }), {
+        status: 200,
+      });
     });
 
     await handleSearchEntities(store.db, {
@@ -384,9 +388,7 @@ describe("passthrough shaped e2e — get_entity (R15)", () => {
               partyName: "Democrat",
               state: "NY",
               terms: {
-                item: [
-                  { chamber: "Senate", startYear: 1999, endYear: null },
-                ],
+                item: [{ chamber: "Senate", startYear: 1999, endYear: null }],
               },
             },
           }),
@@ -471,17 +473,11 @@ describe("passthrough shaped e2e — entity_connections (R15)", () => {
       const url = String(typeof input === "string" ? input : (input as URL | Request).toString());
       if (url.includes("/member/S000148/sponsored-legislation")) {
         sponsoredHits += 1;
-        return new Response(
-          JSON.stringify({ sponsoredLegislation: [] }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify({ sponsoredLegislation: [] }), { status: 200 });
       }
       if (url.includes("/member/S000148/cosponsored-legislation")) {
         cosponsoredHits += 1;
-        return new Response(
-          JSON.stringify({ cosponsoredLegislation: [] }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify({ cosponsoredLegislation: [] }), { status: 200 });
       }
       return new Response("", { status: 404 });
     });

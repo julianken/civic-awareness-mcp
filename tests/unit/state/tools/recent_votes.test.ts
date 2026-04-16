@@ -11,9 +11,7 @@ vi.stubEnv("OPENSTATES_API_KEY", "test-key");
 /** Vote start_date within 30 days of the test run so it lands inside
  *  projectLocal's time window (now - days). Using a dynamic "recent" date
  *  avoids the test drifting stale as clock advances. */
-const RECENT_DATE = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
-  .toISOString()
-  .slice(0, 10); // "YYYY-MM-DD"
+const RECENT_DATE = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10); // "YYYY-MM-DD"
 
 /** Minimal one-vote API response for a TX bill. */
 function makeApiResponse(startDate: string = RECENT_DATE) {
@@ -95,9 +93,7 @@ describe("handleRecentVotes (state)", () => {
 
     expect(result.results).toHaveLength(1);
     expect(result.total).toBe(1);
-    expect(result.sources).toEqual([
-      { name: "openstates", url: "https://openstates.org/tx/" },
-    ]);
+    expect(result.sources).toEqual([{ name: "openstates", url: "https://openstates.org/tx/" }]);
     expect(result.window).toHaveProperty("from");
     expect(result.window).toHaveProperty("to");
     expect(result.stale_notice).toBeUndefined();
@@ -136,10 +132,9 @@ describe("handleRecentVotes (state)", () => {
 
   it("returns empty_reason='no_events_in_window' when store is empty and upstream returns no votes", async () => {
     vi.spyOn(global, "fetch").mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
-        { status: 200 },
-      ),
+      new Response(JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }), {
+        status: 200,
+      }),
     );
 
     const result = await handleRecentVotes(store.db, { jurisdiction: "us-tx", days: 1 });
@@ -156,7 +151,13 @@ describe("handleRecentVotes (state)", () => {
       title: "SB 1 — passage",
       occurred_at: new Date().toISOString(),
       source: { name: "openstates", id: "ocd-vote/upper-001", url: "https://example.com/1" },
-      raw: { chamber: "upper", result: "pass", motion_text: "passage", counts: [], bill: { identifier: "SB 1" } },
+      raw: {
+        chamber: "upper",
+        result: "pass",
+        motion_text: "passage",
+        counts: [],
+        bill: { identifier: "SB 1" },
+      },
     });
     upsertDocument(store.db, {
       kind: "vote",
@@ -164,14 +165,29 @@ describe("handleRecentVotes (state)", () => {
       title: "HB 1 — passage",
       occurred_at: new Date().toISOString(),
       source: { name: "openstates", id: "ocd-vote/lower-001", url: "https://example.com/2" },
-      raw: { chamber: "lower", result: "pass", motion_text: "passage", counts: [], bill: { identifier: "HB 1" } },
+      raw: {
+        chamber: "lower",
+        result: "pass",
+        motion_text: "passage",
+        counts: [],
+        bill: { identifier: "HB 1" },
+      },
     });
 
     // Seed a fetch_log row so withShapedFetch hits the cache
-    store.db.prepare(
-      `INSERT INTO fetch_log (source, endpoint_path, args_hash, scope, fetched_at, last_rowcount)
+    store.db
+      .prepare(
+        `INSERT INTO fetch_log (source, endpoint_path, args_hash, scope, fetched_at, last_rowcount)
        VALUES (?, ?, ?, ?, ?, ?)`,
-    ).run("openstates", "/bills?include=votes", "dummy-upper-hash", "recent", new Date().toISOString(), 1);
+      )
+      .run(
+        "openstates",
+        "/bills?include=votes",
+        "dummy-upper-hash",
+        "recent",
+        new Date().toISOString(),
+        1,
+      );
 
     // Make fetch return empty so we rely on seeded data via cache-hit path
     vi.spyOn(global, "fetch").mockResolvedValueOnce(

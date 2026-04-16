@@ -25,8 +25,13 @@ import {
 const coreSqlPath = fileURLToPath(new URL("../core/schema.sql", import.meta.url));
 const stateSqlPath = fileURLToPath(new URL("./schema.sql", import.meta.url));
 
-export interface BuildServerOptions { dbPath: string }
-export interface CivicStateServer { mcp: McpServer; store: Store }
+export interface BuildServerOptions {
+  dbPath: string;
+}
+export interface CivicStateServer {
+  mcp: McpServer;
+  store: Store;
+}
 
 export function buildServer(opts: BuildServerOptions): CivicStateServer {
   const store = openStore(opts.dbPath, coreSqlPath, stateSqlPath);

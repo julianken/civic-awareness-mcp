@@ -26,8 +26,14 @@ export const Entity = z.object({
 export type Entity = z.infer<typeof Entity>;
 
 export const ReferenceRole = z.enum([
-  "sponsor", "cosponsor", "voter", "contributor",
-  "recipient", "subject", "officer", "member",
+  "sponsor",
+  "cosponsor",
+  "voter",
+  "contributor",
+  "recipient",
+  "subject",
+  "officer",
+  "member",
 ]);
 export type ReferenceRole = z.infer<typeof ReferenceRole>;
 
@@ -38,9 +44,7 @@ export const EntityReference = z.object({
 });
 export type EntityReference = z.infer<typeof EntityReference>;
 
-export const DocumentKind = z.enum([
-  "bill", "bill_action", "vote", "contribution", "expenditure",
-]);
+export const DocumentKind = z.enum(["bill", "bill_action", "vote", "contribution", "expenditure"]);
 export type DocumentKind = z.infer<typeof DocumentKind>;
 
 export const Document = z.object({

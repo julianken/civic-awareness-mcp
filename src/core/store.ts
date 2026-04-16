@@ -25,10 +25,7 @@ export function openStore(path: string, ...schemaPaths: string[]): Store {
   db.pragma("cache_size = -64000");
 
   // Apply core schema by default (always included when no paths given).
-  const paths =
-    schemaPaths.length > 0
-      ? schemaPaths
-      : [resolve(__dirname, "schema.sql")];
+  const paths = schemaPaths.length > 0 ? schemaPaths : [resolve(__dirname, "schema.sql")];
 
   for (const sp of paths) {
     db.exec(readFileSync(sp, "utf-8"));

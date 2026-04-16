@@ -71,7 +71,9 @@ interface RoleRow {
 function batchFetchEntities(db: Database.Database, ids: string[]): Map<string, EntityRow> {
   if (ids.length === 0) return new Map();
   const rows = db
-    .prepare(`SELECT id, kind, name, last_seen_at FROM entities WHERE id IN (${ids.map(() => "?").join(",")})`)
+    .prepare(
+      `SELECT id, kind, name, last_seen_at FROM entities WHERE id IN (${ids.map(() => "?").join(",")})`,
+    )
     .all(...ids) as EntityRow[];
   return new Map(rows.map((r) => [r.id, r]));
 }
@@ -155,9 +157,7 @@ function aggregateStaleNotices(
     (a, b) => STALE_REASON_RANK[b.stale_notice.reason] - STALE_REASON_RANK[a.stale_notice.reason],
   );
   const reason = sorted[0].stale_notice.reason;
-  const as_of = sorted
-    .map((r) => r.stale_notice.as_of)
-    .reduce((min, v) => (v < min ? v : min));
+  const as_of = sorted.map((r) => r.stale_notice.as_of).reduce((min, v) => (v < min ? v : min));
   const parts = sorted.map((r) => `${r.label}: ${r.stale_notice.message}`);
   return {
     as_of,
@@ -270,7 +270,8 @@ export async function handleEntityConnections(
           stale_notice: {
             as_of: new Date().toISOString(),
             reason: "not_yet_supported" as const,
-            message: "entity_connections sponsor fanout requires a jurisdiction; cross-jurisdiction persons are not yet supported",
+            message:
+              "entity_connections sponsor fanout requires a jurisdiction; cross-jurisdiction persons are not yet supported",
           },
         }),
       });
@@ -388,7 +389,9 @@ export async function handleEntityConnections(
     via_kinds: e.via_kinds,
     via_roles: e.via_roles,
     co_occurrence_count: e.co_occurrence_count,
-    sample_documents: e.sample_document_ids.map(toDocMatch).filter((d): d is DocumentMatch => d !== null),
+    sample_documents: e.sample_document_ids
+      .map(toDocMatch)
+      .filter((d): d is DocumentMatch => d !== null),
   }));
 
   const nodes: EntityMatch[] = Array.from(entityIdSet)

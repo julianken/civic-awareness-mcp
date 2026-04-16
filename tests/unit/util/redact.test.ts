@@ -11,13 +11,11 @@ describe("redactSecrets", () => {
 
   it("masks api_key when it's the first query param", () => {
     const url = "https://api.congress.gov/v3/bill?api_key=secret123";
-    expect(redactSecrets(url)).toBe(
-      "https://api.congress.gov/v3/bill?api_key=***REDACTED***",
-    );
+    expect(redactSecrets(url)).toBe("https://api.congress.gov/v3/bill?api_key=***REDACTED***");
   });
 
   it("masks X-API-KEY header value", () => {
-    const msg = 'fetch failed with X-API-KEY: my-secret-key';
+    const msg = "fetch failed with X-API-KEY: my-secret-key";
     expect(redactSecrets(msg)).toContain("***REDACTED***");
     expect(redactSecrets(msg)).not.toContain("my-secret-key");
   });

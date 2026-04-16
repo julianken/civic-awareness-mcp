@@ -18,9 +18,7 @@ const SAMPLE_CANDIDATE = {
   district: "01",
   party: "REP",
   election_years: [2026],
-  principal_committees: [
-    { committee_id: "C00123456", name: "Smith for Congress" },
-  ],
+  principal_committees: [{ committee_id: "C00123456", name: "Smith for Congress" }],
 };
 
 const SAMPLE_COMMITTEE = {
@@ -66,37 +64,35 @@ function noPagination(results: object[]) {
   };
 }
 
-function makeMockFetch(opts: {
-  candidates?: object[];
-  committees?: object[];
-  scheduleA?: object[];
-  scheduleB?: object[];
-} = {}) {
+function makeMockFetch(
+  opts: {
+    candidates?: object[];
+    committees?: object[];
+    scheduleA?: object[];
+    scheduleB?: object[];
+  } = {},
+) {
   return vi.fn(async (url: string | URL | Request) => {
     const u = String(url);
     if (u.includes("/candidates/search")) {
-      return new Response(
-        JSON.stringify(noPagination(opts.candidates ?? [SAMPLE_CANDIDATE])),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify(noPagination(opts.candidates ?? [SAMPLE_CANDIDATE])), {
+        status: 200,
+      });
     }
     if (u.includes("/committees")) {
-      return new Response(
-        JSON.stringify(noPagination(opts.committees ?? [SAMPLE_COMMITTEE])),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify(noPagination(opts.committees ?? [SAMPLE_COMMITTEE])), {
+        status: 200,
+      });
     }
     if (u.includes("/schedules/schedule_a")) {
-      return new Response(
-        JSON.stringify(noPagination(opts.scheduleA ?? [SAMPLE_SCHEDULE_A])),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify(noPagination(opts.scheduleA ?? [SAMPLE_SCHEDULE_A])), {
+        status: 200,
+      });
     }
     if (u.includes("/schedules/schedule_b")) {
-      return new Response(
-        JSON.stringify(noPagination(opts.scheduleB ?? [SAMPLE_SCHEDULE_B])),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify(noPagination(opts.scheduleB ?? [SAMPLE_SCHEDULE_B])), {
+        status: 200,
+      });
     }
     return new Response("not found", { status: 404 });
   });
@@ -107,7 +103,7 @@ beforeEach(async () => {
   if (existsSync(TEST_DB)) {
     rmSync(TEST_DB);
     // Give the filesystem time to fully release the file
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
   }
   store = openStore(TEST_DB);
   seedJurisdictions(store.db);
@@ -131,11 +127,11 @@ describe("OpenFecAdapter", () => {
         "SELECT name, external_ids, jurisdiction, metadata FROM entities WHERE kind = 'person'",
       )
       .get() as {
-        name: string;
-        external_ids: string;
-        jurisdiction: string | null;
-        metadata: string;
-      };
+      name: string;
+      external_ids: string;
+      jurisdiction: string | null;
+      metadata: string;
+    };
 
     // FEC names are ALL CAPS; stored as normalized canonical form.
     // The adapter stores the normalized version from FEC as received.
@@ -166,12 +162,14 @@ describe("OpenFecAdapter", () => {
       .prepare(
         "SELECT name, kind, jurisdiction, external_ids FROM entities WHERE name = ? AND kind IN ('pac','committee','organization')",
       )
-      .get("Smith for Congress") as {
-        name: string;
-        kind: string;
-        jurisdiction: string | null;
-        external_ids: string;
-      } | undefined;
+      .get("Smith for Congress") as
+      | {
+          name: string;
+          kind: string;
+          jurisdiction: string | null;
+          external_ids: string;
+        }
+      | undefined;
 
     expect(row).toBeDefined();
     expect(JSON.parse(row!.external_ids).fec_committee).toBe("C00123456");
@@ -189,13 +187,15 @@ describe("OpenFecAdapter", () => {
       .prepare(
         "SELECT id, kind, jurisdiction, source_name, raw FROM documents WHERE kind = 'contribution'",
       )
-      .get() as {
-        id: string;
-        kind: string;
-        jurisdiction: string;
-        source_name: string;
-        raw: string;
-      } | undefined;
+      .get() as
+      | {
+          id: string;
+          kind: string;
+          jurisdiction: string;
+          source_name: string;
+          raw: string;
+        }
+      | undefined;
 
     expect(doc).toBeDefined();
     expect(doc!.kind).toBe("contribution");
@@ -214,9 +214,7 @@ describe("OpenFecAdapter", () => {
     // contributor (role='contributor') and recipient (role='recipient')
     // references both exist.
     const refs = store.db
-      .prepare(
-        "SELECT role FROM document_references WHERE document_id = ?",
-      )
+      .prepare("SELECT role FROM document_references WHERE document_id = ?")
       .all(doc!.id) as Array<{ role: string }>;
     const roles = refs.map((r) => r.role);
     expect(roles).toContain("contributor");
@@ -230,9 +228,7 @@ describe("OpenFecAdapter", () => {
     await adapter.refresh({ db: store.db });
 
     const doc = store.db
-      .prepare(
-        "SELECT id, kind, raw FROM documents WHERE kind = 'expenditure'",
-      )
+      .prepare("SELECT id, kind, raw FROM documents WHERE kind = 'expenditure'")
       .get() as { id: string; kind: string; raw: string } | undefined;
 
     expect(doc).toBeDefined();
@@ -243,9 +239,7 @@ describe("OpenFecAdapter", () => {
 
     // Spender (the committee) is role='contributor'; recipient is role='recipient'.
     const refs = store.db
-      .prepare(
-        "SELECT role FROM document_references WHERE document_id = ?",
-      )
+      .prepare("SELECT role FROM document_references WHERE document_id = ?")
       .all(doc!.id) as Array<{ role: string }>;
     const roles = refs.map((r) => r.role);
     expect(roles).toContain("contributor");
@@ -276,20 +270,22 @@ describe("OpenFecAdapter", () => {
     });
 
     // Use a focused mock that only returns the candidate and committee (no contributions/expenditures)
-    vi.spyOn(global, "fetch").mockImplementation(makeMockFetch({
-      candidates: [SAMPLE_CANDIDATE],
-      committees: [SAMPLE_COMMITTEE],
-      scheduleA: [],
-      scheduleB: [],
-    }));
+    vi.spyOn(global, "fetch").mockImplementation(
+      makeMockFetch({
+        candidates: [SAMPLE_CANDIDATE],
+        committees: [SAMPLE_COMMITTEE],
+        scheduleA: [],
+        scheduleB: [],
+      }),
+    );
     const adapter = new OpenFecAdapter({ apiKey: "test-key" });
     await adapter.refresh({ db: store.db });
 
     // Exactly ONE Person row must exist — the adapter merged, not split.
     const personCount = (
-      store.db
-        .prepare("SELECT COUNT(*) c FROM entities WHERE kind = 'person'")
-        .get() as { c: number }
+      store.db.prepare("SELECT COUNT(*) c FROM entities WHERE kind = 'person'").get() as {
+        c: number;
+      }
     ).c;
     expect(personCount).toBe(1);
 
@@ -374,9 +370,7 @@ describe("OpenFecAdapter", () => {
 
   // ── Test 7: Rate-limit resilience ────────────────────────────────
   it("surfaces errors cleanly when OpenFEC returns 429", async () => {
-    vi.spyOn(global, "fetch").mockResolvedValue(
-      new Response("Too Many Requests", { status: 429 }),
-    );
+    vi.spyOn(global, "fetch").mockResolvedValue(new Response("Too Many Requests", { status: 429 }));
     const adapter = new OpenFecAdapter({ apiKey: "test-key" });
     const result = await adapter.refresh({ db: store.db });
     // The adapter catches the error; it does not throw.
@@ -403,7 +397,7 @@ describe("OpenFecAdapter", () => {
     // new row rather than merging. Intentional under-match.
     upsertEntity(store.db, {
       kind: "person",
-      name: "John R. Smith",   // NOTE: forward order, not "Smith, John R."
+      name: "John R. Smith", // NOTE: forward order, not "Smith, John R."
       jurisdiction: undefined,
       external_ids: { bioguide: "S001234" },
       metadata: {
@@ -428,9 +422,7 @@ describe("OpenFecAdapter", () => {
     // documenting is that the *candidate* row and the *bioguide* row
     // did NOT merge.
     const rows = store.db
-      .prepare(
-        "SELECT id, name, external_ids FROM entities WHERE kind = 'person'",
-      )
+      .prepare("SELECT id, name, external_ids FROM entities WHERE kind = 'person'")
       .all() as Array<{ id: string; name: string; external_ids: string }>;
 
     // Exactly one row has bioguide (the pre-seeded Congress row); the
@@ -505,7 +497,10 @@ describe("OpenFecAdapter", () => {
             JSON.stringify({
               results: page2Results,
               pagination: {
-                count: 101, per_page: 100, page: 2, pages: 2,
+                count: 101,
+                per_page: 100,
+                page: 2,
+                pages: 2,
                 // No last_indexes → adapter stops here.
               },
             }),
@@ -517,7 +512,10 @@ describe("OpenFecAdapter", () => {
           JSON.stringify({
             results: page1Results,
             pagination: {
-              count: 101, per_page: 100, page: 1, pages: 2,
+              count: 101,
+              per_page: 100,
+              page: 1,
+              pages: 2,
               last_indexes: {
                 last_index: "CURSOR-X",
                 last_contribution_receipt_date: "2026-01-15",
@@ -541,9 +539,9 @@ describe("OpenFecAdapter", () => {
 
     // All 101 contribution Documents should be in the store.
     const docCount = (
-      store.db
-        .prepare("SELECT COUNT(*) c FROM documents WHERE kind = 'contribution'")
-        .get() as { c: number }
+      store.db.prepare("SELECT COUNT(*) c FROM documents WHERE kind = 'contribution'").get() as {
+        c: number;
+      }
     ).c;
     expect(docCount).toBe(101);
 
@@ -561,15 +559,21 @@ describe("OpenFecAdapter", () => {
 describe("OpenFecAdapter.fetchRecentContributions", () => {
   it("fetches schedule_a page with date range", async () => {
     const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({
-        results: [{
-          transaction_id: "T1", committee_id: "C001",
-          contributor_name: "SMITH, JANE",
-          contribution_receipt_amount: 2500,
-          contribution_receipt_date: "2026-04-10",
-        }],
-        pagination: { per_page: 100 },
-      }), { status: 200 }),
+      new Response(
+        JSON.stringify({
+          results: [
+            {
+              transaction_id: "T1",
+              committee_id: "C001",
+              contributor_name: "SMITH, JANE",
+              contribution_receipt_amount: 2500,
+              contribution_receipt_date: "2026-04-10",
+            },
+          ],
+          pagination: { per_page: 100 },
+        }),
+        { status: 200 },
+      ),
     );
 
     const adapter = new OpenFecAdapter({ apiKey: "test-key" });
@@ -584,16 +588,18 @@ describe("OpenFecAdapter.fetchRecentContributions", () => {
     expect(url).toMatch(/min_date=04%2F01%2F2026/);
     expect(url).toMatch(/max_date=04%2F30%2F2026/);
     expect(url).toMatch(/api_key=test-key/);
-    const written = store.db.prepare(
-      "SELECT kind FROM documents WHERE source_name='openfec' AND kind='contribution'",
-    ).all();
+    const written = store.db
+      .prepare("SELECT kind FROM documents WHERE source_name='openfec' AND kind='contribution'")
+      .all();
     expect(written).toHaveLength(1);
     fetchSpy.mockRestore();
   });
 
   it("passes committee_id when provided", async () => {
     const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ results: [], pagination: { per_page: 100 } }), { status: 200 }),
+      new Response(JSON.stringify({ results: [], pagination: { per_page: 100 } }), {
+        status: 200,
+      }),
     );
 
     const adapter = new OpenFecAdapter({ apiKey: "test-key" });
@@ -612,10 +618,13 @@ describe("OpenFecAdapter.fetchRecentContributions", () => {
 describe("OpenFecAdapter.searchCandidates", () => {
   it("fetches /candidates/search with q param and writes upserted candidates", async () => {
     const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({
-        results: [SAMPLE_CANDIDATE],
-        pagination: { per_page: 20, page: 1, pages: 1 },
-      }), { status: 200 }),
+      new Response(
+        JSON.stringify({
+          results: [SAMPLE_CANDIDATE],
+          pagination: { per_page: 20, page: 1, pages: 1 },
+        }),
+        { status: 200 },
+      ),
     );
 
     const adapter = new OpenFecAdapter({ apiKey: "test-key" });
@@ -629,9 +638,7 @@ describe("OpenFecAdapter.searchCandidates", () => {
     expect(url).toMatch(/api_key=test-key/);
 
     const rows = store.db
-      .prepare(
-        "SELECT name FROM entities WHERE json_extract(external_ids, '$.fec_candidate') = ?",
-      )
+      .prepare("SELECT name FROM entities WHERE json_extract(external_ids, '$.fec_candidate') = ?")
       .all("H0AZ01234") as Array<{ name: string }>;
     expect(rows).toHaveLength(1);
     fetchSpy.mockRestore();
@@ -649,7 +656,9 @@ describe("OpenFecAdapter.searchCandidates", () => {
 
   it("translates opts.limit to per_page query param", async () => {
     const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ results: [], pagination: { per_page: 47 } }), { status: 200 }),
+      new Response(JSON.stringify({ results: [], pagination: { per_page: 47 } }), {
+        status: 200,
+      }),
     );
     const adapter = new OpenFecAdapter({ apiKey: "test-key" });
     await adapter.searchCandidates(store.db, { q: "Smith", limit: 47 });
@@ -695,9 +704,9 @@ describe("OpenFecAdapter.fetchContributionsToCandidate", () => {
     expect(scheduleACalls).toHaveLength(1);
     // Principal committee filter must be present in schedule_a call.
     expect(scheduleACalls[0]).toMatch(/committee_id=C00123456/);
-    const docs = store.db.prepare(
-      "SELECT kind FROM documents WHERE source_name='openfec' AND kind='contribution'",
-    ).all();
+    const docs = store.db
+      .prepare("SELECT kind FROM documents WHERE source_name='openfec' AND kind='contribution'")
+      .all();
     expect(docs).toHaveLength(1);
   });
 
@@ -728,10 +737,9 @@ describe("OpenFecAdapter.fetchContributionsToCandidate", () => {
       }
       if (u.includes("/schedules/schedule_a")) {
         scheduleACalls.push(u);
-        return new Response(
-          JSON.stringify({ results: [], pagination: { per_page: 100 } }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify({ results: [], pagination: { per_page: 100 } }), {
+          status: 200,
+        });
       }
       return new Response("not found", { status: 404 });
     });
@@ -749,10 +757,13 @@ describe("OpenFecAdapter.fetchContributionsToCandidate", () => {
 describe("OpenFecAdapter.fetchCandidate", () => {
   it("fetches /candidate/{id}/ and upserts the returned candidate", async () => {
     const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({
-        results: [SAMPLE_CANDIDATE],
-        pagination: { per_page: 20, page: 1, pages: 1 },
-      }), { status: 200 }),
+      new Response(
+        JSON.stringify({
+          results: [SAMPLE_CANDIDATE],
+          pagination: { per_page: 20, page: 1, pages: 1 },
+        }),
+        { status: 200 },
+      ),
     );
 
     const adapter = new OpenFecAdapter({ apiKey: "test-key" });
@@ -764,9 +775,7 @@ describe("OpenFecAdapter.fetchCandidate", () => {
     expect(url).toMatch(/api_key=test-key/);
 
     const rows = store.db
-      .prepare(
-        "SELECT name FROM entities WHERE json_extract(external_ids, '$.fec_candidate') = ?",
-      )
+      .prepare("SELECT name FROM entities WHERE json_extract(external_ids, '$.fec_candidate') = ?")
       .all("H0AZ01234") as Array<{ name: string }>;
     expect(rows).toHaveLength(1);
     fetchSpy.mockRestore();

@@ -23,9 +23,7 @@ export async function autoBootstrapIfNeeded(dbPath: string): Promise<void> {
     return;
   }
   const store = openStore(dbPath, coreSqlPath, federalSqlPath);
-  const row = store.db
-    .prepare("SELECT COUNT(*) AS n FROM jurisdictions")
-    .get() as { n: number };
+  const row = store.db.prepare("SELECT COUNT(*) AS n FROM jurisdictions").get() as { n: number };
   store.close();
   if (row.n === 0) {
     logger.info("jurisdictions table empty — auto-bootstrapping", { dbPath });

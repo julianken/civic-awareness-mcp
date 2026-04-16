@@ -4,10 +4,7 @@ import { bootstrap } from "../../../src/federal/cli/bootstrap.js";
 import { openStore } from "../../../src/core/store.js";
 import { hashArgs } from "../../../src/core/args_hash.js";
 import { upsertFetchLog, getFetchLog } from "../../../src/core/fetch_log.js";
-import {
-  withShapedFetch,
-  _resetToolCacheForTesting,
-} from "../../../src/core/tool_cache.js";
+import { withShapedFetch, _resetToolCacheForTesting } from "../../../src/core/tool_cache.js";
 
 let db: Database.Database;
 
@@ -69,10 +66,7 @@ describe("withShapedFetch — TTL miss", () => {
     expect(result.value).toEqual(["fresh-result"]);
     expect(result.stale_notice).toBeUndefined();
 
-    const logged = getFetchLog(
-      db, "openstates", "/people",
-      hashArgs("__test__", { name: "test" }),
-    );
+    const logged = getFetchLog(db, "openstates", "/people", hashArgs("__test__", { name: "test" }));
     expect(logged).not.toBeNull();
     expect(logged?.last_rowcount).toBe(7);
     expect(logged?.scope).toBe("full");
@@ -87,7 +81,12 @@ describe("withShapedFetch — TTL miss", () => {
     await expect(
       withShapedFetch(
         db,
-        { source: "openstates", endpoint_path: "/people", args: { name: "test" }, tool: "__test__" },
+        {
+          source: "openstates",
+          endpoint_path: "/people",
+          args: { name: "test" },
+          tool: "__test__",
+        },
         { scope: "full", ms: 24 * 60 * 60 * 1000 },
         fetchAndWrite,
         readLocal,
@@ -95,10 +94,7 @@ describe("withShapedFetch — TTL miss", () => {
       ),
     ).rejects.toThrow(/upstream down/);
 
-    const logged = getFetchLog(
-      db, "openstates", "/people",
-      hashArgs("__test__", { name: "test" }),
-    );
+    const logged = getFetchLog(db, "openstates", "/people", hashArgs("__test__", { name: "test" }));
     expect(logged).toBeNull();
   });
 });
@@ -173,7 +169,12 @@ describe("withShapedFetch — stale fallback", () => {
     await expect(
       withShapedFetch(
         db,
-        { source: "openstates", endpoint_path: "/people", args: { name: "cold" }, tool: "__test__" },
+        {
+          source: "openstates",
+          endpoint_path: "/people",
+          args: { name: "cold" },
+          tool: "__test__",
+        },
         { scope: "full", ms: 24 * 60 * 60 * 1000 },
         fetchAndWrite,
         readLocal,
@@ -240,7 +241,7 @@ describe("withShapedFetch — parallel concurrency", () => {
     // Concurrent execution keeps total time < 2 × DELAY_MS.
     const DELAY_MS = 100;
 
-    const makeFetch = (tag: string) => async (): Promise<{ primary_rows_written: number }> => {
+    const doFetch = async (): Promise<{ primary_rows_written: number }> => {
       await new Promise<void>((r) => setTimeout(r, DELAY_MS));
       return { primary_rows_written: 1 };
     };
@@ -251,13 +252,29 @@ describe("withShapedFetch — parallel concurrency", () => {
     await Promise.all([
       withShapedFetch(
         db,
-        { source: "openstates", endpoint_path: "/bills", args: { jurisdiction: "us-or" }, tool: "__concurrency__" },
-        ttl, makeFetch("or"), () => [], () => 0,
+        {
+          source: "openstates",
+          endpoint_path: "/bills",
+          args: { jurisdiction: "us-or" },
+          tool: "__concurrency__",
+        },
+        ttl,
+        doFetch,
+        () => [],
+        () => 0,
       ),
       withShapedFetch(
         db,
-        { source: "openstates", endpoint_path: "/bills", args: { jurisdiction: "us-mi" }, tool: "__concurrency__" },
-        ttl, makeFetch("mi"), () => [], () => 0,
+        {
+          source: "openstates",
+          endpoint_path: "/bills",
+          args: { jurisdiction: "us-mi" },
+          tool: "__concurrency__",
+        },
+        ttl,
+        doFetch,
+        () => [],
+        () => 0,
       ),
     ]);
     const elapsed = Date.now() - start;

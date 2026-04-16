@@ -1,7 +1,12 @@
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { Entity, type EntityKind } from "./types.js";
-import { fuzzyPick, normalizeName, type FuzzyCandidate, type UpstreamSignals } from "../resolution/fuzzy.js";
+import {
+  fuzzyPick,
+  normalizeName,
+  type FuzzyCandidate,
+  type UpstreamSignals,
+} from "../resolution/fuzzy.js";
 
 // Canonical JSON-path literals for entities.external_ids lookups.
 // MUST match src/federal/schema.sql and src/state/schema.sql byte-for-byte;
@@ -56,22 +61,35 @@ export interface UpsertInput {
   aliases?: string[];
   metadata?: Record<string, unknown>;
 }
-export interface UpsertResult { entity: Entity; created: boolean }
+export interface UpsertResult {
+  entity: Entity;
+  created: boolean;
+}
 
 interface Row {
-  id: string; kind: string; name: string; name_normalized: string;
-  jurisdiction: string | null; external_ids: string; aliases: string;
-  metadata: string; first_seen_at: string; last_seen_at: string;
+  id: string;
+  kind: string;
+  name: string;
+  name_normalized: string;
+  jurisdiction: string | null;
+  external_ids: string;
+  aliases: string;
+  metadata: string;
+  first_seen_at: string;
+  last_seen_at: string;
 }
 
 function rowToEntity(r: Row): Entity {
   return Entity.parse({
-    id: r.id, kind: r.kind, name: r.name,
+    id: r.id,
+    kind: r.kind,
+    name: r.name,
     jurisdiction: r.jurisdiction ?? undefined,
     external_ids: JSON.parse(r.external_ids),
     aliases: JSON.parse(r.aliases),
     metadata: JSON.parse(r.metadata),
-    first_seen_at: r.first_seen_at, last_seen_at: r.last_seen_at,
+    first_seen_at: r.first_seen_at,
+    last_seen_at: r.last_seen_at,
   });
 }
 
@@ -98,7 +116,13 @@ export function upsertEntity(db: Database.Database, input: UpsertInput): UpsertR
       existing.id,
     );
     return {
-      entity: { ...existing, external_ids: mergedIds, aliases: mergedAliases, metadata: mergedMetadata, last_seen_at: now },
+      entity: {
+        ...existing,
+        external_ids: mergedIds,
+        aliases: mergedAliases,
+        metadata: mergedMetadata,
+        last_seen_at: now,
+      },
       created: false,
     };
   }
@@ -109,18 +133,28 @@ export function upsertEntity(db: Database.Database, input: UpsertInput): UpsertR
      (id, kind, name, name_normalized, jurisdiction, external_ids, aliases, metadata, first_seen_at, last_seen_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
-    id, input.kind, input.name, nameNorm, input.jurisdiction ?? null,
+    id,
+    input.kind,
+    input.name,
+    nameNorm,
+    input.jurisdiction ?? null,
     JSON.stringify(input.external_ids ?? {}),
     JSON.stringify(input.aliases ?? []),
     JSON.stringify(input.metadata ?? {}),
-    now, now,
+    now,
+    now,
   );
   return {
     entity: {
-      id, kind: input.kind, name: input.name,
-      aliases: input.aliases ?? [], jurisdiction: input.jurisdiction,
-      external_ids: input.external_ids ?? {}, metadata: input.metadata ?? {},
-      first_seen_at: now, last_seen_at: now,
+      id,
+      kind: input.kind,
+      name: input.name,
+      aliases: input.aliases ?? [],
+      jurisdiction: input.jurisdiction,
+      external_ids: input.external_ids ?? {},
+      metadata: input.metadata ?? {},
+      first_seen_at: now,
+      last_seen_at: now,
     },
     created: true,
   };
@@ -141,24 +175,26 @@ function findByExternalIds(db: Database.Database, ids: Record<string, string>): 
 }
 
 function findByExactName(
-  db: Database.Database, kind: string, nameNorm: string, j: string | undefined,
+  db: Database.Database,
+  kind: string,
+  nameNorm: string,
+  j: string | undefined,
 ): Entity | null {
   // D3b: Person rows are cross-jurisdiction — match on (kind, name)
   // only. Organization/committee/pac/agency rows stay scoped by
   // jurisdiction, so "Ethics Committee" in two states stays distinct.
-  const rows = kind === "person"
-    ? db
-        .prepare(
-          `SELECT * FROM entities WHERE kind = 'person' AND name_normalized = ?`,
-        )
-        .all(nameNorm) as Row[]
-    : db
-        .prepare(
-          `SELECT * FROM entities
+  const rows =
+    kind === "person"
+      ? (db
+          .prepare(`SELECT * FROM entities WHERE kind = 'person' AND name_normalized = ?`)
+          .all(nameNorm) as Row[])
+      : (db
+          .prepare(
+            `SELECT * FROM entities
            WHERE kind = ? AND name_normalized = ?
              AND ((? IS NOT NULL AND jurisdiction = ?) OR (? IS NULL AND jurisdiction IS NULL))`,
-        )
-        .all(kind, nameNorm, j ?? null, j ?? null, j ?? null) as Row[];
+          )
+          .all(kind, nameNorm, j ?? null, j ?? null, j ?? null) as Row[]);
   return rows.length === 1 ? rowToEntity(rows[0]) : null;
 }
 
@@ -260,13 +296,23 @@ export function findEntityById(db: Database.Database, id: string): Entity | null
   return row ? rowToEntity(row) : null;
 }
 
-export interface ListFilter { kind?: EntityKind; jurisdiction?: string; limit?: number }
+export interface ListFilter {
+  kind?: EntityKind;
+  jurisdiction?: string;
+  limit?: number;
+}
 
 export function listEntities(db: Database.Database, f: ListFilter = {}): Entity[] {
   const clauses: string[] = [];
   const params: unknown[] = [];
-  if (f.kind) { clauses.push("kind = ?"); params.push(f.kind); }
-  if (f.jurisdiction) { clauses.push("jurisdiction = ?"); params.push(f.jurisdiction); }
+  if (f.kind) {
+    clauses.push("kind = ?");
+    params.push(f.kind);
+  }
+  if (f.jurisdiction) {
+    clauses.push("jurisdiction = ?");
+    params.push(f.jurisdiction);
+  }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   params.push(f.limit ?? 50);
   const rows = db

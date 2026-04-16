@@ -27,10 +27,7 @@ export interface EmptyFeedContext {
 // per-tool narrow fetches either succeed fully or fall back to cached
 // data as `upstream_failure`; rate/budget errors are transport-layer
 // rejections rather than partial-result notices.
-export type StaleReason =
-  | "upstream_failure"
-  | "not_found"
-  | "not_yet_supported";
+export type StaleReason = "upstream_failure" | "not_found" | "not_yet_supported";
 
 export interface StaleNotice {
   as_of: string;
@@ -78,8 +75,8 @@ export function emptyFeedDiagnostic(
          LIMIT 1`,
     )
     .get(ctx.kind, ctx.jurisdiction, ctx.jurisdiction) as
-      | { fetched_at: string; source_name: string }
-      | undefined;
+    | { fetched_at: string; source_name: string }
+    | undefined;
 
   if (!latest) {
     return {

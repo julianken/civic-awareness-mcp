@@ -3,7 +3,11 @@ import { rmSync, existsSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { openStore, type Store } from "../../../src/core/store.js";
 import { seedJurisdictions } from "../../../src/federal/seeds.js";
-import { OpenStatesAdapter, BillNotFoundError, type OpenStatesBillDetail } from "../../../src/state/adapters/openstates.js";
+import {
+  OpenStatesAdapter,
+  BillNotFoundError,
+  type OpenStatesBillDetail,
+} from "../../../src/state/adapters/openstates.js";
 
 const TEST_DB = "./data/test-openstates.db";
 let store: Store;
@@ -61,12 +65,21 @@ describe("OpenStatesAdapter", () => {
     const result = await adapter.refresh({ db: store.db, jurisdiction: "tx" });
     expect(result.entitiesUpserted).toBeGreaterThan(0);
     const row = store.db
-      .prepare("SELECT name, external_ids, jurisdiction, metadata FROM entities WHERE kind = 'person'")
-      .get() as { name: string; external_ids: string; jurisdiction: string | null; metadata: string };
+      .prepare(
+        "SELECT name, external_ids, jurisdiction, metadata FROM entities WHERE kind = 'person'",
+      )
+      .get() as {
+      name: string;
+      external_ids: string;
+      jurisdiction: string | null;
+      metadata: string;
+    };
     expect(row.name).toBe("Jane Doe");
     expect(JSON.parse(row.external_ids).openstates_person).toBe("ocd-person/abc");
     expect(row.jurisdiction).toBeNull();
-    const meta = JSON.parse(row.metadata) as { roles?: Array<{ jurisdiction: string; role: string }> };
+    const meta = JSON.parse(row.metadata) as {
+      roles?: Array<{ jurisdiction: string; role: string }>;
+    };
     expect(meta.roles?.[0]?.jurisdiction).toBe("us-tx");
     expect(meta.roles?.[0]?.role).toBe("state_legislator");
   });
@@ -80,7 +93,9 @@ describe("OpenStatesAdapter", () => {
     expect(doc.kind).toBe("bill");
     expect(doc.title).toContain("HB1234");
     expect(doc.jurisdiction).toBe("us-tx");
-    const refs = store.db.prepare("SELECT COUNT(*) c FROM document_references").get() as { c: number };
+    const refs = store.db.prepare("SELECT COUNT(*) c FROM document_references").get() as {
+      c: number;
+    };
     expect(refs.c).toBe(1);
   });
 
@@ -106,10 +121,16 @@ describe("OpenStatesAdapter", () => {
         actions: [{ date: "2026-04-01", description: "Introduced" }],
       };
       if (u.includes("/people")) {
-        return new Response(JSON.stringify({ results: [caPerson], pagination: { max_page: 1, page: 1 } }), { status: 200 });
+        return new Response(
+          JSON.stringify({ results: [caPerson], pagination: { max_page: 1, page: 1 } }),
+          { status: 200 },
+        );
       }
       if (u.includes("/bills")) {
-        return new Response(JSON.stringify({ results: [caBill], pagination: { max_page: 1, page: 1 } }), { status: 200 });
+        return new Response(
+          JSON.stringify({ results: [caBill], pagination: { max_page: 1, page: 1 } }),
+          { status: 200 },
+        );
       }
       return new Response("not found", { status: 404 });
     });
@@ -152,9 +173,9 @@ describe("OpenStatesAdapter", () => {
     const adapter = new OpenStatesAdapter({ apiKey: "test" });
     await adapter.refresh({ db: store.db, jurisdiction: "tx" });
 
-    const row = store.db
-      .prepare("SELECT occurred_at FROM documents WHERE kind = 'bill'")
-      .get() as { occurred_at: string };
+    const row = store.db.prepare("SELECT occurred_at FROM documents WHERE kind = 'bill'").get() as {
+      occurred_at: string;
+    };
     expect(row.occurred_at).toMatch(/^2025-09-18T/);
   });
 
@@ -180,9 +201,9 @@ describe("OpenStatesAdapter", () => {
     const adapter = new OpenStatesAdapter({ apiKey: "test" });
     await adapter.refresh({ db: store.db, jurisdiction: "tx" });
 
-    const row = store.db
-      .prepare("SELECT occurred_at FROM documents WHERE kind = 'bill'")
-      .get() as { occurred_at: string };
+    const row = store.db.prepare("SELECT occurred_at FROM documents WHERE kind = 'bill'").get() as {
+      occurred_at: string;
+    };
     // SAMPLE_BILL.updated_at is "2026-04-01T10:00:00Z"
     expect(row.occurred_at).toMatch(/^2026-04-01T/);
   });
@@ -216,9 +237,9 @@ describe("OpenStatesAdapter", () => {
     const adapter = new OpenStatesAdapter({ apiKey: "test" });
     await adapter.refresh({ db: store.db, jurisdiction: "tx" });
 
-    const row = store.db
-      .prepare("SELECT occurred_at FROM documents WHERE kind = 'bill'")
-      .get() as { occurred_at: string };
+    const row = store.db.prepare("SELECT occurred_at FROM documents WHERE kind = 'bill'").get() as {
+      occurred_at: string;
+    };
     // Last action has no date → adapter falls through to updated_at.
     expect(row.occurred_at).toMatch(/^2026-04-10T/);
   });
@@ -236,17 +257,18 @@ describe("OpenStatesAdapter", () => {
     const bill = {
       ...SAMPLE_BILL,
       id: "ocd-bill/with-sponsor-only",
-      sponsorships: [{ name: "Brandon Creighton", classification: "primary", person: sponsorPerson }],
+      sponsorships: [
+        { name: "Brandon Creighton", classification: "primary", person: sponsorPerson },
+      ],
     };
     // /people returns empty (so the person is ONLY created via the sponsorship
     // path), /bills returns the above bill.
     vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
       const u = String(url);
       if (u.includes("/people")) {
-        return new Response(
-          JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
-          { status: 200 },
-        );
+        return new Response(JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }), {
+          status: 200,
+        });
       }
       if (u.includes("/bills")) {
         return new Response(
@@ -260,9 +282,11 @@ describe("OpenStatesAdapter", () => {
     const adapter = new OpenStatesAdapter({ apiKey: "test" });
     await adapter.refresh({ db: store.db, jurisdiction: "tx" });
 
-    const row = store.db.prepare(
-      "SELECT metadata FROM entities WHERE json_extract(external_ids, '$.openstates_person') = ?",
-    ).get("ocd-person/sponsor-only") as { metadata: string };
+    const row = store.db
+      .prepare(
+        "SELECT metadata FROM entities WHERE json_extract(external_ids, '$.openstates_person') = ?",
+      )
+      .get("ocd-person/sponsor-only") as { metadata: string };
     const meta = JSON.parse(row.metadata);
     expect(meta.roles).toHaveLength(1);
     expect(meta.roles[0]).toMatchObject({
@@ -313,9 +337,11 @@ describe("upsertBill persists detail fields in raw", () => {
     const detailDb = openStore("./data/test-openstates-detail.db");
     seedJurisdictions(detailDb.db);
     const adapter = new OpenStatesAdapter({ apiKey: "test" });
-    (adapter as unknown as {
-      upsertBill: (db: Database.Database, b: OpenStatesBillDetail) => void
-    }).upsertBill(detailDb.db, {
+    (
+      adapter as unknown as {
+        upsertBill: (db: Database.Database, b: OpenStatesBillDetail) => void;
+      }
+    ).upsertBill(detailDb.db, {
       id: "ocd-bill/abc",
       identifier: "SB 1338",
       title: "Vehicles: repossession.",
@@ -325,19 +351,31 @@ describe("upsertBill persists detail fields in raw", () => {
       jurisdiction: { id: "ocd-jurisdiction/country:us/state:ca/government" },
       subject: ["Vehicles", "Repossession"],
       abstracts: [{ abstract: "Existing law prohibits..." }],
-      sponsorships: [{
-        name: "Brian Jones",
-        classification: "primary",
-        person: {
-          id: "ocd-person/xyz", name: "Brian Jones", party: "Republican",
-          jurisdiction: { id: "ocd-jurisdiction/country:us/state:ca/government" },
+      sponsorships: [
+        {
+          name: "Brian Jones",
+          classification: "primary",
+          person: {
+            id: "ocd-person/xyz",
+            name: "Brian Jones",
+            party: "Republican",
+            jurisdiction: { id: "ocd-jurisdiction/country:us/state:ca/government" },
+          },
         },
-      }],
+      ],
       actions: [{ date: "2026-02-20", description: "Introduced." }],
-      versions: [{
-        note: "Introduced", date: "2026-02-20",
-        links: [{ url: "https://leginfo.legislature.ca.gov/faces/billPdfClient.xhtml?bill_id=202520260SB1338&version=20250SB133899INT", media_type: "application/pdf" }],
-      }],
+      versions: [
+        {
+          note: "Introduced",
+          date: "2026-02-20",
+          links: [
+            {
+              url: "https://leginfo.legislature.ca.gov/faces/billPdfClient.xhtml?bill_id=202520260SB1338&version=20250SB133899INT",
+              media_type: "application/pdf",
+            },
+          ],
+        },
+      ],
       documents: [],
       related_bills: [],
     });
@@ -370,22 +408,25 @@ describe("fetchBill", () => {
     let capturedUrl: string | undefined;
     vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
       capturedUrl = String(url);
-      return new Response(JSON.stringify({
-        id: "ocd-bill/abc",
-        identifier: "SB 1338",
-        title: "Vehicles: repossession.",
-        session: "20252026",
-        updated_at: "2026-04-09T00:00:00Z",
-        openstates_url: "https://openstates.org/ca/bills/20252026/SB1338/",
-        jurisdiction: { id: "ocd-jurisdiction/country:us/state:ca/government" },
-        subject: ["Vehicles", "Repossession"],
-        abstracts: [{ abstract: "Existing law..." }],
-        sponsorships: [],
-        actions: [{ date: "2026-02-20", description: "Introduced." }],
-        versions: [],
-        documents: [],
-        related_bills: [],
-      }), { status: 200 });
+      return new Response(
+        JSON.stringify({
+          id: "ocd-bill/abc",
+          identifier: "SB 1338",
+          title: "Vehicles: repossession.",
+          session: "20252026",
+          updated_at: "2026-04-09T00:00:00Z",
+          openstates_url: "https://openstates.org/ca/bills/20252026/SB1338/",
+          jurisdiction: { id: "ocd-jurisdiction/country:us/state:ca/government" },
+          subject: ["Vehicles", "Repossession"],
+          abstracts: [{ abstract: "Existing law..." }],
+          sponsorships: [],
+          actions: [{ date: "2026-02-20", description: "Introduced." }],
+          versions: [],
+          documents: [],
+          related_bills: [],
+        }),
+        { status: 200 },
+      );
     });
 
     if (existsSync(FETCHBILL_DB)) rmSync(FETCHBILL_DB, { force: true });
@@ -401,8 +442,15 @@ describe("fetchBill", () => {
 
       expect(capturedUrl).toBeDefined();
       expect(capturedUrl).toContain("/bills/ca/20252026/SB%201338");
-      for (const inc of ["sponsorships", "abstracts", "actions", "versions",
-                         "documents", "sources", "related_bills"]) {
+      for (const inc of [
+        "sponsorships",
+        "abstracts",
+        "actions",
+        "versions",
+        "documents",
+        "sources",
+        "related_bills",
+      ]) {
         expect(capturedUrl).toContain(`include=${inc}`);
       }
 
@@ -416,8 +464,8 @@ describe("fetchBill", () => {
   });
 
   it("throws BillNotFoundError on 404", async () => {
-    vi.spyOn(global, "fetch").mockImplementation(async () =>
-      new Response(JSON.stringify({ detail: "not found" }), { status: 404 }),
+    vi.spyOn(global, "fetch").mockImplementation(
+      async () => new Response(JSON.stringify({ detail: "not found" }), { status: 404 }),
     );
 
     if (existsSync(FETCHBILL_404_DB)) rmSync(FETCHBILL_404_DB, { force: true });
@@ -427,8 +475,10 @@ describe("fetchBill", () => {
       const adapter = new OpenStatesAdapter({ apiKey: "test" });
       await expect(
         adapter.fetchBill(db.db, {
-          jurisdiction: "us-ca", session: "20252026", identifier: "XX 9999",
-        })
+          jurisdiction: "us-ca",
+          session: "20252026",
+          identifier: "XX 9999",
+        }),
       ).rejects.toThrow(BillNotFoundError);
     } finally {
       db.close();
@@ -450,22 +500,25 @@ describe("OpenStatesAdapter.fetchRecentBills", () => {
     let capturedUrl: string | undefined;
     vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
       capturedUrl = String(url);
-      return new Response(JSON.stringify({
-        results: [
-          {
-            id: "ocd-bill/abc",
-            identifier: "HB1",
-            title: "Test",
-            session: "89R",
-            updated_at: "2026-04-10T00:00:00Z",
-            openstates_url: "https://openstates.org/tx/bills/89R/HB1",
-            jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
-            sponsorships: [],
-            actions: [{ date: "2026-04-10", description: "Introduced" }],
-          },
-        ],
-        pagination: { max_page: 5, page: 1 },
-      }), { status: 200 });
+      return new Response(
+        JSON.stringify({
+          results: [
+            {
+              id: "ocd-bill/abc",
+              identifier: "HB1",
+              title: "Test",
+              session: "89R",
+              updated_at: "2026-04-10T00:00:00Z",
+              openstates_url: "https://openstates.org/tx/bills/89R/HB1",
+              jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
+              sponsorships: [],
+              actions: [{ date: "2026-04-10", description: "Introduced" }],
+            },
+          ],
+          pagination: { max_page: 5, page: 1 },
+        }),
+        { status: 200 },
+      );
     });
 
     if (existsSync(FRB_DB)) rmSync(FRB_DB, { force: true });
@@ -483,9 +536,9 @@ describe("OpenStatesAdapter.fetchRecentBills", () => {
       expect(u.searchParams.get("updated_since")).toBeNull();
 
       expect(result.documentsUpserted).toBe(1);
-      const bills = db.db.prepare(
-        "SELECT id, title FROM documents WHERE source_name='openstates' AND kind='bill'",
-      ).all() as Array<{ id: string; title: string }>;
+      const bills = db.db
+        .prepare("SELECT id, title FROM documents WHERE source_name='openstates' AND kind='bill'")
+        .all() as Array<{ id: string; title: string }>;
       expect(bills).toHaveLength(1);
       expect(bills[0].title).toMatch(/^HB1 — /);
     } finally {
@@ -497,10 +550,9 @@ describe("OpenStatesAdapter.fetchRecentBills", () => {
     let capturedUrl: string | undefined;
     vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
       capturedUrl = String(url);
-      return new Response(
-        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }), {
+        status: 200,
+      });
     });
 
     if (existsSync(FRB_SINCE_DB)) rmSync(FRB_SINCE_DB, { force: true });
@@ -525,10 +577,9 @@ describe("OpenStatesAdapter.fetchRecentBills", () => {
     let capturedUrl: string | undefined;
     vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
       capturedUrl = String(url);
-      return new Response(
-        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }), {
+        status: 200,
+      });
     });
 
     const LIMIT_DB = "./data/test-openstates-frb-limit.db";
@@ -553,36 +604,40 @@ describe("OpenStatesAdapter.fetchRecentBills", () => {
   // filter on origin chamber server-side, so the adapter drops rows
   // whose classification mismatches opts.chamber.
   it("client-side filters out bills whose from_organization.classification does not match opts.chamber", async () => {
-    vi.spyOn(global, "fetch").mockImplementation(async () =>
-      new Response(JSON.stringify({
-        results: [
-          {
-            id: "ocd-bill/upper-1",
-            identifier: "SB1",
-            title: "Senate Bill",
-            session: "89R",
-            updated_at: "2026-04-10T00:00:00Z",
-            openstates_url: "https://openstates.org/tx/bills/89R/SB1",
-            jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
-            from_organization: { classification: "upper" },
-            sponsorships: [],
-            actions: [{ date: "2026-04-10", description: "Introduced" }],
-          },
-          {
-            id: "ocd-bill/lower-1",
-            identifier: "HB1",
-            title: "House Bill",
-            session: "89R",
-            updated_at: "2026-04-10T00:00:00Z",
-            openstates_url: "https://openstates.org/tx/bills/89R/HB1",
-            jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
-            from_organization: { classification: "lower" },
-            sponsorships: [],
-            actions: [{ date: "2026-04-10", description: "Introduced" }],
-          },
-        ],
-        pagination: { max_page: 1, page: 1 },
-      }), { status: 200 }),
+    vi.spyOn(global, "fetch").mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            results: [
+              {
+                id: "ocd-bill/upper-1",
+                identifier: "SB1",
+                title: "Senate Bill",
+                session: "89R",
+                updated_at: "2026-04-10T00:00:00Z",
+                openstates_url: "https://openstates.org/tx/bills/89R/SB1",
+                jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
+                from_organization: { classification: "upper" },
+                sponsorships: [],
+                actions: [{ date: "2026-04-10", description: "Introduced" }],
+              },
+              {
+                id: "ocd-bill/lower-1",
+                identifier: "HB1",
+                title: "House Bill",
+                session: "89R",
+                updated_at: "2026-04-10T00:00:00Z",
+                openstates_url: "https://openstates.org/tx/bills/89R/HB1",
+                jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
+                from_organization: { classification: "lower" },
+                sponsorships: [],
+                actions: [{ date: "2026-04-10", description: "Introduced" }],
+              },
+            ],
+            pagination: { max_page: 1, page: 1 },
+          }),
+          { status: 200 },
+        ),
     );
 
     const CHAMBER_DB = "./data/test-openstates-frb-chamber.db";
@@ -597,9 +652,9 @@ describe("OpenStatesAdapter.fetchRecentBills", () => {
       });
 
       expect(result.documentsUpserted).toBe(1);
-      const rows = db.db.prepare(
-        "SELECT title FROM documents WHERE source_name='openstates' AND kind='bill'",
-      ).all() as Array<{ title: string }>;
+      const rows = db.db
+        .prepare("SELECT title FROM documents WHERE source_name='openstates' AND kind='bill'")
+        .all() as Array<{ title: string }>;
       expect(rows).toHaveLength(1);
       expect(rows[0].title).toMatch(/^SB1 — /);
     } finally {
@@ -613,34 +668,38 @@ describe("OpenStatesAdapter.fetchRecentBills", () => {
   // batch. Sibling bills should still upsert; the bad row gets logged
   // and skipped.
   it("skips a malformed bill (missing jurisdiction) without aborting sibling upserts", async () => {
-    vi.spyOn(global, "fetch").mockImplementation(async () =>
-      new Response(JSON.stringify({
-        results: [
-          {
-            id: "ocd-bill/bad-1",
-            identifier: "BAD1",
-            title: "Bill with no jurisdiction",
-            session: "89R",
-            updated_at: "2026-04-10T00:00:00Z",
-            openstates_url: "https://openstates.org/x/bills/89R/BAD1",
-            // jurisdiction omitted; sponsorships also lack person.jurisdiction
-            sponsorships: [{ name: "Nobody", classification: "primary" }],
-            actions: [{ date: "2026-04-10", description: "Introduced" }],
-          },
-          {
-            id: "ocd-bill/good-1",
-            identifier: "HB99",
-            title: "Good Bill",
-            session: "89R",
-            updated_at: "2026-04-10T00:00:00Z",
-            openstates_url: "https://openstates.org/tx/bills/89R/HB99",
-            jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
-            sponsorships: [],
-            actions: [{ date: "2026-04-10", description: "Introduced" }],
-          },
-        ],
-        pagination: { max_page: 1, page: 1 },
-      }), { status: 200 }),
+    vi.spyOn(global, "fetch").mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            results: [
+              {
+                id: "ocd-bill/bad-1",
+                identifier: "BAD1",
+                title: "Bill with no jurisdiction",
+                session: "89R",
+                updated_at: "2026-04-10T00:00:00Z",
+                openstates_url: "https://openstates.org/x/bills/89R/BAD1",
+                // jurisdiction omitted; sponsorships also lack person.jurisdiction
+                sponsorships: [{ name: "Nobody", classification: "primary" }],
+                actions: [{ date: "2026-04-10", description: "Introduced" }],
+              },
+              {
+                id: "ocd-bill/good-1",
+                identifier: "HB99",
+                title: "Good Bill",
+                session: "89R",
+                updated_at: "2026-04-10T00:00:00Z",
+                openstates_url: "https://openstates.org/tx/bills/89R/HB99",
+                jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
+                sponsorships: [],
+                actions: [{ date: "2026-04-10", description: "Introduced" }],
+              },
+            ],
+            pagination: { max_page: 1, page: 1 },
+          }),
+          { status: 200 },
+        ),
     );
 
     const { logger } = await import("../../../src/util/logger.js");
@@ -659,9 +718,9 @@ describe("OpenStatesAdapter.fetchRecentBills", () => {
       // Good bill upserted; bad bill skipped — this is the
       // load-bearing assertion for A7. The transaction did NOT roll
       // back, so HB99 lands.
-      const rows = db.db.prepare(
-        "SELECT title FROM documents WHERE source_name='openstates' AND kind='bill'",
-      ).all() as Array<{ title: string }>;
+      const rows = db.db
+        .prepare("SELECT title FROM documents WHERE source_name='openstates' AND kind='bill'")
+        .all() as Array<{ title: string }>;
       expect(rows).toHaveLength(1);
       expect(rows[0].title).toMatch(/^HB99 — /);
 
@@ -742,14 +801,15 @@ describe("OpenStatesAdapter.fetchRecentBills", () => {
   });
 
   it("makes a single fetch when limit <= 20", async () => {
-    const fetchMock = vi.fn().mockImplementation(async () =>
-      new Response(
-        JSON.stringify({
-          results: [SAMPLE_BILL],
-          pagination: { max_page: 1, page: 1 },
-        }),
-        { status: 200 },
-      ),
+    const fetchMock = vi.fn().mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            results: [SAMPLE_BILL],
+            pagination: { max_page: 1, page: 1 },
+          }),
+          { status: 200 },
+        ),
     );
     vi.spyOn(global, "fetch").mockImplementation(fetchMock);
 
@@ -774,18 +834,25 @@ describe("OpenStatesAdapter.searchPeople", () => {
     let capturedUrl: string | undefined;
     vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
       capturedUrl = String(url);
-      return new Response(JSON.stringify({
-        results: [
-          {
-            id: "ocd-person/tx-1",
-            name: "Jane Doe",
-            party: "Democratic",
-            current_role: { title: "Representative", district: "15", org_classification: "lower" },
-            jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
-          },
-        ],
-        pagination: { max_page: 1, page: 1 },
-      }), { status: 200 });
+      return new Response(
+        JSON.stringify({
+          results: [
+            {
+              id: "ocd-person/tx-1",
+              name: "Jane Doe",
+              party: "Democratic",
+              current_role: {
+                title: "Representative",
+                district: "15",
+                org_classification: "lower",
+              },
+              jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
+            },
+          ],
+          pagination: { max_page: 1, page: 1 },
+        }),
+        { status: 200 },
+      );
     });
 
     if (existsSync(SP_DB)) rmSync(SP_DB, { force: true });
@@ -805,9 +872,9 @@ describe("OpenStatesAdapter.searchPeople", () => {
       expect(u.searchParams.get("per_page")).toBe("20");
 
       expect(result.entitiesUpserted).toBe(1);
-      const rows = db.db
-        .prepare("SELECT name FROM entities WHERE kind = 'person'")
-        .all() as Array<{ name: string }>;
+      const rows = db.db.prepare("SELECT name FROM entities WHERE kind = 'person'").all() as Array<{
+        name: string;
+      }>;
       expect(rows).toHaveLength(1);
       expect(rows[0].name).toBe("Jane Doe");
     } finally {
@@ -816,11 +883,11 @@ describe("OpenStatesAdapter.searchPeople", () => {
   });
 
   it("returns 0 entitiesUpserted for an empty results body", async () => {
-    vi.spyOn(global, "fetch").mockImplementation(async () =>
-      new Response(
-        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
-        { status: 200 },
-      ),
+    vi.spyOn(global, "fetch").mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }), {
+          status: 200,
+        }),
     );
 
     if (existsSync(SP_EMPTY_DB)) rmSync(SP_EMPTY_DB, { force: true });
@@ -842,10 +909,9 @@ describe("OpenStatesAdapter.searchPeople", () => {
     let capturedUrl: string | undefined;
     vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
       capturedUrl = String(url);
-      return new Response(
-        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }), {
+        status: 200,
+      });
     });
 
     if (existsSync(SP_EMPTY_DB)) rmSync(SP_EMPTY_DB, { force: true });
@@ -878,22 +944,25 @@ describe("OpenStatesAdapter.fetchBillsBySponsor", () => {
     let capturedUrl: string | undefined;
     vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
       capturedUrl = String(url);
-      return new Response(JSON.stringify({
-        results: [
-          {
-            id: "ocd-bill/tx-1",
-            identifier: "HB1",
-            title: "Test Bill",
-            session: "89R",
-            updated_at: "2026-04-10T00:00:00Z",
-            openstates_url: "https://openstates.org/tx/bills/89R/HB1",
-            jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
-            sponsorships: [],
-            actions: [{ date: "2026-04-10", description: "Introduced" }],
-          },
-        ],
-        pagination: { max_page: 1, page: 1 },
-      }), { status: 200 });
+      return new Response(
+        JSON.stringify({
+          results: [
+            {
+              id: "ocd-bill/tx-1",
+              identifier: "HB1",
+              title: "Test Bill",
+              session: "89R",
+              updated_at: "2026-04-10T00:00:00Z",
+              openstates_url: "https://openstates.org/tx/bills/89R/HB1",
+              jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
+              sponsorships: [],
+              actions: [{ date: "2026-04-10", description: "Introduced" }],
+            },
+          ],
+          pagination: { max_page: 1, page: 1 },
+        }),
+        { status: 200 },
+      );
     });
 
     if (existsSync(FBS_DB)) rmSync(FBS_DB, { force: true });
@@ -916,9 +985,9 @@ describe("OpenStatesAdapter.fetchBillsBySponsor", () => {
       }
 
       expect(result.documentsUpserted).toBe(1);
-      const bills = db.db.prepare(
-        "SELECT id, title FROM documents WHERE source_name='openstates' AND kind='bill'",
-      ).all() as Array<{ id: string; title: string }>;
+      const bills = db.db
+        .prepare("SELECT id, title FROM documents WHERE source_name='openstates' AND kind='bill'")
+        .all() as Array<{ id: string; title: string }>;
       expect(bills).toHaveLength(1);
     } finally {
       db.close();
@@ -929,10 +998,9 @@ describe("OpenStatesAdapter.fetchBillsBySponsor", () => {
     let capturedUrl: string | undefined;
     vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
       capturedUrl = String(url);
-      return new Response(
-        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }), {
+        status: 200,
+      });
     });
 
     if (existsSync(FBS_DB)) rmSync(FBS_DB, { force: true });
@@ -1005,13 +1073,16 @@ describe("OpenStatesAdapter.fetchPerson", () => {
     let capturedUrl: string | undefined;
     vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
       capturedUrl = String(url);
-      return new Response(JSON.stringify({
-        id: "ocd-person/tx-1",
-        name: "Jane Doe",
-        party: "Democratic",
-        current_role: { title: "Representative", district: "15", org_classification: "lower" },
-        jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
-      }), { status: 200 });
+      return new Response(
+        JSON.stringify({
+          id: "ocd-person/tx-1",
+          name: "Jane Doe",
+          party: "Democratic",
+          current_role: { title: "Representative", district: "15", org_classification: "lower" },
+          jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
+        }),
+        { status: 200 },
+      );
     });
 
     if (existsSync(FP_DB)) rmSync(FP_DB, { force: true });
@@ -1025,7 +1096,9 @@ describe("OpenStatesAdapter.fetchPerson", () => {
       expect(capturedUrl).toContain("/people/ocd-person%2Ftx-1");
       expect(result.entitiesUpserted).toBe(1);
       const rows = db.db
-        .prepare("SELECT name FROM entities WHERE json_extract(external_ids, '$.openstates_person') = ?")
+        .prepare(
+          "SELECT name FROM entities WHERE json_extract(external_ids, '$.openstates_person') = ?",
+        )
         .all("ocd-person/tx-1") as Array<{ name: string }>;
       expect(rows).toHaveLength(1);
       expect(rows[0].name).toBe("Jane Doe");
@@ -1035,8 +1108,8 @@ describe("OpenStatesAdapter.fetchPerson", () => {
   });
 
   it("returns entitiesUpserted=0 on 404 without throwing", async () => {
-    vi.spyOn(global, "fetch").mockImplementation(async () =>
-      new Response(JSON.stringify({ detail: "not found" }), { status: 404 }),
+    vi.spyOn(global, "fetch").mockImplementation(
+      async () => new Response(JSON.stringify({ detail: "not found" }), { status: 404 }),
     );
 
     if (existsSync(FP_404_DB)) rmSync(FP_404_DB, { force: true });
@@ -1062,7 +1135,14 @@ describe("OpenStatesAdapter.listBills", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    for (const p of [LB_PARAMS_DB, LB_DATES_DB, LB_SORT_DB, LB_WRITE_DB, LB_SPONSOR_DB, LB_FAIL_DB]) {
+    for (const p of [
+      LB_PARAMS_DB,
+      LB_DATES_DB,
+      LB_SORT_DB,
+      LB_WRITE_DB,
+      LB_SPONSOR_DB,
+      LB_FAIL_DB,
+    ]) {
       if (existsSync(p)) rmSync(p, { force: true });
     }
   });
@@ -1071,10 +1151,9 @@ describe("OpenStatesAdapter.listBills", () => {
     let capturedUrl: string | undefined;
     vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
       capturedUrl = String(url);
-      return new Response(
-        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }), {
+        status: 200,
+      });
     });
 
     if (existsSync(LB_PARAMS_DB)) rmSync(LB_PARAMS_DB, { force: true });
@@ -1110,36 +1189,40 @@ describe("OpenStatesAdapter.listBills", () => {
   });
 
   it("client-side filters listBills results by from_organization.classification when chamber is set", async () => {
-    vi.spyOn(global, "fetch").mockImplementation(async () =>
-      new Response(JSON.stringify({
-        results: [
-          {
-            id: "ocd-bill/upper-lb",
-            identifier: "SB1",
-            title: "Senate Bill",
-            session: "89R",
-            updated_at: "2026-04-10T00:00:00Z",
-            openstates_url: "https://openstates.org/tx/bills/89R/SB1",
-            jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
-            from_organization: { classification: "upper" },
-            sponsorships: [],
-            actions: [{ date: "2026-04-10", description: "Introduced" }],
-          },
-          {
-            id: "ocd-bill/lower-lb",
-            identifier: "HB1",
-            title: "House Bill",
-            session: "89R",
-            updated_at: "2026-04-10T00:00:00Z",
-            openstates_url: "https://openstates.org/tx/bills/89R/HB1",
-            jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
-            from_organization: { classification: "lower" },
-            sponsorships: [],
-            actions: [{ date: "2026-04-10", description: "Introduced" }],
-          },
-        ],
-        pagination: { max_page: 1, page: 1 },
-      }), { status: 200 }),
+    vi.spyOn(global, "fetch").mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            results: [
+              {
+                id: "ocd-bill/upper-lb",
+                identifier: "SB1",
+                title: "Senate Bill",
+                session: "89R",
+                updated_at: "2026-04-10T00:00:00Z",
+                openstates_url: "https://openstates.org/tx/bills/89R/SB1",
+                jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
+                from_organization: { classification: "upper" },
+                sponsorships: [],
+                actions: [{ date: "2026-04-10", description: "Introduced" }],
+              },
+              {
+                id: "ocd-bill/lower-lb",
+                identifier: "HB1",
+                title: "House Bill",
+                session: "89R",
+                updated_at: "2026-04-10T00:00:00Z",
+                openstates_url: "https://openstates.org/tx/bills/89R/HB1",
+                jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
+                from_organization: { classification: "lower" },
+                sponsorships: [],
+                actions: [{ date: "2026-04-10", description: "Introduced" }],
+              },
+            ],
+            pagination: { max_page: 1, page: 1 },
+          }),
+          { status: 200 },
+        ),
     );
 
     const LB_CHAMBER_DB = "./data/test-openstates-lb-chamber.db";
@@ -1156,9 +1239,9 @@ describe("OpenStatesAdapter.listBills", () => {
       });
 
       expect(result.documentsUpserted).toBe(1);
-      const rows = db.db.prepare(
-        "SELECT title FROM documents WHERE source_name='openstates' AND kind='bill'",
-      ).all() as Array<{ title: string }>;
+      const rows = db.db
+        .prepare("SELECT title FROM documents WHERE source_name='openstates' AND kind='bill'")
+        .all() as Array<{ title: string }>;
       expect(rows).toHaveLength(1);
       expect(rows[0].title).toMatch(/^SB1 — /);
     } finally {
@@ -1171,10 +1254,9 @@ describe("OpenStatesAdapter.listBills", () => {
     let capturedUrl: string | undefined;
     vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
       capturedUrl = String(url);
-      return new Response(
-        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }), {
+        status: 200,
+      });
     });
 
     if (existsSync(LB_DATES_DB)) rmSync(LB_DATES_DB, { force: true });
@@ -1205,10 +1287,9 @@ describe("OpenStatesAdapter.listBills", () => {
     let capturedUrl: string | undefined;
     vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
       capturedUrl = String(url);
-      return new Response(
-        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }), {
+        status: 200,
+      });
     });
 
     if (existsSync(LB_DATES_DB)) rmSync(LB_DATES_DB, { force: true });
@@ -1239,10 +1320,9 @@ describe("OpenStatesAdapter.listBills", () => {
     let capturedUrl: string | undefined;
     vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
       capturedUrl = String(url);
-      return new Response(
-        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }), {
+        status: 200,
+      });
     });
 
     if (existsSync(LB_SORT_DB)) rmSync(LB_SORT_DB, { force: true });
@@ -1264,21 +1344,27 @@ describe("OpenStatesAdapter.listBills", () => {
   });
 
   it("writes through with upsertBill on successful fetch", async () => {
-    vi.spyOn(global, "fetch").mockImplementation(async () =>
-      new Response(JSON.stringify({
-        results: [{
-          id: "ocd-bill/tx/listbills-1",
-          identifier: "HB42",
-          title: "Listed Test",
-          session: "89R",
-          updated_at: "2026-04-10T00:00:00Z",
-          openstates_url: "https://openstates.org/tx/bills/89R/HB42",
-          jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
-          sponsorships: [],
-          actions: [{ date: "2026-04-10", description: "Introduced" }],
-        }],
-        pagination: { max_page: 1, page: 1 },
-      }), { status: 200 }),
+    vi.spyOn(global, "fetch").mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            results: [
+              {
+                id: "ocd-bill/tx/listbills-1",
+                identifier: "HB42",
+                title: "Listed Test",
+                session: "89R",
+                updated_at: "2026-04-10T00:00:00Z",
+                openstates_url: "https://openstates.org/tx/bills/89R/HB42",
+                jurisdiction: { id: "ocd-jurisdiction/country:us/state:tx/government" },
+                sponsorships: [],
+                actions: [{ date: "2026-04-10", description: "Introduced" }],
+              },
+            ],
+            pagination: { max_page: 1, page: 1 },
+          }),
+          { status: 200 },
+        ),
     );
 
     if (existsSync(LB_WRITE_DB)) rmSync(LB_WRITE_DB, { force: true });
@@ -1287,13 +1373,15 @@ describe("OpenStatesAdapter.listBills", () => {
     try {
       const adapter = new OpenStatesAdapter({ apiKey: "test-key" });
       const result = await adapter.listBills(db.db, {
-        jurisdiction: "us-tx", sort: "updated_desc", limit: 20,
+        jurisdiction: "us-tx",
+        sort: "updated_desc",
+        limit: 20,
       });
 
       expect(result.documentsUpserted).toBe(1);
-      const rows = db.db.prepare(
-        "SELECT title FROM documents WHERE source_name='openstates' AND kind='bill'",
-      ).all() as Array<{ title: string }>;
+      const rows = db.db
+        .prepare("SELECT title FROM documents WHERE source_name='openstates' AND kind='bill'")
+        .all() as Array<{ title: string }>;
       expect(rows).toHaveLength(1);
       expect(rows[0].title).toMatch(/^HB42 — /);
     } finally {
@@ -1305,10 +1393,9 @@ describe("OpenStatesAdapter.listBills", () => {
     let capturedUrl: string | undefined;
     vi.spyOn(global, "fetch").mockImplementation(async (url: any) => {
       capturedUrl = String(url);
-      return new Response(
-        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }), {
+        status: 200,
+      });
     });
 
     if (existsSync(LB_SPONSOR_DB)) rmSync(LB_SPONSOR_DB, { force: true });
@@ -1331,9 +1418,7 @@ describe("OpenStatesAdapter.listBills", () => {
   });
 
   it("throws on non-200 response", async () => {
-    vi.spyOn(global, "fetch").mockImplementation(async () =>
-      new Response("boom", { status: 500 }),
-    );
+    vi.spyOn(global, "fetch").mockImplementation(async () => new Response("boom", { status: 500 }));
 
     if (existsSync(LB_FAIL_DB)) rmSync(LB_FAIL_DB, { force: true });
     const db = openStore(LB_FAIL_DB);

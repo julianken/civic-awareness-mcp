@@ -8,11 +8,7 @@ import { requireEnv } from "../../util/env.js";
 import { logger } from "../../util/logger.js";
 import { ListBillsInput } from "../schemas.js";
 import type { StaleNotice } from "../../core/shared.js";
-import {
-  buildSponsorSummary,
-  projectLatestAction,
-  type BillSummary,
-} from "./recent_bills.js";
+import { buildSponsorSummary, projectLatestAction, type BillSummary } from "./recent_bills.js";
 
 export interface ListBillsResponse {
   results: BillSummary[];
@@ -28,20 +24,14 @@ function introducedDate(raw: Record<string, unknown>): string | undefined {
   return actions?.[0]?.date;
 }
 
-function matchesClassification(
-  raw: Record<string, unknown>,
-  filter: string,
-): boolean {
+function matchesClassification(raw: Record<string, unknown>, filter: string): boolean {
   const c = raw.classification;
   if (Array.isArray(c)) return c.includes(filter);
   if (typeof c === "string") return c === filter;
   return false;
 }
 
-function matchesSubject(
-  raw: Record<string, unknown>,
-  filter: string,
-): boolean {
+function matchesSubject(raw: Record<string, unknown>, filter: string): boolean {
   const subjects = raw.subjects as string[] | undefined;
   return Array.isArray(subjects) && subjects.includes(filter);
 }
@@ -86,9 +76,7 @@ export async function handleListBills(
       return {
         results: [],
         total: 0,
-        sources: [
-          { name: "openstates", url: `https://openstates.org/${stateAbbr}/` },
-        ],
+        sources: [{ name: "openstates", url: `https://openstates.org/${stateAbbr}/` }],
         empty_reason: "sponsor_not_linked_to_openstates",
         hint:
           "This entity has no OpenStates person link; no bills can be found " +

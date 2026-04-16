@@ -27,10 +27,9 @@ describe("state/recent_bills — Bug 1: updated_since Z-suffix", () => {
 
     vi.spyOn(global, "fetch").mockImplementation(async (input) => {
       capturedUrl = typeof input === "string" ? input : String(input);
-      return new Response(
-        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }), {
+        status: 200,
+      });
     });
 
     await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7 });
@@ -48,10 +47,9 @@ describe("state/recent_bills — Bug 1: updated_since Z-suffix", () => {
 
     vi.spyOn(global, "fetch").mockImplementation(async (input) => {
       capturedUrl = typeof input === "string" ? input : String(input);
-      return new Response(
-        JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify({ results: [], pagination: { max_page: 1, page: 1 } }), {
+        status: 200,
+      });
     });
 
     await handleRecentBills(store.db, { jurisdiction: "us-tx", days: 7, limit: 5 });

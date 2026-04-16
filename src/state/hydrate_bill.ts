@@ -18,7 +18,9 @@ export interface EnsureBillResult {
   stale_notice?: StaleNotice;
 }
 
-interface Row { fetched_at: string }
+interface Row {
+  fetched_at: string;
+}
 
 /** Per-document freshness check (R14 / D11). */
 export async function ensureBillFresh(
@@ -71,8 +73,10 @@ export async function ensureBillFresh(
     }
     const msg = err instanceof Error ? err.message : String(err);
     logger.warn("ensureBillFresh failed", {
-      jurisdiction: input.jurisdiction, session: input.session,
-      identifier: input.identifier, error: msg,
+      jurisdiction: input.jurisdiction,
+      session: input.session,
+      identifier: input.identifier,
+      error: msg,
     });
     const as_of = existing?.fetched_at ?? new Date(0).toISOString();
     return {

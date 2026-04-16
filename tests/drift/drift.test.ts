@@ -148,10 +148,9 @@ describe.skipIf(!HAS_API_DATA_GOV)("OpenFEC drift", () => {
 
   it("/committees response shape matches the FecCommittee interface", async () => {
     await pause();
-    const res = await fetch(
-      `${base}/committees?cycle=2026&per_page=5&api_key=${key}`,
-      { headers: { "User-Agent": UA } },
-    );
+    const res = await fetch(`${base}/committees?cycle=2026&per_page=5&api_key=${key}`, {
+      headers: { "User-Agent": UA },
+    });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { results?: Array<Record<string, unknown>> };
     expect(Array.isArray(body.results)).toBe(true);

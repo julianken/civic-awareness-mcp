@@ -16,8 +16,8 @@ interface FecPrincipalCommittee {
 
 interface FecCandidate {
   candidate_id: string;
-  name: string;           // ALL CAPS, e.g. "SMITH, JOHN R."
-  office: string;         // "H" | "S" | "P"
+  name: string; // ALL CAPS, e.g. "SMITH, JOHN R."
+  office: string; // "H" | "S" | "P"
   state?: string;
   district?: string | null;
   party?: string;
@@ -124,9 +124,7 @@ function committeeKind(type: string): "pac" | "organization" {
  * critical step that allows step-3 exact-name matching across sources.
  */
 function titleCase(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return name.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 /** Build the human-facing FEC committee URL. */
@@ -143,8 +141,7 @@ export class OpenFecAdapter implements Adapter {
 
   constructor(private readonly opts: OpenFecAdapterOptions) {
     this.rateLimiter =
-      opts.rateLimiter ??
-      new RateLimiter({ tokensPerInterval: 15, intervalMs: 60_000 });
+      opts.rateLimiter ?? new RateLimiter({ tokensPerInterval: 15, intervalMs: 60_000 });
     this.cycles = opts.cycles ?? [2026, 2024];
   }
 
@@ -309,8 +306,7 @@ export class OpenFecAdapter implements Adapter {
     }
     const candBody = (await candRes.json()) as { results?: FecCandidate[] };
     const candidate = candBody.results?.[0];
-    const committeeIds =
-      candidate?.principal_committees?.map((c) => c.committee_id) ?? [];
+    const committeeIds = candidate?.principal_committees?.map((c) => c.committee_id) ?? [];
     if (committeeIds.length === 0) return { documentsUpserted: 0 };
 
     return this.fetchRecentContributions(db, {
@@ -442,11 +438,7 @@ export class OpenFecAdapter implements Adapter {
       const perPage = body.pagination?.per_page ?? 100;
 
       // No more pages if fewer results than page size, or no cursor.
-      if (
-        results.length < perPage ||
-        !lastIndexes?.last_index ||
-        !lastIndexes?.[cursorDateKey]
-      ) {
+      if (results.length < perPage || !lastIndexes?.last_index || !lastIndexes?.[cursorDateKey]) {
         break;
       }
       if (maxPages && pageCount >= maxPages) break;
@@ -459,11 +451,7 @@ export class OpenFecAdapter implements Adapter {
     return all;
   }
 
-  private upsertCandidate(
-    db: Database.Database,
-    c: FecCandidate,
-    cycle: number,
-  ): string {
+  private upsertCandidate(db: Database.Database, c: FecCandidate, cycle: number): string {
     const canonicalName = titleCase(c.name);
     const role = officeToRole(c.office);
 
@@ -477,7 +465,7 @@ export class OpenFecAdapter implements Adapter {
     const { entity } = upsertEntity(db, {
       kind: "person",
       name: canonicalName,
-      jurisdiction: undefined,  // D3b: Persons are cross-jurisdiction
+      jurisdiction: undefined, // D3b: Persons are cross-jurisdiction
       external_ids: { fec_candidate: c.candidate_id },
       metadata: {
         party: c.party,

@@ -4,7 +4,9 @@ import { bootstrap } from "../../../src/federal/cli/bootstrap.js";
 import { openStore } from "../../../src/core/store.js";
 
 const TEST_DB = "./data/test-bootstrap.db";
-afterEach(() => { if (existsSync(TEST_DB)) rmSync(TEST_DB); });
+afterEach(() => {
+  if (existsSync(TEST_DB)) rmSync(TEST_DB);
+});
 
 describe("bootstrap", () => {
   it("creates DB with schema and seeded jurisdictions", async () => {

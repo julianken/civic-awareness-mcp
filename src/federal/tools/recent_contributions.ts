@@ -8,7 +8,11 @@ import { requireEnv } from "../../util/env.js";
 import { logger } from "../../util/logger.js";
 import { escapeLike } from "../../util/sql.js";
 import { RecentContributionsInput } from "../schemas.js";
-import { emptyFeedDiagnostic, type EmptyFeedDiagnostic, type StaleNotice } from "../../core/shared.js";
+import {
+  emptyFeedDiagnostic,
+  type EmptyFeedDiagnostic,
+  type StaleNotice,
+} from "../../core/shared.js";
 
 const MAX_WARN_PER_CALL = 3;
 
@@ -84,8 +88,7 @@ export async function handleRecentContributions(
   // contributor_name, contributor_city, contributor_zip, etc. Guard here so we
   // never hit that 400 path; return an empty diagnostic instead.
   const hasNarrowingFilter =
-    input.contributor_entity_id !== undefined ||
-    input.candidate_or_committee !== undefined;
+    input.contributor_entity_id !== undefined || input.candidate_or_committee !== undefined;
   if (!hasNarrowingFilter) {
     return {
       results: [],
@@ -237,9 +240,7 @@ export async function handleRecentContributions(
     const base: RecentContributionsResponse = {
       results,
       total: results.length,
-      sources: results.length > 0
-        ? [{ name: "openfec", url: "https://www.fec.gov/" }]
-        : [],
+      sources: results.length > 0 ? [{ name: "openfec", url: "https://www.fec.gov/" }] : [],
       window: input.window,
     };
     if (results.length === 0) {

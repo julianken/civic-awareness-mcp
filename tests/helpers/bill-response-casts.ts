@@ -8,10 +8,7 @@ import {
   handleRecentBills,
   type RecentBillsResponse,
 } from "../../src/federal/tools/recent_bills.js";
-import {
-  handleListBills,
-  type ListBillsResponse,
-} from "../../src/state/tools/list_bills.js";
+import { handleListBills, type ListBillsResponse } from "../../src/state/tools/list_bills.js";
 
 export async function callBills(
   db: Database.Database,

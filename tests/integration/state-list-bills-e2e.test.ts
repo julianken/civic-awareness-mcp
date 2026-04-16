@@ -103,10 +103,9 @@ describe("list_bills — R15 shaped e2e", () => {
         return new Response("", { status: 404 });
       }
       upstreamHits += 1;
-      return new Response(
-        JSON.stringify({ results: [], pagination: { max_page: 1 } }),
-        { status: 200 },
-      );
+      return new Response(JSON.stringify({ results: [], pagination: { max_page: 1 } }), {
+        status: 200,
+      });
     });
 
     await handleListBills(store.db, { jurisdiction: "us-ca", subject: "Vehicles" });
@@ -124,9 +123,7 @@ describe("list_bills — R15 shaped e2e", () => {
       throw new Error("network down");
     });
 
-    await expect(
-      handleListBills(store.db, { jurisdiction: "us-ca" }),
-    ).rejects.toThrow();
+    await expect(handleListBills(store.db, { jurisdiction: "us-ca" })).rejects.toThrow();
   });
 
   it("projects upstream sponsorships through to sponsor_summary.top", async () => {
