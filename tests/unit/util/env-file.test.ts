@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { writeFileSync, rmSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadEnvDefaults, findProjectRoot } from "../../../src/util/env-file.js";
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
 const TEST_KEY = "CIVIC_AWARENESS_ENV_FILE_TEST";
 const TEST_KEY_2 = "CIVIC_AWARENESS_ENV_FILE_TEST_2";
@@ -63,9 +66,9 @@ describe("loadEnvDefaults", () => {
 
 describe("findProjectRoot", () => {
   it("returns the civic-awareness-mcp repo root when called from inside it", () => {
-    const fromSrcUtil = "/Users/j/repos/civic-awareness-mcp/src/util";
+    const fromSrcUtil = join(repoRoot, "src", "util");
     const root = findProjectRoot(fromSrcUtil);
-    expect(root).toBe("/Users/j/repos/civic-awareness-mcp");
+    expect(root).toBe(repoRoot);
   });
 
   it("returns undefined when no package.json is reachable", () => {
