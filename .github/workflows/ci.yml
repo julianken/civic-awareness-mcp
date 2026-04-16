@@ -39,6 +39,9 @@ jobs:
       - name: Format (prettier)
         run: pnpm exec prettier --check .
 
+      - name: Lint (eslint)
+        run: pnpm run lint
+
       - name: Typecheck
         run: pnpm run typecheck
 

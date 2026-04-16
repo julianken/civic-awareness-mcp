@@ -241,7 +241,7 @@ describe("withShapedFetch — parallel concurrency", () => {
     // Concurrent execution keeps total time < 2 × DELAY_MS.
     const DELAY_MS = 100;
 
-    const makeFetch = (tag: string) => async (): Promise<{ primary_rows_written: number }> => {
+    const doFetch = async (): Promise<{ primary_rows_written: number }> => {
       await new Promise<void>((r) => setTimeout(r, DELAY_MS));
       return { primary_rows_written: 1 };
     };
@@ -259,7 +259,7 @@ describe("withShapedFetch — parallel concurrency", () => {
           tool: "__concurrency__",
         },
         ttl,
-        makeFetch("or"),
+        doFetch,
         () => [],
         () => 0,
       ),
@@ -272,7 +272,7 @@ describe("withShapedFetch — parallel concurrency", () => {
           tool: "__concurrency__",
         },
         ttl,
-        makeFetch("mi"),
+        doFetch,
         () => [],
         () => 0,
       ),
