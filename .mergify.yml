@@ -1,0 +1,12 @@
+queue_rules:
+  - name: default
+    merge_method: squash
+    update_method: merge
+    queue_conditions:
+      - "#approved-reviews-by >= 1"
+      - base = main
+      - -draft
+      - -conflict
+      - "check-success = Node 22"
+      - "check-success = Node 24"
+      - "check-success = Analyze (javascript-typescript)"
