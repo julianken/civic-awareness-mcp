@@ -171,7 +171,11 @@ async function main() {
     stateRecentBills(stateStore.db, { jurisdiction: "us-tx", limit: 5, sort: "updated_desc" }),
   );
   await run("state", "recent_bills (explicit window)", () =>
-    stateRecentBills(stateStore.db, { jurisdiction: "us-tx", introduced_since: "2025-01-01", limit: 5 }),
+    stateRecentBills(stateStore.db, {
+      jurisdiction: "us-tx",
+      introduced_since: "2025-01-01",
+      limit: 5,
+    }),
   );
 
   await run("state", "get_bill", () =>
