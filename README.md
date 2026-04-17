@@ -54,23 +54,23 @@ Each server reads/writes-through to a local SQLite store as a TTL cache. Every r
 ### Build + run
 
 ```bash
-pnpm install
-pnpm build
+npm install
+npm run build
 
 # federal server
-pnpm bootstrap:federal
-pnpm start:federal
+npm run bootstrap:federal
+npm run start:federal
 
 # state server
-pnpm bootstrap:state
-pnpm start:state
+npm run bootstrap:state
+npm run start:state
 ```
 
 For development (no build step):
 
 ```bash
-pnpm dev:federal
-pnpm dev:state
+npm run dev:federal
+npm run dev:state
 ```
 
 ### Data hydration
@@ -79,17 +79,28 @@ The server fetches data automatically on cache miss. For bulk pre-population:
 
 ```bash
 # federal
-pnpm refresh:federal -- --source=congress --max-pages=1
-pnpm refresh:federal -- --source=openfec --max-pages=1
+npm run refresh:federal -- --source=congress --max-pages=1
+npm run refresh:federal -- --source=openfec --max-pages=1
 
 # state (one jurisdiction)
-pnpm refresh:state -- --source=openstates --jurisdictions=tx --max-pages=1
+npm run refresh:state -- --source=openstates --jurisdictions=tx --max-pages=1
 ```
 
 To prune stale fetch-log rows (recommended monthly):
 
 ```bash
-pnpm evict-fetch-log
+npm run evict-fetch-log
+```
+
+### Development
+
+```bash
+npm test              # mocked unit + integration suite (MSW)
+npm run test:watch    # rerun on change
+npm run test:drift    # live-API drift tests (requires .env.local)
+npm run typecheck     # tsc --noEmit
+npm run lint          # eslint
+npm run format        # prettier --write
 ```
 
 ### Claude Desktop config
@@ -132,7 +143,7 @@ To run both servers locally, add to `~/Library/Application Support/Claude/claude
 
 ## CI
 
-One workflow ([`.github/workflows/nightly-drift.yml`](./.github/workflows/nightly-drift.yml)) runs daily at 09:00 UTC. It makes real requests against OpenStates / Congress.gov / OpenFEC and asserts response shapes. No CI on push or pull-request — the mocked unit + integration suite runs locally via `pnpm test`.
+One workflow ([`.github/workflows/nightly-drift.yml`](./.github/workflows/nightly-drift.yml)) runs daily at 09:00 UTC. It makes real requests against OpenStates / Congress.gov / OpenFEC and asserts response shapes. No CI on push or pull-request — the mocked unit + integration suite runs locally via `npm test`.
 
 Requires two repo secrets: `OPENSTATES_API_KEY` and `API_DATA_GOV_KEY`.
 
