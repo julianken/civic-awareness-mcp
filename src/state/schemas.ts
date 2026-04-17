@@ -22,9 +22,7 @@ export const RecentBillsInput = z.object({
     .string()
     .min(1)
     .optional()
-    .describe(
-      "Civic entity UUID; resolved to OpenStates OCD person id before upstream fetch.",
-    ),
+    .describe("Civic entity UUID; resolved to OpenStates OCD person id before upstream fetch."),
   classification: z.string().min(1).optional(),
   subject: z.string().min(1).optional(),
   introduced_since: z.union([z.iso.date(), z.iso.datetime()]).optional(),

@@ -197,7 +197,7 @@ describe("passthrough shaped e2e — recent_votes (federal)", () => {
           kind: "vote",
           jurisdiction: "us-federal",
           title: "Vote 119-Senate-1: S.1234 — Motion",
-          occurred_at: "2026-04-10T00:00:00Z",
+          occurred_at: new Date(Date.now() - 2 * 86400 * 1000).toISOString(),
           source: {
             name: "congress",
             id: "vote-119-senate-1",

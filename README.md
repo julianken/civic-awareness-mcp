@@ -33,16 +33,16 @@ Each server reads/writes-through to a local SQLite store as a TTL cache. Every r
 
 ### civic-state-mcp (8 tools)
 
-| Tool                     | Kind   | What it answers                                                                       |
-| ------------------------ | ------ | ------------------------------------------------------------------------------------- |
-| `recent_bills`           | feed   | Bills by jurisdiction; filters for sponsor, subject, classification, session, dates   |
-| `recent_votes`           | feed   | Roll-call votes in the last N days, chamber + tally (OpenStates, per jurisdiction)    |
-| `get_bill`               | detail | Full bill detail: actions, versions, sponsors, subjects                               |
-| `search_civic_documents` | search | Title search across cached state bills                                                |
-| `search_entities`        | entity | Name search across state legislators (OpenStates)                                     |
-| `get_entity`             | entity | Entity detail + role history + recent documents                                       |
-| `resolve_person`         | entity | Disambiguate a name into one or more Person entity IDs                                |
-| `entity_connections`     | entity | Co-occurrence graph via shared sponsored bills (depth 1–2)                            |
+| Tool                     | Kind   | What it answers                                                                     |
+| ------------------------ | ------ | ----------------------------------------------------------------------------------- |
+| `recent_bills`           | feed   | Bills by jurisdiction; filters for sponsor, subject, classification, session, dates |
+| `recent_votes`           | feed   | Roll-call votes in the last N days, chamber + tally (OpenStates, per jurisdiction)  |
+| `get_bill`               | detail | Full bill detail: actions, versions, sponsors, subjects                             |
+| `search_civic_documents` | search | Title search across cached state bills                                              |
+| `search_entities`        | entity | Name search across state legislators (OpenStates)                                   |
+| `get_entity`             | entity | Entity detail + role history + recent documents                                     |
+| `resolve_person`         | entity | Disambiguate a name into one or more Person entity IDs                              |
+| `entity_connections`     | entity | Co-occurrence graph via shared sponsored bills (depth 1–2)                          |
 
 ## Installation
 
@@ -143,9 +143,14 @@ To run both servers locally, add to `~/Library/Application Support/Claude/claude
 
 ## CI
 
-One workflow ([`.github/workflows/nightly-drift.yml`](./.github/workflows/nightly-drift.yml)) runs daily at 09:00 UTC. It makes real requests against OpenStates / Congress.gov / OpenFEC and asserts response shapes. No CI on push or pull-request — the mocked unit + integration suite runs locally via `npm test`.
+Four workflows in `.github/workflows/`:
 
-Requires two repo secrets: `OPENSTATES_API_KEY` and `API_DATA_GOV_KEY`.
+- **`ci.yml`** — format, lint, typecheck, tests, build, MCP stdio smoke. Matrix on Node 22/24. Runs on push to `main` and on every PR.
+- **`codeql.yml`** — CodeQL static analysis. Runs on push/PR/weekly.
+- **`scorecard.yml`** — OpenSSF Scorecard. Runs on push/weekly.
+- **`nightly-drift.yml`** — live-API shape checks against OpenStates, Congress.gov, OpenFEC. Runs daily at 09:00 UTC and on-demand via `workflow_dispatch`.
+
+The drift workflow requires repo secrets `OPENSTATES_API_KEY` and `API_DATA_GOV_KEY` (separate from user keys — those are configured locally via `.env.local`).
 
 ## Security
 

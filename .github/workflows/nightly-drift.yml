@@ -37,20 +37,16 @@ jobs:
       # are for humans reviewing the file.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
-        with:
-          version: 10
-
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
-          cache: "pnpm"
+          cache: "npm"
 
       - name: Install deps
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       # Fail fast if either API key isn't set in repo Actions secrets.
-      # Without this guard, `pnpm test:drift` skips all tests when the
+      # Without this guard, `npm run test:drift` skips all tests when the
       # env vars are empty and the job passes silently — a false-positive
       # CI signal where green means "zero tests ran," not "upstream shapes
       # are intact."
@@ -73,4 +69,4 @@ jobs:
         env:
           OPENSTATES_API_KEY: ${{ secrets.OPENSTATES_API_KEY }}
           API_DATA_GOV_KEY: ${{ secrets.API_DATA_GOV_KEY }}
-        run: pnpm test:drift
+        run: npm run test:drift

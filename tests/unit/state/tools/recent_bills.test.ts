@@ -406,9 +406,7 @@ describe("recent_bills tool — local projection (TTL-hit)", () => {
       raw: { actions: [] },
     });
 
-    seedFetchLogFresh(
-      defaultArgs({ updated_since: "2026-02-01", updated_until: "2026-04-01" }),
-    );
+    seedFetchLogFresh(defaultArgs({ updated_since: "2026-02-01", updated_until: "2026-04-01" }));
     const res = await handleRecentBills(store.db, {
       jurisdiction: "us-tx",
       updated_since: "2026-02-01",

@@ -21,3 +21,6 @@ data/
 .idea/
 *.swp
 .firecrawl/
+
+# Claude Code session artifacts (local only)
+.remember/
